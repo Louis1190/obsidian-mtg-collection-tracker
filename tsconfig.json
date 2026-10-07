@@ -1,0 +1,22 @@
+{
+	"compilerOptions": {
+		"baseUrl": ".",
+		"inlineSourceMap": true,
+		"inlineSources": true,
+		"module": "ESNext",
+		"target": "ES2020",
+		"allowJs": true,
+		"moduleResolution": "node",
+		"importHelpers": true,
+		"isolatedModules": true,
+		"strict": true,
+		// "strict" active alwaysStrict, qui ferait ajouter "use strict" au bundle par esbuild : un changement
+		// de sémantique d'exécution (mode strict) à valider à part, pas à glisser dans un nettoyage de types.
+		"alwaysStrict": false,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"lib": ["DOM", "ES2020"]
+	},
+	"include": ["**/*.ts"],
+	"exclude": ["node_modules", "*.config.mjs"]
+}

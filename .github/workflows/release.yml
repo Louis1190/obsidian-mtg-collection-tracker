@@ -1,0 +1,70 @@
+name: Release
+
+# Publie une release quand un tag de version est poussé. Le tag doit être égal à la
+# "version" de manifest.json (c'est ce que l'annuaire d'Obsidian vérifie). Ce fichier est
+# copié tel quel dans le dépôt public par tools/publish-public.mjs ; il n'est pas utilisé
+# par le dépôt privé (dont le workflow est .github/workflows/release.yml).
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Check that the tag is the manifest version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          if [ "$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match manifest.json version $VERSION"
+            exit 1
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Release $GITHUB_REF_NAME"
+
+      # GitHub's release list sometimes shows a new release without its files for a while;
+      # the directory (and BRAT) read that list, so fail loudly instead of leaving a broken release.
+      - name: Verify release assets are registered
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OK=""
+          for ATTEMPT in $(seq 1 12); do
+            ASSETS=$(gh api "repos/${{ github.repository }}/releases?per_page=1" --jq '.[0].assets | map(.name) | sort | join(",")')
+            if [ "$ASSETS" = "main.js,manifest.json,styles.css" ]; then
+              OK=1
+              break
+            fi
+            echo "Attempt $ATTEMPT: the newest release lists [$ASSETS], expected all 3 files, retrying in 5s..."
+            sleep 5
+          done
+          if [ -z "$OK" ]; then
+            echo "::error::The newest release still does not list main.js, manifest.json and styles.css after 60s"
+            exit 1
+          fi
+          echo "OK: main.js, manifest.json and styles.css are registered"
