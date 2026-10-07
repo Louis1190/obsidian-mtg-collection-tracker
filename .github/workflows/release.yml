@@ -56,9 +56,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Les notes de version sont le corps du commit de publication (tools/publish-public.mjs --notes, obligatoire) ;
+          # le repli ne sert que si quelqu'un a poussé un tag sans passer par le script.
+          git log -1 --format=%b "$GITHUB_SHA" > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then echo "Release $GITHUB_REF_NAME" > release-notes.md; fi
           gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css \
             --title "$GITHUB_REF_NAME" \
-            --notes "Release $GITHUB_REF_NAME"
+            --notes-file release-notes.md
 
       # GitHub's release list sometimes shows a new release without its files for a while;
       # the directory (and BRAT) read that list, so fail loudly instead of leaving a broken release.

@@ -30,16 +30,15 @@ Requires **Obsidian 1.8.7 or later**, on desktop, iPhone/iPad or Android.
 
 ### From the community plugins
 
-Not listed there yet. Once it is: *Settings → Community plugins → Browse*, search for **MTG Collection Tracker**,
-install, enable.
+*Settings → Community plugins → Browse*, search for **MTG Collection Tracker**, install, enable.
 
-### Until then
+### By hand
 
 Download `main.js`, `manifest.json` and `styles.css` from the latest
 [release](https://github.com/Louis1190/obsidian-mtg-collection-tracker/releases), put the three files in
 `<your vault>/.obsidian/plugins/mtg-collection-tracker/`, then enable the plugin in *Settings → Community plugins*.
-You can also let [BRAT](https://github.com/TfTHacker/obsidian42-brat) install and update it from
-`Louis1190/obsidian-mtg-collection-tracker`.
+The files of every release since 1.0.524 carry a GitHub build attestation, which proves they were built from this
+repository: `gh attestation verify <file> --repo Louis1190/obsidian-mtg-collection-tracker`.
 
 ## Getting started
 
