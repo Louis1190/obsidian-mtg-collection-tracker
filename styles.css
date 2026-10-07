@@ -131,8 +131,9 @@
    height) — non vérifiable directement dans cet environnement (aucune
    vraie instance Obsidian ici), mais cohérent avec le fait que cette
    hauteur fixe elle-même fonctionne déjà (confirmée en usage). padding: 0
-   !important — même technique que .mtg-card-detail-modal (voir son propre
-   commentaire un peu plus bas dans ce fichier) : retire le padding natif
+   (sélecteur à trois classes, juste sous la règle) — même technique que
+   .mtg-card-detail-modal (voir son propre commentaire un peu plus bas dans
+   ce fichier) : retire le padding natif
    d'Obsidian sur contentEl lui-même pour que mtg-search-bottom-section
    (search-modal.ts) puisse remplir la fenêtre bord à bord (gauche/droite/
    bas) avec son propre fond assombri — bug signalé, ce fond restait en
@@ -147,7 +148,12 @@
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	padding: 0 !important;
+}
+
+/* Sur téléphone Obsidian pose `.is-phone .modal-content { padding }` (0,2,0), qui bat une classe seule : trois classes (0,3,0), comme
+   pour .mtg-modal-danger-btn plus haut (technique et preuve : tools/harness/ab/css-cascade.html). */
+.mtg-search-modal.mtg-search-modal.mtg-search-modal {
+	padding: 0;
 }
 
 /* Titre + carrousel — regroupés ici uniquement pour porter, ensemble, le
@@ -1065,21 +1071,29 @@
    mais un contour rouge sur fond transparent plutôt qu'un remplissage
    accent — même langage visuel "danger" que .mtg-bulk-action-btn-danger
    ailleurs dans ce fichier, pour qu'une action irréversible se distingue
-   clairement d'une confirmation ordinaire. */
+   clairement d'une confirmation ordinaire.
+
+   Couleurs sans !important : Obsidian style un <button> avec `button:not(.clickable-icon)` et `button:hover` (0,1,1) et, au toucher sur
+   mobile, `button:not(.clickable-icon).mobile-tap` (0,2,1). La classe répétée trois fois (0,3,0) bat les trois quel que soit l'ordre
+   des feuilles ; la même technique sert à .mtg-search-add-btn et .mtg-btn-with-icon.is-active plus bas. Prouvé par
+   tools/harness/ab/css-cascade.html (styles calculés identiques dans tous les états, sur le vrai app.css). */
 .mtg-modal-danger-btn {
 	display: inline-flex;
 	align-items: center;
 	height: 34px;
-	background: transparent !important;
-	color: var(--text-error) !important;
-	border: 1px solid var(--text-error) !important;
 	font-weight: 700;
 	padding: 0 1em;
 	cursor: pointer;
 }
 
-.mtg-modal-danger-btn:hover {
-	background: color-mix(in srgb, var(--text-error) 15%, transparent) !important;
+.mtg-modal-danger-btn.mtg-modal-danger-btn.mtg-modal-danger-btn {
+	background: transparent;
+	color: var(--text-error);
+	border: 1px solid var(--text-error);
+}
+
+.mtg-modal-danger-btn.mtg-modal-danger-btn.mtg-modal-danger-btn:hover {
+	background: color-mix(in srgb, var(--text-error) 15%, transparent);
 }
 
 /* Bouton "Cancel" neutre à côté d'un .mtg-search-add-btn (ex. NewListModal/
@@ -1126,11 +1140,13 @@
    nécessaire côté tuile). max-height (pas une hauteur fixe comme
    .mtg-card-detail-modal-fixed-height) : cette fenêtre n'a pas le même
    compromis "jamais de resize" que les modales de détail — son contenu (form
-   + carrousel) est plus court et n'a pas besoin d'espace vide réservé en bas. */
-.mtg-search-modal-wide {
-	width: 85vw !important;
-	max-width: 1100px !important;
-	max-height: 85vh !important;
+   + carrousel) est plus court et n'a pas besoin d'espace vide réservé en bas.
+   Préfixé `.modal` (0,2,0) : posée sur modalEl, cette règle affrontait le `.modal` d'Obsidian (0,1,0) à égalité et ne gagnait que par l'ordre
+   des feuilles — un thème ou un snippet qui restyle `.modal` pouvait la battre une fois le !important retiré. */
+.modal.mtg-search-modal-wide {
+	width: 85vw;
+	max-width: 1100px;
+	max-height: 85vh;
 }
 
 /* Hauteur FIXE (pas seulement plafonnée) — demandé pour "Add cards"
@@ -1144,8 +1160,9 @@
    dernière pour sa largeur mais n'a pas été demandée ici, exactement le même
    raisonnement "additive, scopée par modale" que .mtg-card-detail-modal-
    fixed-height elle-même. */
-.mtg-search-modal-fixed-height {
-	height: 85vh !important;
+/* Préfixé `.modal` (0,2,0) pour la même raison que .modal.mtg-search-modal-wide ci-dessus. */
+.modal.mtg-search-modal-fixed-height {
+	height: 85vh;
 }
 
 /* Carrousel : flèches gauche/droite encadrant la piste défilante. Étirées
@@ -2781,12 +2798,17 @@
 	display: inline-flex;
 	align-items: center;
 	height: 34px;
-	background: var(--mtg-accent, var(--interactive-accent)) !important;
-	color: var(--text-on-accent) !important;
 	font-weight: 700;
 	padding: 0 1em;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
 	cursor: pointer;
+}
+
+/* Couleur d'accent contre le style natif d'Obsidian sur <button> : classe répétée trois fois plutôt que !important, voir
+   .mtg-modal-danger-btn plus haut. */
+.mtg-search-add-btn.mtg-search-add-btn.mtg-search-add-btn {
+	background: var(--mtg-accent, var(--interactive-accent));
+	color: var(--text-on-accent);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
 .mtg-search-add-btn:hover {
@@ -2961,13 +2983,13 @@
 
 /* ListActionsModal, "Choose icon" : le bouton devient accent-coloré quand
    une icône est déjà choisie, avec une petite croix pour la retirer sans
-   rouvrir le picker — demandé explicitement. !important sur background/
-   color, même précédent déjà établi par .mtg-search-add-btn juste
-   au-dessus pour garantir la couleur d'accent contre le style natif
-   d'Obsidian sur <button>. */
-.mtg-btn-with-icon.is-active {
-	background: var(--mtg-accent, var(--interactive-accent)) !important;
-	color: var(--text-on-accent) !important;
+   rouvrir le picker — demandé explicitement. Classe `.is-active` répétée
+   pour garantir la couleur d'accent contre le style natif d'Obsidian sur
+   <button> (même technique que .mtg-search-add-btn, voir
+   .mtg-modal-danger-btn plus haut). */
+.mtg-btn-with-icon.is-active.is-active {
+	background: var(--mtg-accent, var(--interactive-accent));
+	color: var(--text-on-accent);
 }
 
 /* margin-left:auto pousse la croix jusqu'au bord droit du bouton quelle
@@ -3412,13 +3434,13 @@ body.is-phone {
 }
 
 body.mtg-hide-obsidian-bars.is-floating-nav .mobile-navbar {
-	display: none !important;
+	display: none;
 }
 
 /* Masquer la barre du BAS NE LIBÈRE PAS de place à elle seule (mesuré : le contenu descendait déjà
    dessous, zone de défilement inchangée). On récupère seulement la marge basse que .view-content lui
    réservait (32px), en gardant la zone du geste système : +8px. */
-body.mtg-hide-obsidian-bars.is-floating-nav .workspace-leaf-content[data-type="mtg-collection-view"] .view-content {
+body.mtg-hide-obsidian-bars.is-floating-nav .workspace-leaf-content[data-type="mtg-collection-view"] .view-content:not(.mtg-keyboard-open) {
 	padding-bottom: var(--safe-area-inset-bottom, 0px);
 }
 
@@ -3427,7 +3449,7 @@ body.mtg-hide-obsidian-bars.is-floating-nav .workspace-leaf-content[data-type="m
    contenu toujours à 102px). On recale le contenu juste sous la zone d'état du système, qui reste
    dessinée par-dessus (--safe-area-inset-top) : +52px de hauteur utile. */
 body.mtg-hide-obsidian-bars.is-floating-nav .workspace-leaf-content[data-type="mtg-collection-view"] .view-header {
-	display: none !important;
+	display: none;
 }
 
 body.mtg-hide-obsidian-bars.is-floating-nav .workspace-leaf-content[data-type="mtg-collection-view"] .view-content {
@@ -3461,8 +3483,8 @@ body.is-phone.is-floating-nav:not(.mtg-hide-obsidian-bars) .workspace-leaf-conte
 	bottom: calc(1em + var(--navbar-height) + var(--safe-area-inset-bottom));
 }
 
-body.is-phone.is-floating-nav:not(.mtg-hide-obsidian-bars) .workspace-leaf-content[data-type="mtg-collection-view"] .mtg-detail-scroll-area,
-body.is-phone.is-floating-nav:not(.mtg-hide-obsidian-bars) .workspace-leaf-content[data-type="mtg-collection-view"] .mtg-main:not(.mtg-main-detail-open) {
+body.is-phone.is-floating-nav:not(.mtg-hide-obsidian-bars) .workspace-leaf-content[data-type="mtg-collection-view"] .view-content:not(.mtg-keyboard-open) .mtg-detail-scroll-area,
+body.is-phone.is-floating-nav:not(.mtg-hide-obsidian-bars) .workspace-leaf-content[data-type="mtg-collection-view"] .view-content:not(.mtg-keyboard-open) .mtg-main:not(.mtg-main-detail-open) {
 	padding-bottom: calc(var(--mtg-bottom-nav-h) + var(--navbar-height) + var(--safe-area-inset-bottom));
 }
 
@@ -3472,13 +3494,13 @@ body.is-phone.is-floating-nav:not(.mtg-hide-obsidian-bars) .workspace-leaf-conte
 
 .is-phone .view-content.mtg-keyboard-open .mtg-nav,
 .is-phone .view-content.mtg-keyboard-open .mtg-back-to-top-btn {
-	display: none !important;
+	display: none;
 }
 
 .is-phone .view-content.mtg-keyboard-open,
 .is-phone .view-content.mtg-keyboard-open .mtg-detail-scroll-area,
 .is-phone .view-content.mtg-keyboard-open .mtg-main {
-	padding-bottom: 0 !important;
+	padding-bottom: 0;
 }
 
 .mtg-deck-title-row {
@@ -3594,12 +3616,12 @@ body.is-phone {
 
 .is-phone .mtg-collection-view .mtg-main::-webkit-scrollbar,
 .is-phone .mtg-collection-view .mtg-detail-scroll-area::-webkit-scrollbar {
-	width: 3px !important;
+	width: 3px;
 }
 
 .is-phone .mtg-collection-view .mtg-main::-webkit-scrollbar-thumb,
 .is-phone .mtg-collection-view .mtg-detail-scroll-area::-webkit-scrollbar-thumb {
-	border-width: 0 !important;
+	border-width: 0;
 }
 
 .mtg-detail-header-banner .mtg-deck-title-row {
@@ -4090,16 +4112,17 @@ body.is-phone {
 	width: 100%;
 	aspect-ratio: 488 / 680;
 	object-fit: cover;
-	border-radius: var(--mtg-card-tile-radius, 16px) !important;
 }
 
-/* Doit rester !important comme la règle de base ci-dessus (sinon une règle
-   non-!important, même plus spécifique, perd toujours face à un !important —
-   voir le radius Alpha du wrap/wrapper d'ombre juste au-dessus, qui n'a pas
-   besoin de !important puisque rien d'autre ne cible border-radius sur ces
-   deux éléments avec !important). */
-.mtg-card-tile-thumb.mtg-card-tile-alpha {
-	border-radius: calc(var(--mtg-card-tile-radius, 16px) * 2) !important;
+/* Rayons des images sans !important (2026-10-07) : aucune règle d'Obsidian ni aucun style en ligne ne vise ces images, le !important ne protégeait que d'un
+   thème qui poserait son propre rayon sur `img` / `.modal img` (0,1,1). Classe répétée : (0,2,0) pour le rayon de base, (0,3,0) pour la variante Alpha, qui
+   doit rester au-dessus. Même technique que .mtg-modal-danger-btn (preuve : tools/harness/ab/css-cascade.html, ?late=img). */
+.mtg-card-tile-thumb.mtg-card-tile-thumb {
+	border-radius: var(--mtg-card-tile-radius, 16px);
+}
+
+.mtg-card-tile-thumb.mtg-card-tile-thumb.mtg-card-tile-alpha {
+	border-radius: calc(var(--mtg-card-tile-radius, 16px) * 2);
 }
 
 .mtg-card-tile-thumb.mtg-no-image {
@@ -4358,7 +4381,7 @@ body.is-phone {
 	min-width: 0;
 	padding: 0.6em 0.6em 0.55em;
 	border-bottom: 1px solid var(--background-modifier-border);
-	text-decoration: none !important;
+	text-decoration: none;
 }
 
 .mtg-collection-list-table .mtg-card-row-name-line,
@@ -4596,7 +4619,7 @@ body.is-phone {
 .mtg-collection-list-table .mtg-card-row-selected .mtg-card-row-legality,
 .mtg-collection-list-table .mtg-card-row-selected .mtg-card-row-price,
 .mtg-collection-list-table .mtg-card-row-selected .mtg-card-row-select-indicator {
-	background: color-mix(in srgb, var(--mtg-accent, var(--interactive-accent)) 16%, transparent) !important;
+	background: color-mix(in srgb, var(--mtg-accent, var(--interactive-accent)) 16%, transparent);
 }
 
 .mtg-card-row-select-indicator {
@@ -4615,8 +4638,12 @@ body.is-phone {
 	width: 56px;
 	height: 78px;
 	object-fit: cover;
-	border-radius: 3px !important;
 	flex-shrink: 0;
+}
+
+/* Rayon sans !important : voir .mtg-card-tile-thumb plus haut. */
+.mtg-card-row-thumb.mtg-card-row-thumb {
+	border-radius: 3px;
 }
 
 .mtg-card-row-thumb.mtg-no-image {
@@ -4629,8 +4656,8 @@ body.is-phone {
    .mtg-card-detail-tilt), rapporté à la taille FIXE de cette miniature :
    pas besoin de --mtg-card-radius ici, cette vignette ne change jamais de
    taille. */
-.mtg-card-row-thumb-alpha {
-	border-radius: 5px !important;
+.mtg-card-row-thumb.mtg-card-row-thumb-alpha.mtg-card-row-thumb-alpha {
+	border-radius: 5px;
 }
 
 .mtg-card-row-body {
@@ -4838,9 +4865,13 @@ body.is-phone {
 	width: 20px;
 	height: 15px;
 	object-fit: cover;
-	border-radius: 3px !important;
 	vertical-align: middle;
 	display: block;
+}
+
+/* Rayon sans !important : voir .mtg-card-tile-thumb. */
+.mtg-flag-img.mtg-flag-img {
+	border-radius: 3px;
 }
 
 .mtg-flag-img-inline {
@@ -5100,21 +5131,52 @@ body.is-phone {
    enfant : par défaut il apparaît/disparaît instantanément avec le DOM.
    On l'anime séparément (voir modal-animation.ts) pour qu'il s'estompe en
    même temps que le panneau plutôt que de disparaître d'un coup à la
-   fermeture. !important est nécessaire ici : juste après onOpen(), Obsidian
-   fixe lui-même bgEl.style.opacity via du style inline (0.85 par défaut),
-   et un style inline l'emporte toujours sur une règle de classe classique —
-   sans !important nos changements de classe étaient donc silencieusement
-   ignorés, et à la fermeture Obsidian ne fait de toute façon aucune
-   transition sur desktop : il détache l'élément directement. Générique
-   malgré son nom — réutilisée par TOUTES les modales via
-   applyModalOpenAnimation, pas seulement les fenêtres de détail de carte. */
+   fermeture. Juste après onOpen(), Obsidian fixe lui-même bgEl.style.opacity
+   via du style inline (0.85 par défaut ; sur téléphone il l'anime en plus,
+   image par image), et un style inline l'emporte sur toute règle de feuille
+   de style, quelle que soit sa spécificité — seul !important le battait
+   (ce qu'on a fait jusqu'au 2026-10-07). Une ANIMATION CSS passe, elle aussi,
+   au-dessus des déclarations normales, style en ligne compris (cascade :
+   animations > déclarations normales ; seul !important les dépasse) : le voile
+   est donc piloté par @keyframes plutôt que par une transition. Tenu à 0 par
+   une animation EN PAUSE (fill both : la première image s'applique même à
+   l'arrêt), jouée dès que mtg-modal-visible arrive, et rejouée à l'envers par
+   mtg-modal-closing à la fermeture (closeModalAnimated). Fermer pendant les
+   160ms de l'ouverture repart de 0.85 au lieu de revenir d'où en est le
+   voile (une transition aurait inversé depuis la valeur courante) : écart
+   accepté, mesuré, invisible à cette durée. Générique malgré son nom —
+   réutilisée par TOUTES les modales via applyModalOpenAnimation, pas
+   seulement les fenêtres de détail de carte. Preuve et fautes injectées :
+   tools/harness/ab/modal-backdrop.html. */
+@keyframes mtg-backdrop-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 0.85;
+	}
+}
+
+@keyframes mtg-backdrop-out {
+	from {
+		opacity: 0.85;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
 .mtg-card-detail-backdrop {
-	opacity: 0 !important;
-	transition: opacity 160ms ease !important;
+	animation: mtg-backdrop-in 160ms ease both paused;
 }
 
 .mtg-card-detail-backdrop.mtg-modal-visible {
-	opacity: 0.85 !important;
+	animation-play-state: running;
+}
+
+.mtg-card-detail-backdrop.mtg-modal-closing {
+	animation-name: mtg-backdrop-out;
+	animation-play-state: running;
 }
 
 .mtg-modal-hides-native-close .modal-header,
@@ -5169,10 +5231,13 @@ body.is-phone {
 	display: flex;
 	flex-direction: column;
 	max-height: 85vh;
-	/* Le padding par défaut de la fenêtre modale est retiré ici : c'est
-	   .mtg-card-detail-layout qui porte son propre padding, pour que le
-	   calque de fond puisse remplir la fenêtre bord à bord. */
-	padding: 0 !important;
+}
+
+/* Le padding par défaut de la fenêtre modale est retiré ici : c'est .mtg-card-detail-layout qui porte son propre padding, pour que le
+   calque de fond puisse remplir la fenêtre bord à bord. Trois classes (0,3,0) : sur téléphone Obsidian pose `.is-phone .modal-content
+   { padding }` (0,2,0), voir .mtg-search-modal plus haut. */
+.mtg-card-detail-modal.mtg-card-detail-modal.mtg-card-detail-modal {
+	padding: 0;
 }
 
 .mtg-card-detail-modal-fixed-height {
@@ -5462,7 +5527,7 @@ body.is-phone {
 }
 
 .mtg-card-detail-image-wrap.mtg-card-nav-no-transition {
-	transition: none !important;
+	transition: none;
 }
 
 /* Sortie (carte actuelle) : glisse hors du cadre du côté vers lequel on
@@ -5535,28 +5600,35 @@ body.is-phone {
 	width: 22px;
 	height: 16px;
 	object-fit: cover;
-	border-radius: 3px !important;
+}
+
+.mtg-card-detail-image-icon-flag.mtg-card-detail-image-icon-flag {
+	border-radius: 3px;
 }
 
 .mtg-card-detail-image {
 	display: block;
 	width: 100%;
-	/* px, pas % — un pourcentage se résout indépendamment par axe (largeur
-	   pour le rayon horizontal, hauteur pour le vertical) ; sur un
-	   rectangle non carré comme une carte Magic, les deux valeurs résultantes
-	   diffèrent et le coin devient une portion d'ellipse, pas un arc de
-	   cercle (repéré : à 100% l'élément devenait un ovale plein, pas un
-	   cercle, la preuve que les deux rayons ne sont pas égaux). Une valeur
-	   fixe en px donne le même rayon sur les deux axes quelle que soit la
-	   forme de l'élément — un coin réellement rond.
-	   var(--mtg-card-radius, 20px), pas une valeur figée : --mtg-card-radius
-	   est mesurée par ResizeObserver (setupCardTilt, card-detail-fx.ts) sur
-	   .mtg-card-detail-tilt (l'ancêtre direct de cette image, donc la
-	   variable est héritée) et rétrécit avec la largeur réellement rendue
-	   de la carte — retour explicite : un radius fixe grossissait
-	   proportionnellement quand la fenêtre devenait plus petite. Le repli
-	   20px ne sert qu'avant la première mesure de l'observer. */
-	border-radius: var(--mtg-card-radius, 20px) !important;
+}
+
+/* px, pas % — un pourcentage se résout indépendamment par axe (largeur
+   pour le rayon horizontal, hauteur pour le vertical) ; sur un
+   rectangle non carré comme une carte Magic, les deux valeurs résultantes
+   diffèrent et le coin devient une portion d'ellipse, pas un arc de
+   cercle (repéré : à 100% l'élément devenait un ovale plein, pas un
+   cercle, la preuve que les deux rayons ne sont pas égaux). Une valeur
+   fixe en px donne le même rayon sur les deux axes quelle que soit la
+   forme de l'élément — un coin réellement rond.
+   var(--mtg-card-radius, 20px), pas une valeur figée : --mtg-card-radius
+   est mesurée par ResizeObserver (setupCardTilt, card-detail-fx.ts) sur
+   .mtg-card-detail-tilt (l'ancêtre direct de cette image, donc la
+   variable est héritée) et rétrécit avec la largeur réellement rendue
+   de la carte — retour explicite : un radius fixe grossissait
+   proportionnellement quand la fenêtre devenait plus petite. Le repli
+   20px ne sert qu'avant la première mesure de l'observer.
+   Sans !important (2026-10-07) : classe répétée, voir .mtg-card-tile-thumb. */
+.mtg-card-detail-image.mtg-card-detail-image {
+	border-radius: var(--mtg-card-radius, 20px);
 }
 
 /* Bouton "flip" 3D pour les vraies cartes double-face physiques (transform/
@@ -7767,20 +7839,20 @@ body.is-phone {
 }
 
 /* Scrollbar masquée. Classe DOUBLÉE exprès : la règle générique plus bas (`.mtg-collection-
-   view *:not(.mtg-search-results)`, 2 classes) pose `scrollbar-width: thin !important` et
-   `::-webkit-scrollbar { height: 8px !important }` sur TOUT descendant, et deux `!important`
-   se départagent par spécificité puis par ordre — à 2 classes, la générique (déclarée plus
-   bas) gagnerait. Même piège que `.mtg-filter-chip-row-inner` ; ici la barre n'a pas de
-   deuxième ancêtre stable (elle vit dans l'en-tête collant pour les cartes, dans le corps
-   pour les galeries), d'où la classe répétée plutôt qu'un chemin d'ancêtres. */
+   view *:not(.mtg-search-results)`, 2 classes) pose `scrollbar-width: thin` et
+   `::-webkit-scrollbar { height: 8px }` sur TOUT descendant ; à 2 classes seulement, la
+   générique (déclarée plus bas) gagnerait par l'ordre. Même piège que `.mtg-filter-chip-row-inner` ;
+   ici la barre n'a pas de deuxième ancêtre stable (elle vit dans l'en-tête collant pour les
+   cartes, dans le corps pour les galeries), d'où la classe répétée plutôt qu'un chemin
+   d'ancêtres. */
 .mtg-collection-view .mtg-bulk-actions-scroll.mtg-bulk-actions-scroll {
-	scrollbar-width: none !important;
+	scrollbar-width: none;
 }
 
 .mtg-collection-view .mtg-bulk-actions-scroll.mtg-bulk-actions-scroll::-webkit-scrollbar {
-	display: none !important;
-	width: 0 !important;
-	height: 0 !important;
+	display: none;
+	width: 0;
+	height: 0;
 }
 
 /* N'anime que la toute première apparition (activation du mode Select), pas
@@ -8305,9 +8377,9 @@ body.is-phone {
 	gap: 0.4em;
 	width: 100%;
 	padding: 0.3em;
-	border-radius: 10px !important;
-	background: transparent !important;
-	border: 1px solid var(--background-modifier-border) !important;
+	border-radius: 10px;
+	background: transparent;
+	border: 1px solid var(--background-modifier-border);
 }
 
 /* Sélecteur composé (pas la classe partagée seule) : scopé au SEUL
@@ -8376,22 +8448,21 @@ body.is-phone {
 /* Scrollbar masquée : sélecteurs à 3 classes exprès (les deux conteneurs réels, la vue et
    la modale "Add cards"). La règle générique plus bas (`.mtg-collection-view
    *:not(.mtg-search-results)` / `.mtg-search-modal *…`, 2 classes) pose
-   `scrollbar-width: thin !important` et `::-webkit-scrollbar { height: 8px !important }`
-   sur TOUT descendant — deux `!important` qui s'affrontent se départagent par
-   spécificité, puis par ordre ; à 2 classes seulement, la générique (déclarée plus bas)
-   gagnerait. `scrollbar-width: none` (Chrome ≥ 121, Safari ≥ 18.2) ET
+   `scrollbar-width: thin` et `::-webkit-scrollbar { height: 8px }` sur TOUT descendant ;
+   à 2 classes seulement, la générique (déclarée plus bas) gagnerait par l'ordre.
+   `scrollbar-width: none` (Chrome ≥ 121, Safari ≥ 18.2) ET
    `::-webkit-scrollbar` (WebViews plus anciennes, Electron) : l'un des deux est ignoré
    selon le moteur. */
 .mtg-collection-view .mtg-filter-chip-row .mtg-filter-chip-row-inner,
 .mtg-search-modal .mtg-filter-chip-row .mtg-filter-chip-row-inner {
-	scrollbar-width: none !important;
+	scrollbar-width: none;
 }
 
 .mtg-collection-view .mtg-filter-chip-row .mtg-filter-chip-row-inner::-webkit-scrollbar,
 .mtg-search-modal .mtg-filter-chip-row .mtg-filter-chip-row-inner::-webkit-scrollbar {
-	display: none !important;
-	width: 0 !important;
-	height: 0 !important;
+	display: none;
+	width: 0;
+	height: 0;
 }
 
 .mtg-filter-chip-row .mtg-filter-clear-btn {
@@ -8538,18 +8609,18 @@ body.is-phone {
 .mtg-filter-chip-input {
 	flex: 1;
 	min-width: 100px;
-	border: none !important;
-	background: transparent !important;
-	box-shadow: none !important;
 	padding: 0.25em;
 	font-size: 0.9em;
 	line-height: 1.6;
 }
 
-.mtg-filter-chip-input:focus {
-	border: none !important;
-	background: transparent !important;
-	box-shadow: none !important;
+/* Champ sans cadre ni fond, y compris au survol et au focus : Obsidian style `input[type='text']` (0,1,1) et ses :hover/:focus (0,2,1).
+   La classe répétée trois fois (0,3,0) les bat dans tous les états, d'où l'absence de règle :focus séparée et de !important
+   (technique expliquée sur .mtg-modal-danger-btn, prouvée par tools/harness/ab/css-cascade.html). */
+.mtg-filter-chip-input.mtg-filter-chip-input.mtg-filter-chip-input {
+	border: none;
+	background: transparent;
+	box-shadow: none;
 }
 
 .mtg-filter-clear-btn {
@@ -8855,68 +8926,86 @@ body.is-phone {
    Electron (moteur Chromium mis à jour, ou règle globale ajoutée par
    l'appli) plutôt qu'une régression dans ce fichier — mais sans accès à un
    Obsidian réel dans cet environnement, la cause exacte n'a pas pu être
-   confirmée. !important sur chaque déclaration : couvre le cas où une
-   nouvelle règle globale d'Obsidian gagnerait maintenant la cascade contre
-   les sélecteurs déjà spécifiques ci-dessous. Les deux mécanismes
-   (standard + -webkit-scrollbar*) ciblent la même chose par deux voies
-   différentes — inoffensif de garder les deux, un moteur qui ignore l'un
-   utilisera l'autre. */
+   confirmée. Les deux mécanismes (standard + -webkit-scrollbar*) ciblent la
+   même chose par deux voies différentes — inoffensif de garder les deux, un
+   moteur qui ignore l'un utilisera l'autre.
+
+   Sans !important (2026-10-07), par la spécificité seule : face à Obsidian
+   (`body.styled-scrollbars ::-webkit-scrollbar*` (0,1,2), son curseur au survol/à
+   l'appui `…-thumb:hover` (0,2,2)) et à un thème qui reprendrait ces règles APRÈS
+   le plugin, les sélecteurs à classe unique (.mtg-cover-picker-grid…) ont leur classe
+   RÉPÉTÉE — une seule les ferait perdre sur la colonne des types (0,1,1 < 0,1,2) —
+   et le curseur redéclare son fond sur :hover ET :active (0,3,1), seul moyen de
+   battre le (0,2,2) d'Obsidian. Prouvé par tools/harness/ab/css-cascade.html
+   (états thumbhover/thumbactive, variante styled-scrollbars, ?late=scrollbar). */
 .mtg-collection-view *:not(.mtg-search-results),
 .mtg-search-modal *:not(.mtg-search-results),
-.mtg-syntax-modal *,
-.mtg-cover-picker-grid,
-.mtg-icon-picker-grid,
-.mtg-card-detail-panel,
-.mtg-copy-card-gallery,
-.mtg-decklist-unresolved-list {
-	scrollbar-color: var(--mtg-accent, var(--interactive-accent)) transparent !important;
-	scrollbar-width: thin !important;
+.mtg-syntax-modal.mtg-syntax-modal *,
+.mtg-cover-picker-grid.mtg-cover-picker-grid,
+.mtg-icon-picker-grid.mtg-icon-picker-grid,
+.mtg-card-detail-panel.mtg-card-detail-panel,
+.mtg-copy-card-gallery.mtg-copy-card-gallery,
+.mtg-decklist-unresolved-list.mtg-decklist-unresolved-list {
+	scrollbar-color: var(--mtg-accent, var(--interactive-accent)) transparent;
+	scrollbar-width: thin;
 }
 
 .mtg-collection-view *:not(.mtg-search-results)::-webkit-scrollbar,
 .mtg-search-modal *:not(.mtg-search-results)::-webkit-scrollbar,
-.mtg-syntax-modal *::-webkit-scrollbar,
-.mtg-cover-picker-grid::-webkit-scrollbar,
-.mtg-icon-picker-grid::-webkit-scrollbar,
-.mtg-card-detail-panel::-webkit-scrollbar,
-.mtg-copy-card-gallery::-webkit-scrollbar,
-.mtg-decklist-unresolved-list::-webkit-scrollbar {
-	width: 8px !important;
-	height: 8px !important;
+.mtg-syntax-modal.mtg-syntax-modal *::-webkit-scrollbar,
+.mtg-cover-picker-grid.mtg-cover-picker-grid::-webkit-scrollbar,
+.mtg-icon-picker-grid.mtg-icon-picker-grid::-webkit-scrollbar,
+.mtg-card-detail-panel.mtg-card-detail-panel::-webkit-scrollbar,
+.mtg-copy-card-gallery.mtg-copy-card-gallery::-webkit-scrollbar,
+.mtg-decklist-unresolved-list.mtg-decklist-unresolved-list::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
 }
 
 .mtg-collection-view *:not(.mtg-search-results)::-webkit-scrollbar-track,
 .mtg-search-modal *:not(.mtg-search-results)::-webkit-scrollbar-track,
-.mtg-syntax-modal *::-webkit-scrollbar-track,
-.mtg-cover-picker-grid::-webkit-scrollbar-track,
-.mtg-icon-picker-grid::-webkit-scrollbar-track,
-.mtg-card-detail-panel::-webkit-scrollbar-track,
-.mtg-copy-card-gallery::-webkit-scrollbar-track,
-.mtg-decklist-unresolved-list::-webkit-scrollbar-track {
-	background: transparent !important;
+.mtg-syntax-modal.mtg-syntax-modal *::-webkit-scrollbar-track,
+.mtg-cover-picker-grid.mtg-cover-picker-grid::-webkit-scrollbar-track,
+.mtg-icon-picker-grid.mtg-icon-picker-grid::-webkit-scrollbar-track,
+.mtg-card-detail-panel.mtg-card-detail-panel::-webkit-scrollbar-track,
+.mtg-copy-card-gallery.mtg-copy-card-gallery::-webkit-scrollbar-track,
+.mtg-decklist-unresolved-list.mtg-decklist-unresolved-list::-webkit-scrollbar-track {
+	background: transparent;
 }
 
 .mtg-collection-view *:not(.mtg-search-results)::-webkit-scrollbar-thumb,
 .mtg-search-modal *:not(.mtg-search-results)::-webkit-scrollbar-thumb,
-.mtg-syntax-modal *::-webkit-scrollbar-thumb,
-.mtg-cover-picker-grid::-webkit-scrollbar-thumb,
-.mtg-icon-picker-grid::-webkit-scrollbar-thumb,
-.mtg-card-detail-panel::-webkit-scrollbar-thumb,
-.mtg-copy-card-gallery::-webkit-scrollbar-thumb,
-.mtg-decklist-unresolved-list::-webkit-scrollbar-thumb {
-	background: var(--mtg-accent, var(--interactive-accent)) !important;
+.mtg-syntax-modal.mtg-syntax-modal *::-webkit-scrollbar-thumb,
+.mtg-cover-picker-grid.mtg-cover-picker-grid::-webkit-scrollbar-thumb,
+.mtg-icon-picker-grid.mtg-icon-picker-grid::-webkit-scrollbar-thumb,
+.mtg-card-detail-panel.mtg-card-detail-panel::-webkit-scrollbar-thumb,
+.mtg-copy-card-gallery.mtg-copy-card-gallery::-webkit-scrollbar-thumb,
+.mtg-decklist-unresolved-list.mtg-decklist-unresolved-list::-webkit-scrollbar-thumb {
+	background: var(--mtg-accent, var(--interactive-accent));
 	border-radius: 999px;
 }
 
 .mtg-collection-view *:not(.mtg-search-results)::-webkit-scrollbar-thumb:hover,
 .mtg-search-modal *:not(.mtg-search-results)::-webkit-scrollbar-thumb:hover,
-.mtg-syntax-modal *::-webkit-scrollbar-thumb:hover,
-.mtg-cover-picker-grid::-webkit-scrollbar-thumb:hover,
-.mtg-icon-picker-grid::-webkit-scrollbar-thumb:hover,
-.mtg-card-detail-panel::-webkit-scrollbar-thumb:hover,
-.mtg-copy-card-gallery::-webkit-scrollbar-thumb:hover,
-.mtg-decklist-unresolved-list::-webkit-scrollbar-thumb:hover {
+.mtg-syntax-modal.mtg-syntax-modal *::-webkit-scrollbar-thumb:hover,
+.mtg-cover-picker-grid.mtg-cover-picker-grid::-webkit-scrollbar-thumb:hover,
+.mtg-icon-picker-grid.mtg-icon-picker-grid::-webkit-scrollbar-thumb:hover,
+.mtg-card-detail-panel.mtg-card-detail-panel::-webkit-scrollbar-thumb:hover,
+.mtg-copy-card-gallery.mtg-copy-card-gallery::-webkit-scrollbar-thumb:hover,
+.mtg-decklist-unresolved-list.mtg-decklist-unresolved-list::-webkit-scrollbar-thumb:hover {
+	background: var(--mtg-accent, var(--interactive-accent));
 	filter: brightness(1.15);
+}
+
+.mtg-collection-view *:not(.mtg-search-results)::-webkit-scrollbar-thumb:active,
+.mtg-search-modal *:not(.mtg-search-results)::-webkit-scrollbar-thumb:active,
+.mtg-syntax-modal.mtg-syntax-modal *::-webkit-scrollbar-thumb:active,
+.mtg-cover-picker-grid.mtg-cover-picker-grid::-webkit-scrollbar-thumb:active,
+.mtg-icon-picker-grid.mtg-icon-picker-grid::-webkit-scrollbar-thumb:active,
+.mtg-card-detail-panel.mtg-card-detail-panel::-webkit-scrollbar-thumb:active,
+.mtg-copy-card-gallery.mtg-copy-card-gallery::-webkit-scrollbar-thumb:active,
+.mtg-decklist-unresolved-list.mtg-decklist-unresolved-list::-webkit-scrollbar-thumb:active {
+	background: var(--mtg-accent, var(--interactive-accent));
 }
 
 /* Champ + bouton "œil" ressoudés en un seul contrôle visuel (voir
@@ -8981,19 +9070,19 @@ body.is-phone {
 	color: var(--text-error);
 }
 
-.mtg-settings-group .setting-item {
-	border-radius: 0 !important;
-	margin: 0 !important;
+.mtg-settings-group.mtg-settings-group .setting-item {
+	border-radius: 0;
+	margin: 0;
 }
 
-.mtg-settings-group .setting-item:first-child {
-	border-top-left-radius: 8px !important;
-	border-top-right-radius: 8px !important;
+.mtg-settings-group.mtg-settings-group .setting-item:first-child {
+	border-top-left-radius: 8px;
+	border-top-right-radius: 8px;
 }
 
-.mtg-settings-group .setting-item:last-child {
-	border-bottom-left-radius: 8px !important;
-	border-bottom-right-radius: 8px !important;
+.mtg-settings-group.mtg-settings-group .setting-item:last-child {
+	border-bottom-left-radius: 8px;
+	border-bottom-right-radius: 8px;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -9048,11 +9137,16 @@ body.is-phone {
    simplement clippé plutôt que scrollable. */
 .mtg-deck-stats-modal {
 	width: min(640px, 90vw);
-	max-width: 100% !important;
 	max-height: 80vh;
-	box-sizing: border-box !important;
 	overflow-y: auto;
 	overflow-x: hidden;
+}
+
+/* Préfixé `.modal-content` (0,2,0) : à égalité avec une règle de thème sur `.modal-content`, seul l'ordre des feuilles décidait une fois le
+   !important retiré. */
+.modal-content.mtg-deck-stats-modal {
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 .mtg-deck-stats {
@@ -10137,40 +10231,56 @@ body.is-phone {
 /* ============================================================================
    États posés par le code, à la place d'anciens styles en ligne
    (`el.style.display = "none"`…) que le répertoire des plug-ins d'Obsidian refuse.
-   Un style en ligne battait toute règle de la feuille : ces règles portent donc
-   !important là où une règle existante pouvait leur résister (vérifié par un banc
-   A/B sur les styles calculés, tools/harness/ab/inline-styles.html).
+   Un style en ligne battait toute règle de la feuille : ces règles doivent donc battre
+   toute règle existante qui pourrait leur résister (vérifié par un banc A/B sur les
+   styles calculés, tools/harness/ab/inline-styles.html). .mtg-hidden, .mtg-flip-hold/-play et
+   .mtg-row-detached y arrivent par la spécificité d'un identifiant (voir plus bas), sans !important.
    ============================================================================ */
 
 /* Élément caché par le code (lignes d'un groupe replié, éléments de l'info-bulle du
-   graphique, message « aucun résultat »…). !important : en mode Tableau
-   `.mtg-collection-list-table .mtg-card-row-outer` vaut `display: contents`, que seul
-   un style en ligne (ou ceci) bat. Un même élément se cache TOUJOURS par cette classe,
-   jamais par un mélange classe + style en ligne : le style en ligne perdrait. */
-.mtg-hidden {
-	display: none !important;
+   graphique, message « aucun résultat »…). Une classe utilitaire doit battre toute règle
+   `display` qui vise le même élément — en mode Tableau
+   `.mtg-collection-list-table .mtg-card-row-outer` vaut `display: contents`, par exemple —
+   sans connaître le contexte où on la pose. Sans !important (2026-10-07) : `:is()` prend la
+   spécificité de son argument le PLUS fort, donc `:is(.mtg-hidden, #mtg-hidden)` pèse (1,0,0)
+   — un identifiant — même si seul `.mtg-hidden` correspond à l'élément. Aucune règle à
+   classes seules, présente ou future, ne peut donc le battre ; il n'existe aucun élément
+   d'id `mtg-hidden`, l'identifiant ne sert qu'à peser. Ne bat PAS un style en ligne ni un
+   !important (d'un thème) : un même élément se cache TOUJOURS par cette classe, jamais par
+   un mélange classe + style en ligne. Preuve exhaustive : l'audit `?audit=hidden` de
+   tools/harness/ab/css-cascade.html essaie chaque règle `display` des deux feuilles du
+   plugin et d'Obsidian. */
+:is(.mtg-hidden, #mtg-hidden) {
+	display: none;
 }
 
 /* Technique FLIP (ui/flip.ts) : l'élément est tenu à son ancien emplacement sans
    transition (hold), puis relâché avec une transition sur transform seule (play).
    --mtg-flip-dy = le décalage en Y mesuré. */
-.mtg-flip-hold {
-	transition: none !important;
-	transform: translateY(var(--mtg-flip-dy)) !important;
+/* Même technique que :is(.mtg-hidden, #mtg-hidden) plus haut : le poids d'un identifiant bat les règles `transform` /
+   `transition` de la ligne ou de la tuile qu'on déplace (.mtg-card-row-outer, .mtg-row-collapsed, les tuiles d'historique…),
+   sans !important. hold et play ne sont jamais posées ENSEMBLE (ui/flip.ts retire l'une avant d'ajouter l'autre). Preuve :
+   `css-cascade.html?audit=flip-hold` / `?audit=flip-play`, qui essaient chaque règle des deux feuilles qui fixe ces propriétés. */
+:is(.mtg-flip-hold, #mtg-flip-hold) {
+	transition: none;
+	transform: translateY(var(--mtg-flip-dy));
 }
 
-.mtg-flip-play {
-	transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+:is(.mtg-flip-play, #mtg-flip-play) {
+	transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Ligne retirée du flux pendant son repli (view/group-collapse.ts) : position
-   absolue figée à son emplacement exact, mesuré en variables. */
-.mtg-row-detached {
-	position: absolute !important;
-	top: var(--mtg-row-top) !important;
-	left: var(--mtg-row-left) !important;
-	width: var(--mtg-row-width) !important;
-	z-index: 1 !important;
+   absolue figée à son emplacement exact, mesuré en variables. Même technique que
+   :is(.mtg-hidden, #mtg-hidden) plus haut : le poids d'un identifiant bat les règles
+   position / largeur / z-index que la ligne a déjà dans chaque mode d'affichage
+   (grille, carte…), sans !important. Preuve : `css-cascade.html?audit=row-detached`. */
+:is(.mtg-row-detached, #mtg-row-detached) {
+	position: absolute;
+	top: var(--mtg-row-top);
+	left: var(--mtg-row-left);
+	width: var(--mtg-row-width);
+	z-index: 1;
 }
 
 /* Info-bulle du graphique de prix : cachée par la règle de base, montrée pendant le survol. */

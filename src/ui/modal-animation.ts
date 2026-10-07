@@ -38,13 +38,17 @@ export function applyModalOpenAnimation(modal: Modal) {
 }
 
 // À appeler depuis un override de close() : retire mtg-modal-visible pour
-// rejouer la transition en sens inverse, puis attend sa durée (160ms) avant
+// rejouer la transition du panneau en sens inverse, et pose mtg-modal-closing
+// sur le voile (qui est piloté par une animation CSS, pas une transition : voir
+// .mtg-card-detail-backdrop dans styles.css), puis attend sa durée (160ms) avant
 // d'appeler le close() réel d'Obsidian (superClose) qui détache la modale —
 // sans ce délai, le DOM disparaîtrait instantanément et la transition
 // n'aurait jamais le temps de se voir.
 export function closeModalAnimated(modal: Modal, superClose: () => void) {
 	modal.modalEl.removeClass("mtg-modal-visible");
-	getModalBackdropEl(modal)?.removeClass("mtg-modal-visible");
+	const backdrop = getModalBackdropEl(modal);
+	backdrop?.removeClass("mtg-modal-visible");
+	backdrop?.addClass("mtg-modal-closing");
 	window.setTimeout(superClose, 160);
 }
 
