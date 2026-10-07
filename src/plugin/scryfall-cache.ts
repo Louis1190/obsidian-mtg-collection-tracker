@@ -100,11 +100,11 @@ export async function fetchSetIconSvg(this: MTGCollectionPlugin, setCode: string
 			this.scheduleMapCachePersist(ICON_CACHE_FILENAME, this.setIconCache);
 			return null;
 		}
-		if (setRes.status !== 200 || !setRes.json?.icon_svg_uri) {
+		if (setRes.status !== 200 || !(setRes.json as { icon_svg_uri?: string } | undefined)?.icon_svg_uri) {
 			return null;
 		}
 		const svgRes = await requestScryfall({
-			url: setRes.json.icon_svg_uri,
+			url: (setRes.json as { icon_svg_uri: string }).icon_svg_uri,
 			headers: SCRYFALL_HEADERS,
 			throw: false,
 		});
@@ -702,7 +702,7 @@ export async function getAllScryfallSets(this: MTGCollectionPlugin): Promise<Scr
 			throw: false,
 		});
 		if (res.status !== 200) return [];
-		const sets = (res.json.data as ScryfallSetSummary[]) ?? [];
+		const sets = (res.json as { data?: ScryfallSetSummary[] }).data ?? [];
 		// Les éditions numériques (Arena) n'ont pas de sens pour un plugin de
 		// cartes physiques.
 		this.allSetsCache = sets.filter((s) => !s.digital);
@@ -744,7 +744,7 @@ export async function loadSymbology(this: MTGCollectionPlugin): Promise<Map<stri
 				throw new Error(`Scryfall symbology request failed (${res.status})`);
 			}
 			const map = new Map<string, string>();
-			(res.json.data as { symbol: string; svg_uri: string }[]).forEach((sym) => {
+			(res.json as { data: { symbol: string; svg_uri: string }[] }).data.forEach((sym) => {
 				map.set(sym.symbol, sym.svg_uri);
 			});
 			this.symbologyCache = map;
@@ -829,7 +829,7 @@ export async function getAvailableLanguages(this: MTGCollectionPlugin, setCode: 
 			return ["en"];
 		}
 		const langs = Array.from(
-			new Set((res.json.data as { lang: string }[]).map((c) => c.lang))
+			new Set((res.json as { data: { lang: string }[] }).data.map((c) => c.lang))
 		);
 		const result = langs.length > 0 ? langs : ["en"];
 		this.printLanguagesCache.set(cacheKey, result);

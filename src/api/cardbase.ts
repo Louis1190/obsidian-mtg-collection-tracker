@@ -108,6 +108,12 @@ interface CardbaseRawSeries {
 	points?: [string, number][];
 }
 
+// Corps de /printings/{id}/prices (`res.json` est `any` : on le type ici, une fois).
+interface CardbaseHistoryBody {
+	data?: { series?: CardbaseRawSeries[] };
+	meta?: { history_begins?: string; as_of?: string };
+}
+
 // undefined = échec (réseau, 4xx/5xx, réponse mal formée) — à distinguer par
 // l'appelant d'un succès confirmé avec une série vide (carte réellement sans
 // historique chez ces deux magasins), qui doit lui être mis en cache tel
@@ -128,7 +134,7 @@ export async function fetchCardbasePriceHistory(
 	const res = await requestUrlOrNull({ url, headers });
 	if (!res || res.status !== 200) return undefined;
 
-	const rawSeries = (res.json?.data?.series as CardbaseRawSeries[] | undefined) ?? [];
+	const rawSeries = (res.json as CardbaseHistoryBody | undefined)?.data?.series ?? [];
 	const series: CardbasePriceSeries[] = [];
 	for (const raw of rawSeries) {
 		if (
@@ -150,8 +156,8 @@ export async function fetchCardbasePriceHistory(
 	return {
 		scryfallId,
 		series,
-		historyBegins: res.json?.meta?.history_begins,
-		asOf: res.json?.meta?.as_of,
+		historyBegins: (res.json as CardbaseHistoryBody | undefined)?.meta?.history_begins,
+		asOf: (res.json as CardbaseHistoryBody | undefined)?.meta?.as_of,
 	};
 }
 
@@ -220,7 +226,7 @@ export async function fetchCardbasePrintingCardmarketId(
 	const res = await requestUrlOrNull({ url: `${CARDBASE_BASE_URL}/printings/${scryfallId}`, headers });
 	if (res && res.status === 404) return null;
 	if (!res || res.status !== 200) return undefined;
-	const data = res.json?.data as CardbasePrintingRaw | undefined;
+	const data = (res.json as { data?: CardbasePrintingRaw } | undefined)?.data;
 	return data?.cardmarket_id ?? null;
 }
 
@@ -245,6 +251,11 @@ interface CardmarketRawSeries {
 	points?: [string, number][];
 }
 
+// Corps de /cardmarket/{id}/prices (`res.json` est `any` : on le type ici, une fois).
+interface CardmarketPricesBody {
+	data?: { series?: CardmarketRawSeries[] };
+}
+
 // Pas de filtre vendor/price_type/finish côté serveur pour cet endpoint
 // (contrairement à /printings/{id}/prices) — on récupère toujours les 12
 // séries (2 finitions × 6 types) et on filtre côté client (voir
@@ -263,7 +274,7 @@ export async function fetchCardmarketNativePrices(
 	});
 	if (!res || res.status !== 200) return undefined;
 
-	const rawSeries = (res.json?.data?.series as CardmarketRawSeries[] | undefined) ?? [];
+	const rawSeries = (res.json as CardmarketPricesBody | undefined)?.data?.series ?? [];
 	const series: CardmarketNativeSeries[] = [];
 	for (const raw of rawSeries) {
 		if ((raw.finish !== "normal" && raw.finish !== "foil") || !raw.price_type || !raw.points?.length) continue;
@@ -382,6 +393,12 @@ interface CardbaseMoverRaw {
 	change_pct?: number;
 }
 
+// Corps de /movers (`res.json` est `any` : on le type ici, une fois).
+interface CardbaseMoversBody {
+	data?: { gainers?: CardbaseMoverRaw[]; losers?: CardbaseMoverRaw[] };
+	meta?: { as_of?: string };
+}
+
 function parseCardbaseMovers(raw: CardbaseMoverRaw[] | undefined): CardbaseMover[] {
 	const result: CardbaseMover[] = [];
 	for (const m of raw ?? []) {
@@ -429,9 +446,9 @@ export async function fetchCardbaseMovers(
 
 	return {
 		period,
-		gainers: parseCardbaseMovers(res.json?.data?.gainers),
-		losers: parseCardbaseMovers(res.json?.data?.losers),
-		asOf: res.json?.meta?.as_of,
+		gainers: parseCardbaseMovers((res.json as CardbaseMoversBody | undefined)?.data?.gainers),
+		losers: parseCardbaseMovers((res.json as CardbaseMoversBody | undefined)?.data?.losers),
+		asOf: (res.json as CardbaseMoversBody | undefined)?.meta?.as_of,
 	};
 }
 

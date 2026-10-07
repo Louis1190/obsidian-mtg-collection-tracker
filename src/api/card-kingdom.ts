@@ -33,6 +33,12 @@ interface CardKingdomRawEntry {
 	url?: string;
 }
 
+// Corps du pricelist (`res.json` est `any` : on le type ici, une fois).
+interface CardKingdomPricelistBody {
+	meta?: { base_url?: string };
+	data?: CardKingdomRawEntry[];
+}
+
 // Clé composite scryfall_id+foil : Card Kingdom donne une ligne séparée par
 // finition (comme Scryfall lui-même sépare usd/usd_foil), donc une carte non-
 // foil et sa version foil ont deux prix distincts à retrouver indépendamment.
@@ -83,8 +89,8 @@ async function fetchPricelistWhole(): Promise<Map<string, CardKingdomPriceEntry>
 	});
 	if (!res || res.status !== 200) return map;
 
-	const baseUrl: string = res.json?.meta?.base_url ?? DEFAULT_BASE_URL;
-	const rows = (res.json?.data as CardKingdomRawEntry[] | undefined) ?? [];
+	const baseUrl: string = (res.json as CardKingdomPricelistBody | undefined)?.meta?.base_url ?? DEFAULT_BASE_URL;
+	const rows = (res.json as CardKingdomPricelistBody | undefined)?.data ?? [];
 	for (const row of rows) addRow(map, baseUrl, row);
 	return map;
 }

@@ -1,6 +1,6 @@
 {
 	"name": "mtg-collection-tracker",
-	"version": "1.0.523",
+	"version": "1.0.524",
 	"description": "MTG Collection Tracker Obsidian plugin",
 	"author": "Louis",
 	"license": "MIT",
@@ -14,7 +14,6 @@
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
-		"builtin-modules": "^3.3.0",
 		"esbuild": "^0.24.0",
 		"eslint": "^9.39.5",
 		"eslint-plugin-obsidianmd": "^0.4.2",

@@ -13,9 +13,11 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 const strict = process.env.LINT_STRICT === "1";
 
 const SECURITY = ["no-eval", "no-implied-eval", "no-unsanitized/method", "no-unsanitized/property", "obsidianmd/regex-lookbehind", "obsidianmd/no-forbidden-elements"];
+// Les cinq `no-unsafe-*` ne sont PAS éteintes : la première relecture réelle de l'annuaire (2026-10-07) les a signalées en
+// avertissements (13 / 30 / 4 endroits, exactement ce que ce linter trouve en mode strict). Ce qui reste éteint l'est d'après
+// la documentation du scanner ; `no-base-to-string` (3 endroits en mode strict) n'est pas apparue dans la relecture réelle.
 const OFF = [
-	"no-undef", "@typescript-eslint/no-unsafe-member-access", "@typescript-eslint/no-unsafe-assignment", "@typescript-eslint/no-unsafe-argument",
-	"@typescript-eslint/no-unsafe-call", "@typescript-eslint/no-unsafe-return", "@typescript-eslint/restrict-template-expressions",
+	"no-undef", "@typescript-eslint/restrict-template-expressions",
 	"@typescript-eslint/no-base-to-string", "import/no-unresolved", "obsidianmd/validate-manifest", "obsidianmd/validate-license",
 	"obsidianmd/commands/no-command-in-command-id", "obsidianmd/commands/no-plugin-id-in-command-id",
 ];

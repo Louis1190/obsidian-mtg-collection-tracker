@@ -89,7 +89,7 @@ export async function fetchManaPoolPricelist(): Promise<Map<string, ManaPoolCard
 	});
 	if (!res || res.status !== 200) return map;
 
-	const rows = (res.json?.data as ManaPoolRawEntry[] | undefined) ?? [];
+	const rows = (res.json as { data?: ManaPoolRawEntry[] } | undefined)?.data ?? [];
 
 	for (const row of rows) {
 		if (!row.scryfall_id || !row.url) continue;

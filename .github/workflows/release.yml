@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write # signer l'attestation (jeton OIDC de courte durée)
+  attestations: write # publier l'attestation sur GitHub
 
 jobs:
   release:
@@ -38,6 +40,17 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Provenance signée des trois fichiers de la release (l'annuaire d'Obsidian la recommande) : chacun peut vérifier
+      # avec `gh attestation verify <fichier> --repo <propriétaire>/<dépôt>` qu'il a été construit par CE workflow,
+      # depuis CE dépôt. À faire AVANT l'envoi : ce sont les fichiers attestés qui sont envoyés.
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
 
       - name: Create GitHub release
         env:

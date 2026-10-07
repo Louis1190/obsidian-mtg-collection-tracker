@@ -116,6 +116,14 @@ started by an action of yours:
   **Share…** button hands that file to the system's share sheet or default app. On **Android**, **Device folder…** lets you pick
   a folder of the device with Obsidian's own folder picker and writes the file there; it never overwrites an existing file.
 
+## Clipboard and device storage
+
+- **Clipboard.** The plugin only ever *writes* to it, when you click *Copy to clipboard* (or *Copy list* after an import).
+  It never reads what you copied elsewhere.
+- **Device storage.** A few per-device preferences (the view mode of each section, the last export folder…) are kept in the
+  device's local storage, never in `data.json`, so they are neither synced nor backed up. If you turn GitHub storage on, its
+  access token goes to Obsidian's secret storage when your version has one, otherwise to the same device storage.
+
 ## Building from source
 
 ```bash

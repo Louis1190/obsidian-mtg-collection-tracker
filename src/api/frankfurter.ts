@@ -23,6 +23,12 @@ const FRANKFURTER_HEADERS = {
 	Accept: "application/json",
 };
 
+// Corps de /latest (`res.json` est `any`). `unknown` : le type de chaque valeur est vérifié juste en dessous.
+interface FrankfurterLatestBody {
+	rates?: { EUR?: unknown };
+	date?: unknown;
+}
+
 export interface UsdEurRate {
 	// Combien d'EUR pour 1 USD (ex. 0.868) — sens fixé une bonne fois pour
 	// toutes ici, convertUsdEur ci-dessous gère les deux directions.
@@ -41,8 +47,8 @@ export async function fetchUsdEurRate(): Promise<UsdEurRate | undefined> {
 		throw: false,
 	});
 	if (res.status !== 200) return undefined;
-	const rate = res.json?.rates?.EUR;
-	const date = res.json?.date;
+	const rate = (res.json as FrankfurterLatestBody | undefined)?.rates?.EUR;
+	const date = (res.json as FrankfurterLatestBody | undefined)?.date;
 	if (typeof rate !== "number" || typeof date !== "string") return undefined;
 	return { usdToEur: rate, date };
 }

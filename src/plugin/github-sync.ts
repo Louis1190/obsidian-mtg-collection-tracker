@@ -134,7 +134,7 @@ export function getGithubToken(this: MTGCollectionPlugin): string {
 		/* repli ci-dessous */
 	}
 	try {
-		const v = this.app.loadLocalStorage(TOKEN_LOCAL_KEY);
+		const v: unknown = this.app.loadLocalStorage(TOKEN_LOCAL_KEY);
 		return typeof v === "string" ? v : "";
 	} catch {
 		return "";

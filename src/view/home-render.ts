@@ -619,7 +619,7 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 			// same "one spinner, then fully-formed content" shape as before,
 			// rather than a per-row skeleton this block never had.
 			const ids = [...gainers, ...losers].map((m) => m.scryfallId);
-			const snapshots = ids.length > 0 ? await plugin.getScryfallImmutableSnapshots(ids) : new Map();
+			const snapshots = ids.length > 0 ? await plugin.getScryfallImmutableSnapshots(ids) : new Map<string, ScryfallImmutableSnapshot>();
 			if (token !== requestToken || !resultsEl.isConnected) return;
 
 			lastData = {

@@ -334,6 +334,16 @@ export interface ScryfallPagedResult {
 	totalCards: number;
 }
 
+// Corps JSON des réponses de recherche et d'erreur de Scryfall (`res.json` est `any` : on le type ici, une fois).
+interface ScryfallListBody {
+	data?: ScryfallCard[];
+	has_more?: boolean;
+	total_cards?: number;
+}
+interface ScryfallErrorBody {
+	details?: string;
+}
+
 // order/dir : mêmes valeurs que le paramètre `order` de l'API Scryfall
 // (ex. "usd" pour trier par prix). Sert aux suggestions "Price up"/"Price
 // down" de AddCardsModal (add-cards-modal.ts) — quand fourni, prime sur le
@@ -373,7 +383,7 @@ export async function searchScryfall(
 		if (res.status !== 404) {
 			throw new ScryfallError(
 				res.status,
-				res.json?.details ?? `Scryfall returned HTTP ${res.status}`
+				(res.json as ScryfallErrorBody | undefined)?.details ?? `Scryfall returned HTTP ${res.status}`
 			);
 		}
 		// 404 sur cet endpoint exact -> on retombe sur la recherche classique
@@ -411,11 +421,11 @@ export async function searchScryfall(
 	if (res.status !== 200) {
 		throw new ScryfallError(
 			res.status,
-			res.json?.details ?? `Scryfall returned HTTP ${res.status}`
+			(res.json as ScryfallErrorBody | undefined)?.details ?? `Scryfall returned HTTP ${res.status}`
 		);
 	}
-	const data = res.json;
-	const cards = (data.data as ScryfallCard[]) ?? [];
+	const data = res.json as ScryfallListBody;
+	const cards = data.data ?? [];
 	return {
 		cards,
 		hasMore: !!data.has_more,
@@ -443,11 +453,12 @@ export async function fetchLatestPaperPrintings(
 		throw: false,
 	});
 	if (res.status !== 200) return { cards: [], hasMore: false, totalCards: 0 };
-	const cards = (res.json.data as ScryfallCard[]) ?? [];
+	const body = res.json as ScryfallListBody;
+	const cards = body.data ?? [];
 	return {
 		cards,
-		hasMore: !!res.json.has_more,
-		totalCards: typeof res.json.total_cards === "number" ? res.json.total_cards : cards.length,
+		hasMore: !!body.has_more,
+		totalCards: typeof body.total_cards === "number" ? body.total_cards : cards.length,
 	};
 }
 
@@ -495,7 +506,7 @@ export async function searchAllPrintings(name: string): Promise<ScryfallCard[]> 
 		throw: false,
 	});
 	if (res.status !== 200) return [];
-	return (res.json.data as ScryfallCard[]) ?? [];
+	return (res.json as ScryfallListBody).data ?? [];
 }
 
 // Applique une couleur à un SVG déjà inséré dans le DOM, directement sur
@@ -726,8 +737,8 @@ export async function fetchScryfallCollection(
 		});
 		const chunkMap = new Map<string, ScryfallCard>();
 		if (res.status === 200) {
-			const data = res.json;
-			(data.data as ScryfallCard[]).forEach((c) => {
+			const data = res.json as { data: ScryfallCard[] };
+			data.data.forEach((c) => {
 				map.set(c.id, c);
 				chunkMap.set(c.id, c);
 			});
