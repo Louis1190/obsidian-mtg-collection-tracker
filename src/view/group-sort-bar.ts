@@ -4,7 +4,7 @@ import { setIcon } from "obsidian";
 import type { MTGCollectionView } from "../view";
 
 /* ---------------------------------------------------------------------------- */
-/*  Barre Group by / Sort by / modes d'affichage (en-tête d'une liste, d'un deck, d'une wantlist).*/
+/* Group by / Sort by / display modes bar (header of a list, a deck, a wantlist). */
 /* ---------------------------------------------------------------------------- */
 
 export function persistSortSettings(this: MTGCollectionView) {
@@ -33,9 +33,9 @@ export function renderGroupSortBar(this: MTGCollectionView, scope: "list" | "dec
 
 	const sortOptions =
 		scope === "deck" ? DECK_SORT_BY_OPTIONS : scope === "wantlist" ? WANTLIST_SORT_BY_OPTIONS : SORT_BY_OPTIONS;
-	// "Category" (Commander/Mainboard/Sideboard/Maybeboard) n'existe que
-	// côté deck (voir DECK_GROUP_BY_OPTIONS, card-sorting.ts) — List/
-	// Wantlist gardent GROUP_BY_OPTIONS tel quel.
+	// "Category" (Commander/Mainboard/Sideboard/Maybeboard) only exists on the
+	// deck side (see DECK_GROUP_BY_OPTIONS, card-sorting.ts) — List/Wantlist
+	// keep GROUP_BY_OPTIONS as is.
 	const groupByOptions = scope === "deck" ? DECK_GROUP_BY_OPTIONS : GROUP_BY_OPTIONS;
 	const groupBy = scope === "deck" ? this.deckGroupBy : scope === "wantlist" ? this.wantlistGroupBy : this.listGroupBy;
 	const sortBy = scope === "deck" ? this.deckSortBy : scope === "wantlist" ? this.wantlistSortBy : this.listSortBy;
@@ -47,8 +47,8 @@ export function renderGroupSortBar(this: MTGCollectionView, scope: "list" | "dec
 			: scope === "wantlist"
 			  ? this.wantlistGroupReverse
 			  : this.groupReverse;
-	// Cluster "Group by" : la pilule et son bouton d'inversion sont collés
-	// l'un à l'autre (pas d'espace, coins arrondis partagés).
+	// "Group by" cluster: the pill and its reverse button are stuck to each
+	// other (no gap, shared rounded corners).
 	const groupCluster = bar.createDiv({ cls: "mtg-groupsort-cluster" });
 	const groupBtn = groupCluster.createDiv({ cls: "mtg-groupsort-btn" });
 	setIcon(groupBtn.createSpan({ cls: "mtg-groupsort-icon" }), "circle-dot");
@@ -71,18 +71,16 @@ export function renderGroupSortBar(this: MTGCollectionView, scope: "list" | "dec
 					this.render();
 				},
 			})),
-			// mtg-groupsort-picker-menu (styles.css) : le menu générique
-			// .mtg-picker-menu plafonne à 260px et scrolle au-delà — avec 11
-			// options côté deck (DECK_GROUP_BY_OPTIONS, "Type" étant toujours
-			// la dernière puisque la liste est alphabétique), ça passe
-			// largement sous la ligne de flottaison sans aucun indice visuel
-			// de scroll (la scrollbar est invisible par défaut sur macOS tant
-			// qu'on ne défile pas activement) — d'où un rapport "je ne vois
-			// pas Group by Type" alors que l'option existe bel et bien. Ce
-			// picker est ancré dans le sticky header, toujours proche du haut
-			// de la fenêtre, donc une limite plus haute ne risque pas de
-			// pousser le menu hors écran comme ce serait le cas pour un
-			// picker générique ancré plus bas dans une longue liste.
+			// mtg-groupsort-picker-menu (styles.css): the generic .mtg-picker-menu
+			// caps at 260px and scrolls beyond — with 11 options on the deck side
+			// (DECK_GROUP_BY_OPTIONS, "Type" always being the last since the list is
+			// alphabetical), it falls well below the fold with no visual hint of
+			// scrolling (the scrollbar is invisible by default on macOS as long as you
+			// aren't actively scrolling) — hence a report "I can't see Group by Type"
+			// whereas the option does exist. This picker is anchored in the sticky
+			// header, always close to the top of the window, so a higher limit doesn't
+			// risk pushing the menu off-screen as it would for a generic picker
+			// anchored lower in a long list.
 			{ menuClass: "mtg-groupsort-picker-menu" }
 		);
 	});
@@ -122,9 +120,8 @@ export function renderGroupSortBar(this: MTGCollectionView, scope: "list" | "dec
 					this.render();
 				},
 			})),
-			// Même raisonnement que le picker "Group by" juste au-dessus —
-			// "Sort by" grimpe jusqu'à 13 options (SORT_BY_OPTIONS, scope
-			// "list"), le plus grand des deux.
+			// Same reasoning as the "Group by" picker just above — "Sort by" goes up
+			// to 13 options (SORT_BY_OPTIONS, scope "list"), the larger of the two.
 			{ menuClass: "mtg-groupsort-picker-menu" }
 		);
 	});
@@ -141,8 +138,8 @@ export function renderGroupSortBar(this: MTGCollectionView, scope: "list" | "dec
 		this.render();
 	});
 
-	// Cluster bascule d'affichage : liste (une carte par ligne), grille
-	// (2 colonnes), ou tableau (dense, sans image, séparations horizontales).
+	// Display toggle cluster: list (one card per row), grid (2 columns), or
+	// table (dense, no image, horizontal separators).
 	const viewMode = phoneAwareViewMode(
 		scope === "deck" ? this.deckViewMode : scope === "wantlist" ? this.wantlistViewMode : this.listViewMode
 	);
@@ -208,12 +205,11 @@ export function renderGroupSortBar(this: MTGCollectionView, scope: "list" | "dec
 		stacksModeBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
 			this.deckViewMode = "stacks";
-			// Le regroupement par défaut "Category" d'Archidekt sur sa propre
-			// vue Stacks n'a plus d'équivalent depuis le 2026-09-07 : les
-			// onglets Mainboard/Sideboard/Maybeboard (renderDeckBoardTabs)
-			// séparent déjà les boards, Stacks garde simplement le
-			// regroupement déjà choisi (ou "none" par défaut, une seule
-			// colonne) au lieu d'en imposer un.
+			// Archidekt's default "Category" grouping on its own Stacks view has no
+			// equivalent since 2026-09-07: the Mainboard/Sideboard/Maybeboard tabs
+			// (renderDeckBoardTabs) already separate the boards, Stacks simply keeps
+			// the grouping already chosen (or "none" by default, a single column)
+			// instead of imposing one.
 			this.persistSortSettings();
 			this.render();
 		});

@@ -6,39 +6,36 @@ import type { MTGCollectionView } from "../view";
 /* -------------------------------------------------------------------------- */
 /*  Merge modals (lists / wantlists / decks)                                  */
 /* -------------------------------------------------------------------------- */
-// Fusionne plusieurs listes (My Collection), wantlists (My Wantlists) ou
-// decks (My Decks) en une seule NOUVELLE entité contenant toutes leurs
-// cartes, puis supprime les originales. Deux entrées : l'action groupée
-// "Merge" du mode sélection d'une galerie (voir
-// MTGCollectionView.listGallerySelectMode), et "Merge with another …"
-// depuis la modale de réglages d'une entité (List/Wantlist/DeckSettingsModal).
-// Demandé explicitement pour les listes : "on sélectionne les listes que
-// l'on a envie de fusionner ensemble, cela crée une nouvelle liste avec
-// toutes les cartes issues des listes à fusionner et supprime les listes qui
-// ont été fusionnées".
+// Merges several lists (My Collection), wantlists (My Wantlists) or decks (My
+// Decks) into a single NEW entity containing all their cards, then deletes the
+// originals. Two entry points: the grouped "Merge" action of a gallery's
+// selection mode (see MTGCollectionView.listGallerySelectMode), and "Merge
+// with another …" from an entity's settings modal
+// (List/Wantlist/DeckSettingsModal). Explicitly requested for lists: "we
+// select the lists we want to merge together, it creates a new list with all
+// the cards from the lists to merge and deletes the lists that were merged".
 //
-// Un seul formulaire (nom pré-rempli + bouton) pour les trois : seul ce que
-// décrit MergeKind change d'une entité à l'autre. Il reste sa propre classe
-// (pas une extension de NewListModal/NewDeckModal/NewWantlistModal) puisque
-// celles-ci sont câblées en dur sur plugin.createX, une action de MUTATION
-// différente de la fusion. La modale ELLE-MÊME sert de confirmation (nom
-// pré-rempli à relire/modifier, texte explicite sur ce qui va être supprimé)
-// — pas de second palier "Confirm/Cancel" comme le bouton Delete de la barre
-// d'actions groupées, même raisonnement déjà établi pour "Move to"/"Copy to"
-// (CopyCardModal) : ouvrir toute une fenêtre à remplir/valider EST déjà la
-// confirmation.
+// A single form (pre-filled name + button) for all three: only what MergeKind
+// describes changes from one entity to another. It remains its own class (not
+// an extension of NewListModal/NewDeckModal/NewWantlistModal) since those are
+// hard-wired to plugin.createX, a MUTATION action different from the merge.
+// The modal ITSELF serves as the confirmation (pre-filled name to
+// re-read/modify, explicit text about what is going to be deleted) — no second
+// "Confirm/Cancel" level like the Delete button of the bulk-actions bar, same
+// reasoning already established for "Move to"/"Copy to" (CopyCardModal):
+// opening a whole window to fill in/validate IS already the confirmation.
 
-// Ce qui diffère d'un type d'entité à l'autre ; tout le reste (formulaire,
-// flux, textes) est commun.
+// What differs from one entity type to another; everything else (form,
+// flow, texts) is common.
 interface MergeKind {
-	// Nom au singulier tel qu'affiché ("list", "wantlist", "deck") ; le pluriel
-	// s'obtient en ajoutant "s".
+	// Singular name as displayed ("list", "wantlist", "deck"); the plural is
+	// obtained by adding "s".
 	noun: string;
-	// Les entités existantes (seuls id et nom comptent ici).
+	// The existing entities (only id and name matter here).
 	entities: (plugin: MTGCollectionPlugin) => readonly { id: string; name: string }[];
-	// Lance la fusion et renvoie l'entité créée.
+	// Launches the merge and returns the created entity.
 	merge: (plugin: MTGCollectionPlugin, ids: string[], name: string) => { id: string; name: string };
-	// Ouvre l'entité créée dans la vue.
+	// Opens the created entity in the view.
 	open: (view: MTGCollectionView, id: string) => void;
 }
 
@@ -95,9 +92,9 @@ class MergeEntitiesModal extends Modal {
 			)}", then deletes those ${this.names.length} original ${noun}s.`,
 		});
 		const input = this.contentEl.createEl("input", { type: "text", placeholder: `New ${noun} name` });
-		// Nom par défaut proposé (concaténation des noms d'origine) — modifiable
-		// avant de valider, même que si l'utilisateur préfère taper le sien de
-		// zéro plutôt que d'éditer celui-ci.
+		// Default name proposed (concatenation of the original names) — editable
+		// before validating, same if the user prefers to type their own from
+		// scratch rather than edit this one.
 		input.value = this.names.join(" + ");
 		input.focus();
 		input.select();

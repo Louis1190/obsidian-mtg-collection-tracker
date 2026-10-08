@@ -1,43 +1,42 @@
 import { App, normalizePath } from "obsidian";
 
-// Écriture d'un fichier d'export DANS la vault + remise à la feuille de
-// partage native d'Obsidian mobile — la couche basse de ui/file-export.ts et
-// de modals/export-destination-modal.ts. Séparée de l'une comme de l'autre
-// pour qu'aucune des deux n'ait à importer l'autre (file-export.ts ouvre la
-// modale, la modale écrit via ce fichier) : sinon import circulaire.
+// Writing an export file INTO the vault + handing over to Obsidian mobile's
+// native share sheet — the low layer of ui/file-export.ts and of
+// modals/export-destination-modal.ts. Separated from both so that neither
+// has to import the other (file-export.ts opens the modal, the modal writes
+// via this file): otherwise a circular import.
 //
-// Un plugin Obsidian ne peut écrire QUE dans la vault (vault.adapter) — ni
-// fenêtre système "Enregistrer sous" ni dossier arbitraire de l'appareil sur
-// iOS/Android. Le "où enregistrer" proposé à l'utilisateur est donc un
-// dossier de la vault ; pour sortir de la vault, la seule porte est la
-// feuille de partage native (shareVaultFile).
+// An Obsidian plugin can ONLY write into the vault (vault.adapter) — neither
+// a system "Save as" window nor an arbitrary device folder on iOS/Android.
+// The "where to save" offered to the user is therefore a vault folder; to
+// get out of the vault, the only way is the native share sheet
+// (shareVaultFile).
 
-// Dossier par défaut des exports mobiles — même convention de nommage que
-// le dossier de sauvegardes automatiques par défaut ("MTG Backups",
-// lifecycle.ts).
+// Default folder of mobile exports — same naming convention as the default
+// automatic backups folder ("MTG Backups", lifecycle.ts).
 export const DEFAULT_EXPORT_FOLDER = "MTG Exports";
 
 export type ExportContent = string | ArrayBuffer;
 
 const LAST_FOLDER_KEY = "mtg-collection-tracker:export-folder";
-// Idem pour le dernier dossier de l'APPAREIL (Android, voir plus bas) — par
-// nature propre à cet appareil, donc jamais dans un fichier synchronisé.
+// Same for the last DEVICE folder (Android, see below) — specific to this
+// device by nature, so never in a synchronized file.
 const LAST_DEVICE_FOLDER_KEY = "mtg-collection-tracker:export-device-folder";
 
-// Caractères interdits dans un nom de fichier sur au moins une des deux
-// plateformes mobiles — les noms construits par les appelants n'en
-// contiennent jamais (tout passe par un [^a-z0-9]+ → "-"), mais la modale
-// laisse maintenant l'utilisateur taper le nom lui-même. Un "/" créerait
-// sinon un sous-dossier inexistant.
+// Characters forbidden in a file name on at least one of the two mobile
+// platforms — the names built by the callers never contain any (everything
+// goes through a [^a-z0-9]+ → "-"), but the modal now lets the user type
+// the name themselves. A "/" would otherwise create a non-existent
+// subfolder.
 export function sanitizeFileName(name: string, fallback = "export"): string {
 	const cleaned = name.replace(/[\\/:*?"<>|]/g, "-").trim();
 	return cleaned === "" || /^\.+$/.test(cleaned) ? fallback : cleaned;
 }
 
-// Chemin saisi par l'utilisateur pour un NOUVEAU dossier → chemin de vault
-// normalisé, ou null s'il n'est pas acceptable. Refuse tout segment commençant
-// par "." : ça exclut ".." (remonter hors de la vault) mais aussi
-// ".obsidian" et autres dossiers cachés, où un export n'a rien à faire.
+// Path typed by the user for a NEW folder → normalized vault path, or null if
+// it isn't acceptable. Refuses any segment starting with ".": that excludes
+// ".." (going up out of the vault) but also ".obsidian" and other hidden
+// folders, where an export has no business being.
 export function sanitizeFolderPath(input: string): string | null {
 	const segments = input
 		.split(/[\\/]+/)
@@ -52,8 +51,8 @@ function isVaultRoot(folder: string): boolean {
 	return folder === "/" || folder === "";
 }
 
-// La racine de la vault s'appelle "/" côté Obsidian : la concaténer telle
-// quelle donnerait "//nom" au lieu de "nom".
+// The vault root is called "/" on Obsidian's side: concatenating it as is
+// would give "//name" instead of "name".
 export function joinVaultPath(folder: string, filename: string): string {
 	return isVaultRoot(folder) ? normalizePath(filename) : normalizePath(`${folder}/${filename}`);
 }
@@ -62,16 +61,16 @@ export function folderDisplayName(folder: string): string {
 	return isVaultRoot(folder) ? "Vault root" : folder;
 }
 
-// Même chose, mais pour l'insérer dans une phrase ("Saved x.csv to the vault
-// root." plutôt que "to Vault root.").
+// Same thing, but to insert it into a sentence ("Saved x.csv to the vault
+// root." rather than "to Vault root.").
 export function folderSentenceName(folder: string): string {
 	return isVaultRoot(folder) ? "the vault root" : folder;
 }
 
-// Crée chaque niveau à tour de rôle plutôt qu'un seul mkdir sur le chemin
-// complet : on ne sait pas si adapter.mkdir crée les parents manquants sur
-// tous les adaptateurs (desktop/Capacitor) — un dossier saisi à la main peut
-// être imbriqué ("Decks/Exports").
+// Creates each level in turn rather than a single mkdir on the full path: we
+// don't know whether adapter.mkdir creates the missing parents on all
+// adapters (desktop/Capacitor) — a folder typed by hand can be nested
+// ("Decks/Exports").
 export async function ensureFolder(app: App, folder: string): Promise<void> {
 	if (isVaultRoot(folder)) return;
 	const adapter = app.vault.adapter;
@@ -79,9 +78,9 @@ export async function ensureFolder(app: App, folder: string): Promise<void> {
 	for (const segment of normalizePath(folder).split("/")) {
 		current = current === "" ? segment : `${current}/${segment}`;
 		if (await adapter.exists(current)) continue;
-		// Peut légitimement lever si un autre export vient de créer le dossier
-		// entre-temps — ignoré volontairement, l'écriture qui suit fera
-		// surface toute vraie erreur (même idiome que runAutoBackup).
+		// May legitimately throw if another export has just created the folder in
+		// the meantime — deliberately ignored, the write that follows will surface
+		// any real error (same idiom as runAutoBackup).
 		try {
 			await adapter.mkdir(current);
 		} catch {
@@ -94,12 +93,13 @@ export function exportTargetExists(app: App, folder: string, filename: string): 
 	return app.vault.adapter.exists(joinVaultPath(folder, sanitizeFileName(filename)));
 }
 
-// vault.adapter.write plutôt que vault.create : Vault.create() lève "File
-// already exists." dès que le fichier existe SUR DISQUE (il interroge
-// adapter.exists, pas l'index de la vault), donc un 2ème export du même nom
-// échouerait ; adapter.write écrase, et CapacitorAdapter.write réindexe le
-// fichier ensuite (reconcileInternalFile) exactement comme vault.create le
-// ferait. Lève en cas d'échec — c'est à l'appelant d'afficher l'erreur.
+// vault.adapter.write rather than vault.create: Vault.create() throws "File
+// already exists." as soon as the file exists ON DISK (it queries
+// adapter.exists, not the vault's index), so a 2nd export of the same name
+// would fail; adapter.write overwrites, and CapacitorAdapter.write
+// re-indexes the file afterwards (reconcileInternalFile) exactly as
+// vault.create would. Throws on failure — it's up to the caller to display
+// the error.
 export async function writeExportFile(
 	app: App,
 	folder: string,
@@ -114,13 +114,13 @@ export async function writeExportFile(
 	return path;
 }
 
-// openWithDefaultApp n'est pas dans les typings publics d'Obsidian (mais bien
-// présent à l'exécution, desktop et mobile — c'est l'appel derrière l'action
-// "Share" du menu fichier d'Obsidian mobile, voir CLAUDE.md, "File export").
-// Accès gardé : s'il disparaît un jour, l'appelant a déjà dit où le fichier
-// vit. Appelée comme méthode de `app` (elle lit this.vault), jamais
-// détachée. Elle avale elle-même ses erreurs natives (Notice d'Obsidian) ; le
-// try/catch ne couvre qu'un rejet inattendu.
+// openWithDefaultApp is not in Obsidian's public typings (but is present at
+// runtime, desktop and mobile — it's the call behind the "Share" action of
+// Obsidian mobile's file menu, see CLAUDE.md, "File export"). Guarded access:
+// if it ever disappears, the caller has already said where the file lives.
+// Called as a method of `app` (it reads this.vault), never detached. It
+// swallows its native errors itself (Obsidian Notice); the try/catch only
+// covers an unexpected rejection.
 export async function shareVaultFile(app: App, path: string): Promise<void> {
 	const openWithDefaultApp = (app as unknown as { openWithDefaultApp?: (path: string) => Promise<void> })
 		.openWithDefaultApp;
@@ -137,7 +137,7 @@ export function getLastExportFolder(): string {
 		const stored = window.localStorage?.getItem(LAST_FOLDER_KEY);
 		if (typeof stored === "string" && stored !== "") return stored;
 	} catch {
-		/* localStorage peut être indisponible (données de site bloquées, etc.) */
+		/* localStorage may be unavailable (site data blocked, etc.) */
 	}
 	return DEFAULT_EXPORT_FOLDER;
 }
@@ -151,26 +151,25 @@ export function rememberExportFolder(folder: string): void {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Dossier de l'appareil (Android uniquement, expérimental)                  */
+/* Device folder (Android only, experimental) */
 /* -------------------------------------------------------------------------- */
 
-// Sur Android la feuille de partage système ne liste que des applications :
-// aucun "Enregistrer dans un dossier" (contrairement à iOS, dont la feuille
-// propose "Enregistrer dans Fichiers"). Obsidian, lui, sait déjà faire
-// exactement ça pour ses propres vaults sur le stockage de l'appareil : un
-// sélecteur de dossier natif (le plugin Capacitor "Filesystem", méthode
-// `choose`) puis des écritures via la couche fichiers de l'adaptateur de la
-// vault (`app.vault.adapter.fs`). Rien de tout ça n'est documenté pour les
-// plugins — voir CLAUDE.md, "File export" — d'où l'isolation ici et les
-// garde-fous ci-dessous.
+// On Android the system share sheet only lists applications: no "Save to a
+// folder" (unlike iOS, whose sheet offers "Save to Files"). Obsidian, for its
+// part, already knows how to do exactly that for its own vaults on the
+// device's storage: a native folder picker (the Capacitor "Filesystem" plugin,
+// `choose` method) then writes through the file layer of the vault's adapter
+// (`app.vault.adapter.fs`). None of this is documented for plugins — see
+// CLAUDE.md, "File export" — hence the isolation here and the safeguards
+// below.
 //
-// Ce qui rend la chose cohérente : pour une vault sur le stockage de
-// l'appareil, basePath de l'adaptateur EST le résultat d'un choose() fait à la
-// création de la vault, et chaque écriture passe par fs.write(join(basePath,
-// chemin relatif)). Un nouveau choose() donne donc un chemin dans le MÊME
-// espace que celui que l'adaptateur passe déjà à fs.write — qu'il soit
-// absolu ou relatif à la racine du stockage, on n'a pas à le deviner, juste à
-// ne pas le normaliser (normalizePath retirerait un "/" initial).
+// What makes the thing coherent: for a vault on the device's storage, the
+// adapter's basePath IS the result of a choose() done when the vault was
+// created, and every write goes through fs.write(join(basePath, relative
+// path)). A new choose() therefore gives a path in the SAME space as the one
+// the adapter already passes to fs.write — whether absolute or relative to the
+// storage root, we don't have to guess, just not normalize it (normalizePath
+// would remove a leading "/").
 
 interface NativeFilesystemPlugin {
 	choose?: () => Promise<{ path?: string; isRoot?: boolean } | undefined>;
@@ -184,12 +183,12 @@ interface MobileVaultFs {
 	stat?: (path: string) => Promise<unknown>;
 }
 
-// Valeurs de `fs.dir` (le `Directory` de Capacitor, étendu par Obsidian) pour
-// lesquelles un chemin renvoyé par choose() vit dans le même espace que les
-// écritures de la vault : la racine du stockage partagé, ou aucune (chemins
-// absolus). Une vault dans le stockage PRIVÉ de l'app (DOCUMENTS, DATA,
-// EXTERNAL, ICLOUD…) écrit ses chemins relativement à un autre dossier — y
-// écrire un chemin choisi atterrirait dans ce stockage privé, invisible.
+// Values of `fs.dir` (Capacitor's `Directory`, extended by Obsidian) for
+// which a path returned by choose() lives in the same space as the vault's
+// writes: the root of the shared storage, or none (absolute paths). A vault
+// in the app's PRIVATE storage (DOCUMENTS, DATA, EXTERNAL, ICLOUD…) writes
+// its paths relative to another folder — writing a chosen path there would
+// land in that private storage, invisible.
 const DEVICE_STORAGE_DIRS = new Set(["", "EXTERNAL_STORAGE"]);
 
 function getVaultFs(app: App): MobileVaultFs | null {
@@ -211,13 +210,12 @@ export function getDeviceFolderSupport(app: App): { ok: true } | { ok: false; re
 	return { ok: true };
 }
 
-// Ouvre le sélecteur de dossier natif d'Obsidian. null = annulé par
-// l'utilisateur (Obsidian lui-même reconnaît l'annulation à un message
-// contenant "canceled", dans son propre écran de création de vault) ; toute
-// autre erreur est relancée telle quelle pour être affichée. Le proxy des
-// plugins Capacitor répond à N'IMPORTE QUEL nom de méthode par une fonction
-// (l'appel échoue seulement à l'exécution) : un `typeof choose === "function"`
-// ne prouverait donc rien, c'est l'appel qui tranche.
+// Opens Obsidian's native folder picker. null = canceled by the user (Obsidian
+// itself recognizes the cancellation by a message containing "canceled", in
+// its own vault creation screen); any other error is rethrown as is to be
+// displayed. The Capacitor plugin proxy answers ANY method name with a
+// function (the call only fails at runtime): a `typeof choose === "function"`
+// would therefore prove nothing, it's the call that decides.
 export async function pickDeviceFolder(): Promise<string | null> {
 	const plugin = (window as { Capacitor?: { Plugins?: { Filesystem?: NativeFilesystemPlugin } } }).Capacitor
 		?.Plugins?.Filesystem;
@@ -231,29 +229,30 @@ export async function pickDeviceFolder(): Promise<string | null> {
 		throw e;
 	}
 	if (!picked || typeof picked.path !== "string") return null;
-	// Même refus qu'Obsidian pour une vault : la racine du stockage n'est pas
-	// un dossier où déposer un fichier. Un chemin vide vaut la racine : sans ce
-	// refus, joinDevicePath("", nom) donnerait "/nom", à la racine du système.
+	// Same refusal as Obsidian for a vault: the storage root is not a folder in
+	// which to drop a file. An empty path is equivalent to the root: without
+	// this refusal, joinDevicePath("", name) would give "/name", at the root of
+	// the system.
 	if (picked.isRoot || picked.path.trim() === "") {
 		throw new Error("Please choose a folder inside your device storage, not its root.");
 	}
 	return picked.path;
 }
 
-// Sans normalizePath : il retirerait un "/" initial, et le chemin doit rester
-// tel que choose() l'a rendu (voir le commentaire de section ci-dessus).
+// Without normalizePath: it would remove a leading "/", and the path must
+// remain as choose() returned it (see the section comment above).
 function joinDevicePath(folder: string, name: string): string {
 	return folder.replace(/\/+$/, "") + "/" + name;
 }
 
-// "a.csv" + 2 → "a (2).csv" ; sans extension : "a" + 2 → "a (2)".
+// "a.csv" + 2 → "a (2).csv"; no extension: "a" + 2 → "a (2)".
 export function withNumericSuffix(name: string, n: number): string {
 	const dot = name.lastIndexOf(".");
 	return dot > 0 ? `${name.slice(0, dot)} (${n})${name.slice(dot)}` : `${name} (${n})`;
 }
 
-// true/false, ou null quand la couche fichiers n'offre aucun moyen de le
-// savoir (ne jamais confondre "inconnu" avec "n'existe pas").
+// true/false, or null when the file layer offers no way of knowing (never
+// confuse "unknown" with "doesn't exist").
 async function probeDevicePath(fs: MobileVaultFs, path: string): Promise<boolean | null> {
 	if (typeof fs.exists === "function") return fs.exists(path);
 	if (typeof fs.stat === "function") {
@@ -271,13 +270,13 @@ async function deviceFileExists(fs: MobileVaultFs, path: string): Promise<boolea
 	return (await probeDevicePath(fs, path)) === true;
 }
 
-// Écrit dans un dossier de l'appareil choisi via pickDeviceFolder(). Contrairement
-// à writeExportFile (qui écrase, dans un dossier de la vault que l'utilisateur
-// gère), on n'écrase JAMAIS ici : un dossier quelconque de l'appareil (Documents,
-// Téléchargements…) peut contenir un fichier du même nom qui n'est pas le nôtre —
-// on numérote ("a (2).csv") à la place. Vérifie enfin que le fichier existe bien
-// là où on l'attend : si l'écriture a "réussi" sans y atterrir, on le dit au lieu
-// d'annoncer un enregistrement qui n'a pas eu lieu.
+// Writes into a device folder chosen via pickDeviceFolder(). Unlike
+// writeExportFile (which overwrites, in a vault folder that the user manages), we
+// NEVER overwrite here: any device folder (Documents, Downloads…) may contain a
+// file of the same name that isn't ours — we number it ("a (2).csv") instead.
+// Finally checks that the file does exist where we expect it: if the write
+// "succeeded" without landing there, we say so instead of announcing a save that
+// didn't take place.
 export async function writeToDeviceFolder(
 	app: App,
 	folder: string,
@@ -306,9 +305,9 @@ export async function writeToDeviceFolder(
 	return { path, name };
 }
 
-// Dernier dossier de l'appareil utilisé avec succès, par appareil : permet à la
-// fenêtre d'export (Android) de proposer un "Save to <dossier>" en un seul
-// geste, sans rouvrir le sélecteur natif à chaque fois. null = aucun.
+// Last device folder used successfully, per device: lets the export window
+// (Android) offer a "Save to <folder>" in a single gesture, without reopening
+// the native picker each time. null = none.
 export function getLastDeviceFolder(): string | null {
 	try {
 		const stored = window.localStorage?.getItem(LAST_DEVICE_FOLDER_KEY);
@@ -328,22 +327,22 @@ export function rememberDeviceFolder(folder: string): void {
 	}
 }
 
-// Forme lisible d'un chemin d'appareil, pour un bouton ou un message : retire
-// le préfixe du stockage principal ("/storage/emulated/0/Documents/Decks" →
-// "Documents/Decks"). Un chemin relatif à la racine du stockage, ou situé sur
-// un autre volume, est laissé tel quel — le chemin réel, lui, n'est jamais
-// modifié (il reste celui que choose() a rendu, voir plus haut).
+// Readable form of a device path, for a button or a message: removes the main
+// storage prefix ("/storage/emulated/0/Documents/Decks" → "Documents/Decks").
+// A path relative to the storage root, or located on another volume, is left
+// as is — the real path itself is never modified (it remains the one choose()
+// returned, see above).
 export function deviceFolderDisplayPath(path: string): string {
 	const trimmed = path.replace(/\/+$/, "");
 	const stripped = trimmed.replace(/^\/(?:storage\/emulated\/\d+|sdcard)\//, "");
 	return stripped === "" ? trimmed : stripped;
 }
 
-// Message d'échec pour une écriture dans un dossier DÉJÀ mémorisé : si le
-// dossier n'existe plus (supprimé, déplacé, carte SD retirée), le dire en clair
-// plutôt que d'afficher l'erreur native brute. Appelé APRÈS l'échec, jamais
-// avant l'écriture : un faux "n'existe pas" de la couche fichiers ne doit pas
-// pouvoir bloquer une écriture qui aurait réussi.
+// Failure message for a write into an ALREADY remembered folder: if the folder
+// no longer exists (deleted, moved, SD card removed), say so plainly rather
+// than displaying the raw native error. Called AFTER the failure, never before
+// the write: a false "doesn't exist" from the file layer must not be able to
+// block a write that would have succeeded.
 export async function describeDeviceFolderError(app: App, folder: string, error: unknown): Promise<string> {
 	const message = String((error as { message?: unknown } | null)?.message ?? error);
 	const fs = getVaultFs(app);
@@ -353,7 +352,7 @@ export async function describeDeviceFolderError(app: App, folder: string, error:
 				return `The folder “${deviceFolderDisplayPath(folder)}” doesn't exist anymore. Pick another one.`;
 			}
 		} catch {
-			/* on garde le message d'origine */
+			/* keep the original message */
 		}
 	}
 	return message;

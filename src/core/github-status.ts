@@ -1,14 +1,14 @@
 
 export interface GithubStatusInput {
-	/** La synchronisation GitHub est activée SUR CET APPAREIL. */
+	/** GitHub synchronization is enabled ON THIS DEVICE. */
 	enabled: boolean;
-	/** Dépôt valide ET jeton présents. */
+	/** Valid repository AND token present. */
 	configured: boolean;
 	state: "off" | "idle" | "syncing" | "error";
-	/** Faute durable (jeton, droits, dépôt) : rien ne repartira tant que l'utilisateur n'agit pas. */
+	/** Lasting fault (token, permissions, repository): nothing will be sent again until the user acts. */
 	fatal: boolean;
 	message: string;
-	/** Dernier échange réussi (ms), 0 = aucun depuis le démarrage. */
+	/** Last successful exchange (ms), 0 = none since startup. */
 	lastOkAt: number;
 }
 
@@ -21,7 +21,7 @@ function defaultClock(ms: number): string {
 	return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// null = rien à montrer (synchro désactivée sur cet appareil). `clock` est injectable pour les tests.
+// null = nothing to show (sync disabled on this device). `clock` is injectable for the tests.
 export function githubHomeStatus(input: GithubStatusInput, clock: (ms: number) => string = defaultClock): GithubHomeStatus | null {
 	if (!input.enabled) return null;
 	if (!input.configured) {

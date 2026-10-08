@@ -2,26 +2,24 @@ import { setupWheelHorizontalScroll, setupFadingScrollRow, refreshScrollRowFade 
 import type { MTGCollectionView } from "../view";
 
 /* ---------------------------------------------------------------------------- */
-/*  Barres d'actions groupées : construction commune et remplacement de bouton sur place.*/
+/* Bulk actions bars: common construction and in-place button replacement. */
 /* ---------------------------------------------------------------------------- */
 
-// Barre d'actions du mode Sélection — les 6 variantes (cartes + galerie, My Collection/
-// My Decks/My Wantlists) passent par ici plutôt que d'écrire chacune son `createDiv` :
-// la barre ne passe jamais à la ligne, elle défile horizontalement sans scrollbar visible
-// (styles.css, `.mtg-bulk-actions-scroll` — même principe que la barre de puces, voir
-// ui/chip-row-scroll.ts), et la molette, le fondu d'indice et la position mémorisée
-// doivent être branchés à chaque création.
+// Select mode actions bar — the 6 variants (cards + gallery, My Collection/My Decks/My Wantlists) go through
+// here rather than each writing its own `createDiv`: the bar never wraps, it scrolls horizontally with no
+// visible scrollbar (styles.css, `.mtg-bulk-actions-scroll` — same principle as the chip bar, see
+// ui/chip-row-scroll.ts), and the wheel, the hint fade and the remembered position must be wired up at each
+// creation.
 //
-// DEUX éléments : `.mtg-bulk-actions-bar` (enveloppe : bordure, fond, coins arrondis,
-// marge, animation d'apparition) et `.mtg-bulk-actions-scroll` (celui qui défile, et celui
-// que cette fonction RETOURNE — les appelants y ajoutent leurs boutons comme avant). Le
-// fondu d'indice est un mask-image sur l'élément qui défile ; porté par l'enveloppe, il
-// aurait aussi estompé la bordure et le fond aux extrémités, la barre perdant ses bouts.
+// TWO elements: `.mtg-bulk-actions-bar` (wrapper: border, background, rounded corners, margin, appear animation)
+// and `.mtg-bulk-actions-scroll` (the one that scrolls, and the one this function RETURNS — callers add their
+// buttons to it as before). The hint fade is a mask-image on the element that scrolls; carried by the wrapper,
+// it would also have faded the border and background at the ends, the bar losing its edges.
 //
-// La barre est reconstruite à CHAQUE render() (chaque tap de sélection, chaque action
-// appliquée) : sa position de défilement est mémorisée dans `view.bulkBarScrollLeft` (une
-// entrée par `kind`, voir ce champ) et remise à la reconstruction. Elle repart de 0 (compteur + "Select all" en vue) à sa
-// première apparition (`animate`, soit l'entrée dans le mode Sélection), pas à chaque rendu.
+// The bar is rebuilt on EVERY render() (every selection tap, every applied action): its scroll position is
+// remembered in `view.bulkBarScrollLeft` (one entry per `kind`, see that field) and restored on rebuild. It
+// starts again from 0 (counter + "Select all" in view) on its first appearance (`animate`, i.e. entering Select
+// mode), not on every render.
 
 export type BulkBarKind = "list-cards" | "list-gallery" | "deck-cards" | "deck-gallery" | "wantlist-cards" | "wantlist-gallery";
 
@@ -42,13 +40,13 @@ export function createBulkActionsBar(
 	});
 	return bar;
 }
-// Remplace un bouton de la barre (Quantity -> champ + Cancel, Delete -> Delete rouge +
-// Cancel) puis ramène le DERNIER nouvel élément dans le champ : ces éléments arrivent
-// à droite de l'ancien, et la barre étant défilante, un Cancel/Confirm peut sinon se
-// retrouver hors de l'écran sans que rien n'indique pourquoi rien ne se passe.
-// `block: "nearest"` : jamais de défilement vertical, la barre étant déjà visible.
-// Le fondu est rafraîchi à la main : le contenu a changé de largeur sans que la barre
-// défile (déjà visible) ni ne change de taille, donc rien d'autre ne le recalcule.
+// Replaces a button of the bar (Quantity -> field + Cancel, Delete -> red Delete +
+// Cancel) then brings the LAST new element into view: these elements arrive to the
+// right of the old one, and since the bar scrolls, a Cancel/Confirm can otherwise end
+// up off the screen with nothing indicating why nothing happens. `block: "nearest"`:
+// never any vertical scrolling, the bar being already visible. The fade is refreshed
+// by hand: the content has changed width without the bar scrolling (already visible)
+// or changing size, so nothing else recomputes it.
 
 export function replaceInBulkBar(oldEl: HTMLElement, ...newEls: HTMLElement[]) {
 	const bar = oldEl.parentElement;

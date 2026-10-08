@@ -106,8 +106,8 @@ describe("getRawCardPrice", () => {
 	});
 
 	it("does NOT fall back to the plain EUR price when the foil EUR price is missing", () => {
-		// Asymétrie existante de getRawCardPrice : la branche USD retombe sur
-		// priceUsd, la branche EUR ne retombe sur rien d'autre.
+		// Existing asymmetry of getRawCardPrice: the USD branch falls back to
+		// priceUsd, the EUR branch falls back to nothing else.
 		const card = makePricedCard({ finish: "foiled", priceEur: "2.00", priceEurFoil: "" });
 		expect(getRawCardPrice(card, "eur")).toBe("");
 	});
@@ -162,7 +162,7 @@ describe("formatSignedMoney", () => {
 	it("never shows a negative zero", () => {
 		expect(formatSignedMoney(0, "eur")).toBe("+€0.00");
 		expect(formatSignedMoney(-0, "eur")).toBe("+€0.00");
-		// -0.004 arrondit à 0.00 : le signe suit le montant ARRONDI, pas le flottant d'origine.
+		// -0.004 rounds to 0.00: the sign follows the ROUNDED amount, not the original float.
 		expect(formatSignedMoney(-0.004, "usd")).toBe("+$0.00");
 	});
 });
@@ -225,8 +225,8 @@ describe("pickDeckCoverImage", () => {
 	});
 
 	it("picks the commander's art when the deck has one, regardless of order", () => {
-		// Commander est une Function (deckFunctionOverride), pas une catégorie,
-		// depuis le 2026-09-07.
+		// Commander is a Function (deckFunctionOverride), not a category, since
+		// 2026-09-07.
 		const cards = [
 			{ artCropUrl: "main1.png", imageUrl: "main1-full.png" },
 			{ artCropUrl: "commander.png", imageUrl: "commander-full.png", deckFunctionOverride: "Commander" },

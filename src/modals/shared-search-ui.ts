@@ -16,116 +16,112 @@ export interface AddCardOptions {
 }
 
 export interface AddCardsModalOptions {
-	// Renvoie l'entrée résultante (id + count + listId réel) quand l'appelant
-	// peut la fournir (addCardToCollection/addCardToWantlist/addCardToDeck
-	// la renvoient toutes les trois — CollectionCard/WantlistCard ont un
-	// champ id propre, DeckCard n'en a pas et le call site utilise
-	// scryfallId à sa place, voir openDeckCardDetailById/le call site
-	// "+ Add cards" du deck dans view.ts — la signature ne fait qu'exposer
-	// un identifiant qui existait déjà en pratique dans chaque cas) —
-	// AddCardsModal s'en sert, avec onChangeQuantity, pour transformer le
-	// bouton "Add" d'une tuile en stepper +/- juste après l'ajout, et
-	// (listId) pour savoir à quelle destination une contribution à
-	// l'historique d'ajouts appartient (voir onUndoAdd plus bas — utile
-	// surtout pour le flux listGallery, où la destination n'est connue
-	// qu'après ce tout premier ajout réussi). void reste possible pour un
-	// futur appelant qui ne pourrait pas fournir cette forme — aucun des 3
-	// flux actuels (Collection/Wantlist/Deck) n'a plus besoin de cette
-	// branche depuis l'uniformisation du flux Deck, mais le type reste
-	// permissif plutôt que resserré à { id, count, listId } seul.
+	// Returns the resulting entry (id + count + real listId) when the caller
+	// can supply it (addCardToCollection/addCardToWantlist/addCardToDeck all
+	// three return it — CollectionCard/WantlistCard have an id field of their
+	// own, DeckCard does not and the call site uses scryfallId in its place,
+	// see openDeckCardDetailById/the "+ Add cards" call site of the deck in
+	// view.ts — the signature merely exposes an identifier that already
+	// existed in practice in each case) — AddCardsModal uses it, with
+	// onChangeQuantity, to turn a tile's "Add" button into a +/- stepper right
+	// after the addition, and (listId) to know which destination a
+	// contribution to the additions history belongs to (see onUndoAdd further
+	// down — useful mostly for the listGallery flow, where the destination is
+	// only known after that very first successful addition). void remains
+	// possible for a future caller that couldn't supply this shape — none of
+	// the 3 current flows (Collection/Wantlist/Deck) needs this branch any
+	// more since the Deck flow was made uniform, but the type stays permissive
+	// rather than narrowed to { id, count, listId } alone.
 	onAdd: (
 		card: ScryfallCard,
 		options: AddCardOptions,
 		listId?: string
 	) => { id: string; count: number; listId: string } | void;
-	// Change la quantité d'une entrée déjà ajoutée (voir onAdd ci-dessus) —
-	// fourni par les 3 flux (changeCollectionCardCount/changeWantlistCardCount/
-	// changeDeckCardCount). Absent = pas de stepper, le bouton "Add" reste
-	// "Add" même si onAdd a renvoyé une entrée.
+	// Changes the quantity of an already added entry (see onAdd above) —
+	// supplied by the 3 flows
+	// (changeCollectionCardCount/changeWantlistCardCount/changeDeckCardCount).
+	// Absent = no stepper, the "Add" button stays "Add" even if onAdd returned
+	// an entry.
 	onChangeQuantity?: (entryId: string, delta: number, onDone: () => void) => void;
-	// Ouvre la fenêtre de détail de la carte une fois ajoutée — demandé
-	// explicitement : une tuile devenue stepper (voir onChangeQuantity
-	// ci-dessus, qui doit donc être fourni aussi pour que ce callback ait un
-	// sens) devient cliquable et ouvre CardDetailModal/WantlistCardDetail-
-	// Modal/DeckCardDetailModal (le call site connaît lequel, pas cette
-	// interface générique — c'est pour ça que AddCardsModal ne construit
-	// jamais lui-même une fenêtre de détail, il se contente de relayer l'id
-	// de l'entrée ajoutée).
-	// `onDetailClosed` — bug signalé : modifier la quantité (ou supprimer la
-	// carte) depuis cette fenêtre de détail, puis revenir dans "Add cards",
-	// laissait la tuile du carrousel affichée avec son ancienne valeur, rien
-	// ne la resynchronisait après coup. Le call site (qui construit la
-	// fenêtre de détail et sait donc quand elle se ferme) DOIT rappeler ce
-	// callback à ce moment-là avec la ligne réelle à jour (ou undefined si
-	// supprimée) — AddCardsModal s'en sert pour rejouer exactement la même
-	// logique de resynchronisation que le panneau "Add history" (voir
-	// syncFromHistory, add-cards-modal.ts), qui accepte déjà cette forme de
-	// retour.
+	// Opens the card's detail window once added — explicitly requested: a tile
+	// that has become a stepper (see onChangeQuantity above, which must
+	// therefore also be supplied for this callback to make sense) becomes
+	// clickable and opens
+	// CardDetailModal/WantlistCardDetailModal/DeckCardDetailModal (the call
+	// site knows which one, not this generic interface — that is why
+	// AddCardsModal never builds a detail window itself, it merely relays the
+	// id of the added entry).
+	// `onDetailClosed` — reported bug: changing the quantity (or deleting the
+	// card) from this detail window, then coming back to "Add cards", left the
+	// carousel tile displayed with its old value, nothing resynchronized it
+	// afterwards. The call site (which builds the detail window and therefore
+	// knows when it closes) MUST call this callback back at that moment with
+	// the up-to-date real row (or undefined if deleted) — AddCardsModal uses
+	// it to replay exactly the same resynchronization logic as the "Add
+	// history" panel (see syncFromHistory, add-cards-modal.ts), which already
+	// accepts this return shape.
 	onOpenDetail?: (
 		entryId: string,
 		onDetailClosed: (currentRow: { id: string; count: number } | undefined) => void
 	) => void;
-	// Annule `delta` exemplaires ajoutés avec CES options précises, à cette
-	// destination — utilisé par le panneau "Add history" (voir search-
-	// modal.ts) pour désactiver/supprimer une tuile d'historique. Symétrique
-	// d'onAdd : le call site retrouve la ligne par la même clé de
-	// dédoublonnage qu'addCardToCollection/addCardToWantlist/addCardToDeck
-	// utilisent déjà pour FUSIONNER un ajout, plutôt que de faire remonter un
-	// id de ligne qui pourrait devenir invalide entre-temps (ligne supprimée
-	// par un undo précédent, puis recréée par un redo — voir AddCardsModal.
-	// toggleHistoryEntry). Renvoie la ligne résultante (ou undefined si
-	// supprimée) pour que AddCardsModal puisse resynchroniser l'affichage
-	// de la tuile carrousel correspondante sur l'état réel. Fourni par les 3
-	// flux depuis l'uniformisation du flux Deck (undoAddToDeck, plugin.ts) —
-	// absent seulement pour un éventuel futur appelant qui n'aurait
-	// vraiment aucun moyen d'annuler un ajout.
+	// Undoes `delta` copies added with THESE precise options, at this
+	// destination — used by the "Add history" panel (see search-modal.ts) to
+	// disable/delete a history tile. Symmetric to onAdd: the call site finds
+	// the row by the same deduplication key that
+	// addCardToCollection/addCardToWantlist/addCardToDeck already use to MERGE
+	// an addition, rather than passing up a row id that could become invalid
+	// in the meantime (row deleted by a previous undo, then re-created by a
+	// redo — see AddCardsModal.toggleHistoryEntry). Returns the resulting row
+	// (or undefined if deleted) so that AddCardsModal can resynchronize the
+	// display of the matching carousel tile on the real state. Supplied by the
+	// 3 flows since the Deck flow was made uniform (undoAddToDeck, plugin.ts)
+	// — absent only for a possible future caller that truly had no way to undo
+	// an addition.
 	onUndoAdd?: (
 		card: ScryfallCard,
 		options: AddCardOptions,
 		listId: string,
 		delta: number
 	) => { id: string; count: number } | undefined;
-	// Nom de la destination fixe (ex. "Deck 1"), affiché sur chaque tuile du
-	// panneau "Add history" — seulement pour les 2 flux à destination fixe
-	// (openAddCollectionCardsModal/openAddWantlistCardsModal) ; les 2 flux listGallery
-	// résolvent plutôt le nom par listId depuis listGallery.summaries (la
-	// destination n'y est pas fixe, elle varie tuile par tuile).
+	// Name of the fixed destination (e.g. "Deck 1"), displayed on each tile of the
+	// "Add history" panel — only for the 2 fixed-destination flows
+	// (openAddCollectionCardsModal/openAddWantlistCardsModal); the 2 listGallery flows
+	// instead resolve the name by listId from listGallery.summaries (the destination
+	// isn't fixed there, it varies tile by tile).
 	destinationName?: string;
 	titleText?: string;
-	// Quelle donnée cette modale ajoute réellement — demandé explicitement,
-	// pour que les tuiles du panneau "Add history" puissent ouvrir
-	// ChangePrintingModal/CopyCardModal("move") sur la ligne réellement
-	// ajoutée (voir renderHistoryTile, add-cards-modal.ts). Les deux n'acceptent
-	// QUE "collection"/"wantlist" (aucune des deux ne connaît DeckCard — voir
-	// "Data model notes" dans CLAUDE.md) : les tuiles du flux Deck
-	// (sourceKind === "deck") n'affichent donc ni l'un ni l'autre lien,
-	// contrairement aux 2 autres flux. Optionnel plutôt que requis : un
-	// appelant qui ne le fournit pas se contente simplement de ne jamais
-	// afficher ces 2 liens (comme le flux Deck), pas une erreur.
+	// Which data this modal actually adds — explicitly requested, so that the
+	// tiles of the "Add history" panel can open
+	// ChangePrintingModal/CopyCardModal("move") on the row actually added (see
+	// renderHistoryTile, add-cards-modal.ts). Both ONLY accept
+	// "collection"/"wantlist" (neither knows DeckCard — see "Data model notes"
+	// in CLAUDE.md): the tiles of the Deck flow (sourceKind === "deck")
+	// therefore show neither link, unlike the 2 other flows. Optional rather
+	// than required: a caller that doesn't supply it simply never shows these 2
+	// links (like the Deck flow), not an error.
 	sourceKind?: "collection" | "wantlist" | "deck";
 	listGallery?: {
 		summaries: (ListGroup | WantlistGroup)[];
-		// ListGroup et WantlistGroup ont la même forme — rien ne permet de les
-		// distinguer au runtime une fois dans ce tableau. SelectListModal en a
-		// besoin pour son libellé ("+ New list" vs "+ New wantlist") et pour
-		// savoir quelle modale de création ouvrir.
+		// ListGroup and WantlistGroup have the same shape — nothing allows telling
+		// them apart at runtime once in this array. SelectListModal needs this for
+		// its label ("+ New list" vs "+ New wantlist") and to know which creation
+		// modal to open.
 		kind: "list" | "wantlist";
-		// Id de la liste "Inbox" (voir CollectionList.isInbox) quand fourni
-		// par l'appelant (aujourd'hui : seulement openAddCardsModalWithList-
-		// Picker, My Collection — jamais le flux Wantlist, qui n'a pas
-		// d'équivalent). Quand défini, "Add"/"Add all" ajoutent directement
-		// à cette liste au lieu d'ouvrir SelectListModal — voir
-		// buildAddButton/performAddAll, add-cards-modal.ts. SelectListModal
-		// reste utilisable telle quelle quand ce champ est absent (fallback
-		// défensif si Inbox n'existe pas, et comportement inchangé côté
-		// Wantlist).
+		// Id of the "Inbox" list (see CollectionList.isInbox) when supplied by the
+		// caller (today: only openAddCardsModalWithListPicker, My Collection —
+		// never the Wantlist flow, which has no equivalent). When defined,
+		// "Add"/"Add all" add directly to that list instead of opening
+		// SelectListModal — see buildAddButton/performAddAll, add-cards-modal.ts.
+		// SelectListModal remains usable as is when this field is absent
+		// (defensive fallback if Inbox doesn't exist, and unchanged behavior on
+		// the Wantlist side).
 		defaultListId?: string;
 	};
 }
 
-// Piste de résultats défilante horizontalement (carousel), partagée par
-// AddCardsModal (ajout de carte) et ChangePrintingModal (choix d'une autre
-// version) : flèches gauche/droite + molette (par page) pour naviguer.
+// Horizontally scrolling results track (carousel), shared by AddCardsModal
+// (card adding) and ChangePrintingModal (choosing another version):
+// left/right arrows + mouse wheel (per page) to navigate.
 export function setupResultsCarousel(container: HTMLElement): HTMLElement {
 	const carousel = container.createDiv({ cls: "mtg-search-carousel" });
 
@@ -141,12 +137,12 @@ export function setupResultsCarousel(container: HTMLElement): HTMLElement {
 		resultsEl.scrollBy({ left: dir * resultsEl.clientWidth, behavior: "smooth" });
 	};
 
-	// Plus rien à faire défiler dans cette direction -> pas d'effet de survol
-	// (is-disabled, voir styles.css) — demandé explicitement. 2px de marge
-	// plutôt qu'une égalité stricte : scrollWidth/scrollLeft/clientWidth sont
-	// des valeurs flottantes en zoom fractionnel, et scroll-snap-type peut
-	// laisser le point de repos réel à 1-2px de 0 plutôt que pile dessus
-	// (constaté empiriquement) — une comparaison trop stricte le raterait.
+	// Nothing more to scroll in this direction -> no hover effect
+	// (is-disabled, see styles.css) — explicitly requested. 2px of margin
+	// rather than strict equality: scrollWidth/scrollLeft/clientWidth are
+	// floating-point values at fractional zoom, and scroll-snap-type can leave
+	// the real resting point 1-2px away from 0 rather than exactly on it
+	// (observed empirically) — a comparison that is too strict would miss it.
 	const updateArrowState = () => {
 		leftArrow.toggleClass("is-disabled", resultsEl.scrollLeft <= 2);
 		rightArrow.toggleClass(
@@ -154,32 +150,31 @@ export function setupResultsCarousel(container: HTMLElement): HTMLElement {
 			resultsEl.scrollLeft + resultsEl.clientWidth >= resultsEl.scrollWidth - 2
 		);
 	};
-	// "scroll" seul ne suffit pas ici : avec scroll-snap-type: x mandatory +
-	// scroll-behavior: smooth (voir mtg-search-results, styles.css), l'événement
-	// se déclenche à chaque frame de l'animation ET du réajustement au point
-	// d'ancrage qui suit — mais la toute dernière frame, une fois le point de
-	// snap réellement atteint, n'est pas garantie de porter la valeur finale
-	// exacte selon le moteur (bug initialement rapporté : la flèche gauche
-	// restait survolable une fois revenu à la toute première carte). "scrollend"
-	// se déclenche une seule fois, une fois le défilement ET le réajustement au
-	// snap totalement terminés — support natif Chromium ≥114, largement inclus
-	// dans l'Electron d'Obsidian. Gardé en plus de "scroll" (pas à sa place) :
-	// "scroll" garde l'affichage réactif pendant le défilement lui-même,
-	// "scrollend" garantit l'état final correct une fois le mouvement retombé.
+	// "scroll" alone isn't enough here: with scroll-snap-type: x mandatory +
+	// scroll-behavior: smooth (see mtg-search-results, styles.css), the event
+	// fires on every frame of the animation AND of the readjustment to the snap
+	// point that follows — but the very last frame, once the snap point is
+	// actually reached, isn't guaranteed to carry the exact final value
+	// depending on the engine (initially reported bug: the left arrow stayed
+	// hoverable once back at the very first card). "scrollend" fires only once,
+	// once the scrolling AND the readjustment to the snap are entirely over —
+	// native support Chromium ≥114, widely included in Obsidian's Electron. Kept
+	// in addition to "scroll" (not in its place): "scroll" keeps the display
+	// reactive during the scrolling itself, "scrollend" guarantees the correct
+	// final state once the movement has settled.
 	resultsEl.addEventListener("scroll", updateArrowState, { passive: true });
 	resultsEl.addEventListener("scrollend", updateArrowState, { passive: true });
-	// Les tuiles sont ajoutées par l'appelant (renderResult/renderPrintingTile)
-	// après le retour de cette fonction, jamais via un callback qu'elle
-	// pourrait invoquer elle-même — un MutationObserver sur les enfants est
-	// donc le seul point central pour retrouver un état d'activation correct
-	// à chaque nouvelle recherche, sans dupliquer cette logique dans les 2
-	// call sites (AddCardsModal + ChangePrintingModal). Un ResizeObserver
-	// couvre en plus un redimensionnement de la fenêtre elle-même (clientWidth/
-	// scrollWidth changent tous les deux, mais pas forcément dans le même
-	// rapport). Ni l'un ni l'autre n'est explicitement déconnecté : resultsEl
-	// est détruit avec la modale à sa fermeture, les deux observers deviennent
-	// alors éligibles au GC — même raisonnement que setupCardTilt ailleurs
-	// dans ce plugin (voir card-detail-fx.ts).
+	// The tiles are added by the caller (renderResult/renderPrintingTile) after
+	// this function returns, never through a callback it could invoke itself —
+	// a MutationObserver on the children is therefore the only central point to
+	// recover a correct activation state on each new search, without
+	// duplicating this logic at the 2 call sites (AddCardsModal +
+	// ChangePrintingModal). A ResizeObserver additionally covers a resizing of
+	// the window itself (clientWidth/scrollWidth both change, but not
+	// necessarily in the same ratio). Neither is explicitly disconnected:
+	// resultsEl is destroyed with the modal when it closes, both observers then
+	// become eligible for GC — same reasoning as setupCardTilt elsewhere in
+	// this plugin (see card-detail-fx.ts).
 	new MutationObserver(updateArrowState).observe(resultsEl, { childList: true });
 	new ResizeObserver(updateArrowState).observe(resultsEl);
 	updateArrowState();
@@ -206,42 +201,39 @@ export function setupResultsCarousel(container: HTMLElement): HTMLElement {
 	return resultsEl;
 }
 
-// Tuiles "squelette" affichées pendant le chargement (recherche en cours /
-// résultats par défaut) — même structure/classes de boîte qu'une vraie tuile
-// (renderScryfallResultTile ci-dessous : image ratio 5/7, footer, zone
-// d'action), contenu vide et pulsant à la place. Corrige un saut visuel
-// signalé : avant, un simple texte "Searching…"/"Loading recent cards…" (une
-// ligne) tenait lieu de contenu pendant le chargement, donc la piste
-// (mtg-search-results, sans hauteur fixe — seulement une min-height que les
-// vraies tuiles dépassent largement une fois chargées, voir styles.css)
-// s'affaissait puis re-grandissait d'un coup à l'arrivée des résultats.
-// Réutiliser le même gabarit de boîte élimine le saut par construction (même
-// hauteur des deux côtés) plutôt que de deviner/mesurer une valeur px à
-// figer. `count` = le nombre de tuiles visibles à la fois dans le carrousel
-// (4, voir .mtg-result-card-tile) — au-delà, le nombre exact n'a aucune
-// influence sur la hauteur d'une rangée flex nowrap, seule la largeur/hauteur
-// PAR tuile compte.
+// "Skeleton" tiles displayed while loading (search in progress / default
+// results) — same box structure/classes as a real tile
+// (renderScryfallResultTile below: 5/7 ratio image, footer, action area),
+// with empty, pulsing content instead. Fixes a reported visual jump: before,
+// a simple "Searching…"/"Loading recent cards…" text (one line) stood in as
+// content while loading, so the track (mtg-search-results, with no fixed
+// height — only a min-height that the real tiles far exceed once loaded, see
+// styles.css) collapsed then suddenly grew back when the results arrived.
+// Reusing the same box template eliminates the jump by construction (same
+// height on both sides) rather than guessing/measuring a px value to freeze.
+// `count` = the number of tiles visible at once in the carousel (4, see
+// .mtg-result-card-tile) — beyond that, the exact number has no influence on
+// the height of a nowrap flex row, only the width/height PER tile matters.
 export function renderResultSkeletons(resultsEl: HTMLElement, count = 4) {
 	for (let i = 0; i < count; i++) {
 		const tile = resultsEl.createDiv({ cls: "mtg-result-card-tile mtg-result-card-tile-skeleton" });
 
 		const imgWrap = tile.createDiv({ cls: "mtg-result-card-image-wrap" });
-		// mtg-no-image hérite déjà de mtg-result-card-image son aspect-ratio
-		// 5/7 (même classes que renderScryfallResultTile utilise pour une
-		// carte réellement sans image) — c'est ce ratio, pas une hauteur fixe
-		// devinée, qui garantit une hauteur identique à une vraie tuile quelle
-		// que soit la largeur réelle du carrousel.
+		// mtg-no-image already inherits its 5/7 aspect-ratio from
+		// mtg-result-card-image (same classes that renderScryfallResultTile uses
+		// for a card truly without an image) — it is this ratio, not a guessed
+		// fixed height, that guarantees a height identical to a real tile whatever
+		// the carousel's actual width.
 		imgWrap.createDiv({ cls: "mtg-result-card-image mtg-no-image mtg-skeleton-pulse" });
 
 		const footer = tile.createDiv({ cls: "mtg-result-card-footer" });
 		const footerLeft = footer.createDiv({ cls: "mtg-result-card-footer-left" });
 		footerLeft.createSpan({ cls: "mtg-result-card-set-badge mtg-skeleton-pulse" });
-		// Espace insécable comme texte, plutôt qu'un span vide : un élément
-		// sans aucun contenu texte peut perdre la hauteur de ligne que son
-		// font-size lui donnerait sinon — un espace insécable réserve cette
-		// hauteur exactement comme le ferait le vrai texte ("#123"/"2.50 $")
-		// une fois chargé, sans rien afficher de lisible entre-temps (color:
-		// transparent, voir styles.css).
+		// Non-breaking space as text, rather than an empty span: an element with
+		// no text content at all can lose the line height that its font-size would
+		// otherwise give it — a non-breaking space reserves that height exactly as
+		// the real text ("#123"/"2.50 $") would once loaded, without displaying
+		// anything readable in the meantime (color: transparent, see styles.css).
 		footerLeft.createSpan({ cls: "mtg-result-card-number mtg-skeleton-pulse", text: " " });
 		footer.createSpan({ cls: "mtg-result-card-price mtg-skeleton-pulse", text: " " });
 
@@ -251,35 +243,34 @@ export function renderResultSkeletons(resultsEl: HTMLElement, count = 4) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Sortie/entrée animées des tuiles de résultat (AddCardsModal uniquement — */
-/*  ChangePrintingModal charge une seule fois par ouverture, pas à chaque    */
-/*  frappe, donc rien à animer là-bas)                                       */
+/* Animated exit/entrance of the result tiles (AddCardsModal only — */
+/* ChangePrintingModal loads once per opening, not on every keystroke, so */
+/* nothing to animate there) */
 /* -------------------------------------------------------------------------- */
 
-// Nombre de tuiles réellement visibles à la fois dans le carrousel (voir
-// .mtg-result-card-tile — "exactement 4 cartes visibles") : au-delà, une
-// tuile est hors champ au moment de la transition, pas la peine de
-// l'animer — ni à la sortie (animateResultTilesOut) ni à l'entrée
-// (applyResultTileStaggerEntrance), qui partagent cette même limite.
+// Number of tiles actually visible at once in the carousel (see
+// .mtg-result-card-tile — "exactly 4 cards visible"): beyond that, a tile
+// is out of view at the time of the transition, no point animating it —
+// neither on exit (animateResultTilesOut) nor on entrance
+// (applyResultTileStaggerEntrance), which share this same limit.
 const RESULT_TILE_STAGGER_MAX = 4;
-// ×2.5 (étaient 40ms/180ms) — demandé explicitement ("2x à 3x plus lent"),
-// milieu de la fourchette. RESULT_TILE_EXIT_TRANSITION_MS doit rester égal
-// à la durée de transition déclarée sur .mtg-result-card-tile dans
-// styles.css (0.45s) — les deux pilotent la même animation depuis deux
-// endroits différents (délai JS entre tuiles + durée CSS par tuile), et
-// doivent donc être changés ensemble.
+// ×2.5 (were 40ms/180ms) — explicitly requested ("2x to 3x slower"),
+// middle of the range. RESULT_TILE_EXIT_TRANSITION_MS must stay equal to
+// the transition duration declared on .mtg-result-card-tile in styles.css
+// (0.45s) — the two drive the same animation from two different places (JS
+// delay between tiles + CSS duration per tile), and must therefore be
+// changed together.
 const RESULT_TILE_STAGGER_DELAY_MS = 100;
 const RESULT_TILE_EXIT_TRANSITION_MS = 450;
 
-// Anime la sortie des tuiles ACTUELLEMENT affichées (fondu + léger
-// glissement, décalées de gauche à droite — ordre DOM = ordre visuel dans
-// le carrousel) avant qu'un nouveau lot ne les remplace — demandé
-// explicitement, plutôt qu'un remplacement instantané. Résout une fois
-// l'animation terminée (immédiatement s'il n'y avait rien à animer) ; rien
-// n'attend cette Promise dans l'usage principal (AddCardsModal.
-// triggerSearch, fire-and-forget — voir son propre commentaire), mais la
-// garder disponible en Promise laisse un futur appelant enchaîner dessus
-// sans changer la signature plus tard.
+// Animates the exit of the tiles CURRENTLY displayed (fade + slight slide,
+// staggered left to right — DOM order = visual order in the carousel)
+// before a new batch replaces them — explicitly requested, rather than an
+// instant replacement. Resolves once the animation is over (immediately if
+// there was nothing to animate); nothing waits on this Promise in the main
+// usage (AddCardsModal.triggerSearch, fire-and-forget — see its own
+// comment), but keeping it available as a Promise lets a future caller
+// chain on it without changing the signature later.
 export function animateResultTilesOut(resultsEl: HTMLElement): Promise<void> {
 	const tiles = Array.from(resultsEl.children).slice(0, RESULT_TILE_STAGGER_MAX) as HTMLElement[];
 	if (tiles.length === 0) return Promise.resolve();
@@ -290,26 +281,26 @@ export function animateResultTilesOut(resultsEl: HTMLElement): Promise<void> {
 	return new Promise((resolve) => window.setTimeout(resolve, totalMs));
 }
 
-// Réapparition en vague d'une tuile fraîchement insérée, décalée de gauche à
-// droite selon son index parmi le lot de résultats — même idiome que
-// CopyCardModal.revealTile/tileStaggerIndex (voir CLAUDE.md) : la tuile
-// démarre masquée (mtg-result-tile-enter, posée ici avant tout paint
-// puisqu'appelée juste après renderScryfallResultTile) puis
-// mtg-result-tile-visible est ajoutée après un délai croissant, ce qui
-// laisse au navigateur une image "départ" (masquée) distincte de l'arrivée
-// à animer — sans ce délai initial, rien n'aurait de transition à jouer.
+// Wave reappearance of a freshly inserted tile, staggered left to right
+// according to its index within the batch of results — same idiom as
+// CopyCardModal.revealTile/tileStaggerIndex (see CLAUDE.md): the tile starts
+// hidden (mtg-result-tile-enter, set here before any paint since called
+// right after renderScryfallResultTile) then mtg-result-tile-visible is
+// added after an increasing delay, which leaves the browser a distinct
+// "start" image (hidden) from the arrival to animate — without this initial
+// delay, there would be no transition to play.
 export function applyResultTileStaggerEntrance(tile: HTMLElement, index: number) {
 	if (index >= RESULT_TILE_STAGGER_MAX) return;
 	tile.addClass("mtg-result-tile-enter");
 	window.setTimeout(() => tile.addClass("mtg-result-tile-visible"), index * RESULT_TILE_STAGGER_DELAY_MS);
 }
 
-// Tuile "carte" d'un résultat (image + symbole d'édition teinté selon la
-// rareté / numéro / prix), avec une zone d'action laissée au call site :
-// bouton "Add" pour la recherche d'ajout, "Select"/"Current" pour le choix
-// d'impression. "caption" (nom de l'édition en toutes lettres) n'est utile
-// que pour ce second cas — plusieurs éditions du même nom existent parfois
-// dans des produits différents, le code seul ne suffit pas à les distinguer.
+// "Card" tile of a result (image + set symbol tinted by rarity / number /
+// price), with an action area left to the call site: "Add" button for the
+// add search, "Select"/"Current" for the printing choice. "caption" (the
+// set's name in full) is only useful for this second case — several sets of
+// the same name sometimes exist in different products, the code alone isn't
+// enough to tell them apart.
 export function renderScryfallResultTile(
 	plugin: MTGCollectionPlugin,
 	resultsEl: HTMLElement,
@@ -333,21 +324,21 @@ export function renderScryfallResultTile(
 
 	const footer = tile.createDiv({ cls: "mtg-result-card-footer" });
 
-	// Gauche : symbole d'édition teinté selon la rareté + numéro de collection.
+	// Left: set symbol tinted by rarity + collector number.
 	const footerLeft = footer.createDiv({ cls: "mtg-result-card-footer-left" });
 	const setBadge = footerLeft.createDiv({ cls: "mtg-result-card-set-badge" });
-	// Ne demande l'icône (getSetIconSvg, plugin.ts) qu'une fois la tuile
-	// visible — ou sur le point de l'être, rootMargin donne une marge de
-	// pré-chargement dans le sens du défilement pour éviter un flash d'icône
-	// manquante au moment où elle apparaît — dans la piste défilante, pas dès
-	// le rendu initial. getSetIconSvg sérialise déjà les nouveaux fetches
-	// (voir setIconFetchQueue, plugin.ts), mais un carrousel de 175 résultats
-	// n'a de toute façon aucune raison de réclamer l'icône des ~170 tuiles
-	// hors champ dès l'ouverture — cette garde réduit directement la taille
-	// de la rafale initiale, en plus de la file d'attente qui protège tous
-	// les autres appelants (listes/grilles, panneaux de détail, etc.). `root:
-	// resultsEl` (pas la fenêtre) : l'intersection doit être calculée par
-	// rapport à la piste elle-même, seul élément qui défile réellement ici.
+	// Only requests the icon (getSetIconSvg, plugin.ts) once the tile is
+	// visible — or about to be, rootMargin gives a preload margin in the
+	// scrolling direction to avoid a flash of missing icon at the moment it
+	// appears — in the scrolling track, not from the initial render.
+	// getSetIconSvg already serializes new fetches (see setIconFetchQueue,
+	// plugin.ts), but a carousel of 175 results has no reason anyway to
+	// request the icon of the ~170 out-of-view tiles right on opening — this
+	// guard directly reduces the size of the initial burst, in addition to the
+	// queue that protects all the other callers (lists/grids, detail panels,
+	// etc.). `root: resultsEl` (not the window): intersection must be computed
+	// relative to the track itself, the only element that actually scrolls
+	// here.
 	const io = new IntersectionObserver(
 		(entries) => {
 			if (!entries.some((e) => e.isIntersecting)) return;
@@ -374,7 +365,7 @@ export function renderScryfallResultTile(
 		text: `#${card.collector_number}`,
 	});
 
-	// Droite : dernier prix enregistré par Scryfall.
+	// Right: last price recorded by Scryfall.
 	footer.createSpan({
 		cls: "mtg-result-card-price",
 		text: formatScryfallPrice(card, plugin.settings.priceCurrency) || "—",

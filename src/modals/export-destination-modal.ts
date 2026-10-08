@@ -21,30 +21,28 @@ import {
 	writeToDeviceFolder,
 } from "../ui/vault-export";
 
-// Au-delà, la liste dit de continuer à taper pour restreindre — une vault de
-// plusieurs centaines de dossiers n'a aucun intérêt à toutes les rendre d'un
-// coup sur un téléphone.
+// Beyond that, the list says to keep typing to narrow down — a vault of
+// several hundred folders has no interest in rendering them all at once on a
+// phone.
 const MAX_FOLDER_ROWS = 150;
 
-// Fenêtre "Enregistrer sous" des exports sur mobile (iOS/Android), ouverte
-// par saveExportedFile (ui/file-export.ts) — voir CLAUDE.md, "File export".
-// Aucun plugin ne peut ouvrir la fenêtre système "Enregistrer sous" sur
-// mobile ni écrire hors de la vault via l'API publique : la destination
-// proposée ici est donc un dossier de la vault, et "Share…" est la porte de
-// sortie vers le reste de l'appareil (Enregistrer dans Fichiers, autres apps)
-// via la feuille de partage native. Sur Android, dont la feuille de partage
-// ne liste que des applications (aucun "Enregistrer dans un dossier",
-// contrairement à iOS), un bouton "Device folder…" ouvre le sélecteur de
-// dossier natif d'Obsidian pour écrire dans n'importe quel dossier du
-// téléphone — API non documentée, isolée dans vault-export.ts. Une fois un
-// dossier utilisé avec succès, il est mémorisé (par appareil) : la fenêtre
-// propose alors "Save to <dossier>" (écriture immédiate, sans sélecteur) et
-// "Other…" pour en choisir un autre.
+// "Save as" window for exports on mobile (iOS/Android), opened by
+// saveExportedFile (ui/file-export.ts) — see CLAUDE.md, "File export". No
+// plugin can open the system "Save as" window on mobile nor write outside the
+// vault via the public API: the destination offered here is therefore a vault
+// folder, and "Share…" is the way out to the rest of the device (Save to
+// Files, other apps) via the native share sheet. On Android, whose share
+// sheet only lists apps (no "Save to a folder", unlike iOS), a "Device
+// folder…" button opens Obsidian's native folder picker to write to any
+// folder of the phone — undocumented API, isolated in vault-export.ts. Once a
+// folder has been used successfully, it is remembered (per device): the
+// window then offers "Save to <folder>" (immediate write, no picker) and
+// "Other…" to choose another.
 //
-// Deux écrans dans la MÊME modale (formulaire / choix du dossier de la vault)
-// plutôt qu'une seconde modale empilée : même schéma que les sous-écrans de
-// ListSettingsModal (draw() qui rebranche selon un état), ce qui garde la
-// croix ronde et l'animation partagées de toutes les modales du plugin.
+// Two screens in the SAME modal (form / choice of the vault folder) rather
+// than a second stacked modal: same scheme as ListSettingsModal's sub-screens
+// (draw() that rewires according to a state), which keeps the round cross and
+// the animation shared by all of the plugin's modals.
 export class ExportDestinationModal extends Modal {
 	private exportContent: ExportContent;
 	private fileName: string;
@@ -52,8 +50,8 @@ export class ExportDestinationModal extends Modal {
 	private screen: "form" | "folders" = "form";
 	private folderQuery = "";
 	private busy = false;
-	// Jeton de la dernière vérification "ce fichier existe déjà" : une
-	// réponse arrivée après une frappe plus récente est ignorée.
+	// Token of the last "this file already exists" check: a response that
+	// arrived after a more recent keystroke is ignored.
 	private existsCheckId = 0;
 
 	constructor(app: App, content: ExportContent, filename: string) {
@@ -64,11 +62,11 @@ export class ExportDestinationModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		this.contentEl.addClass("mtg-new-deck-modal");
 		this.contentEl.addClass("mtg-export-modal");
@@ -109,9 +107,9 @@ export class ExportDestinationModal extends Modal {
 		const actions = contentEl.createDiv({ cls: "mtg-card-detail-actions mtg-export-actions" });
 		const saveBtn = actions.createEl("button", { text: "Save", cls: "mtg-search-add-btn" });
 		const shareBtn = actions.createEl("button", { text: "Share…", cls: "mtg-modal-cancel-btn" });
-		// Android : avec un dossier de l'appareil déjà utilisé, "Save to <dossier>"
-		// l'écrit tout de suite (aucun sélecteur) et "Other…" en choisit un autre ;
-		// sans dossier mémorisé, un seul bouton "Device folder…" ouvre le sélecteur.
+		// Android: with a device folder already used, "Save to <folder>" writes it
+		// right away (no picker) and "Other…" chooses another; with no remembered
+		// folder, a single "Device folder…" button opens the picker.
 		const rememberedDevice = Platform.isAndroidApp ? getLastDeviceFolder() : null;
 		let deviceQuickBtn: HTMLButtonElement | null = null;
 		let deviceBtn: HTMLButtonElement | null = null;
@@ -121,14 +119,14 @@ export class ExportDestinationModal extends Modal {
 				deviceQuickBtn = row.createEl("button", {
 					cls: "mtg-modal-cancel-btn mtg-export-device-quick",
 				});
-				// Le libellé dans un <span> : text-overflow ne tronque pas (avec "…")
-				// le texte direct d'un bouton inline-flex, seulement celui d'un
-				// conteneur bloc — et un chemin de dossier peut être long.
+				// The label in a <span>: text-overflow doesn't truncate (with "…") the
+				// direct text of an inline-flex button, only that of a block container —
+				// and a folder path can be long.
 				deviceQuickBtn.createSpan({
 					cls: "mtg-export-device-quick-label",
 					text: `Save to ${deviceFolderDisplayPath(rememberedDevice)}`,
 				});
-				// Le chemin complet en infobulle : le libellé peut être tronqué.
+				// The full path in a tooltip: the label may be truncated.
 				deviceQuickBtn.setAttribute("title", rememberedDevice);
 				deviceBtn = row.createEl("button", {
 					text: "Other…",
@@ -148,8 +146,8 @@ export class ExportDestinationModal extends Modal {
 					: "Share… opens the Android share menu. Device folder… saves straight into a folder you pick on this phone.",
 		});
 
-		// Nom vide → aucun bouton d'écriture, plutôt qu'un clic silencieux
-		// qui ne ferait rien (même raisonnement que NewListModal).
+		// Empty name → no write button, rather than a silent click that would do
+		// nothing (same reasoning as NewListModal).
 		const refresh = () => {
 			const valid = sanitizeFileName(this.fileName, "") !== "";
 			saveBtn.disabled = !valid || this.busy;
@@ -177,8 +175,8 @@ export class ExportDestinationModal extends Modal {
 				rememberExportFolder(this.folder);
 				new Notice(`Saved ${name} to ${folderSentenceName(this.folder)}.`);
 				this.close();
-				// Après la fermeture : la feuille native se présente par-dessus
-				// l'app, pas par-dessus cette modale en train de disparaître.
+				// After the closing: the native sheet presents itself over the app, not
+				// over this modal that is disappearing.
 				if (share) await shareVaultFile(this.app, path);
 			} catch (e) {
 				console.error("MTG Collection Tracker: could not save the export file.", e);
@@ -192,11 +190,11 @@ export class ExportDestinationModal extends Modal {
 		shareBtn.addEventListener("click", () => void submit(true));
 		cancelBtn.addEventListener("click", () => this.close());
 
-		// Android uniquement : écriture directe dans un dossier de l'appareil — le
-		// dossier mémorisé ("Save to …") ou un dossier choisi dans le sélecteur
-		// natif d'Obsidian ("Other…"/"Device folder…"). Jamais d'écrasement (voir
-		// writeToDeviceFolder). Chaque échec s'affiche ICI, dans la fenêtre,
-		// plutôt que de laisser croire que rien ne s'est passé.
+		// Android only: direct write into a device folder — the remembered folder
+		// ("Save to …") or a folder chosen in Obsidian's native picker
+		// ("Other…"/"Device folder…"). Never overwrites (see writeToDeviceFolder).
+		// Each failure is shown HERE, in the window, rather than letting people
+		// think nothing happened.
 		const saveToDevice = async (knownFolder: string | null) => {
 			const name = sanitizeFileName(this.fileName, "");
 			if (name === "" || this.busy) return;
@@ -213,7 +211,7 @@ export class ExportDestinationModal extends Modal {
 				if (folder === null) {
 					folder = await pickDeviceFolder();
 					if (folder === null) {
-						// Annulé dans le sélecteur natif : rien à signaler.
+						// Cancelled in the native picker: nothing to report.
 						this.busy = false;
 						refresh();
 						return;
@@ -227,8 +225,8 @@ export class ExportDestinationModal extends Modal {
 				console.error("MTG Collection Tracker: could not save to a device folder.", e);
 				this.busy = false;
 				refresh();
-				// Un dossier déjà connu a pu disparaître depuis : le dire en clair
-				// plutôt que d'afficher l'erreur native brute.
+				// An already known folder may have disappeared since: say so plainly
+				// rather than display the raw native error.
 				const message =
 					folder !== null
 						? await describeDeviceFolderError(this.app, folder, e)
@@ -240,10 +238,10 @@ export class ExportDestinationModal extends Modal {
 		deviceBtn?.addEventListener("click", () => void saveToDevice(null));
 	}
 
-	// Écrase sans demander à chaque export du même nom au même endroit, c'est
-	// le comportement voulu (un export se régénère à tout moment) — mais avec
-	// un dossier ET un nom choisis à la main, l'utilisateur doit au moins être
-	// prévenu qu'un fichier existant va être remplacé.
+	// Overwrites without asking on each export of the same name at the same
+	// place, that's the intended behavior (an export is regenerated at any
+	// time) — but with a folder AND a name chosen by hand, the user must at
+	// least be warned that an existing file is going to be replaced.
 	private async refreshExistsWarning(warningEl: HTMLElement) {
 		const id = ++this.existsCheckId;
 		const name = sanitizeFileName(this.fileName, "");
@@ -272,9 +270,9 @@ export class ExportDestinationModal extends Modal {
 
 		const paths = this.listFolderPaths();
 		const listEl = contentEl.createDiv({ cls: "mtg-export-folder-list" });
-		// Ne reconstruit que la liste à chaque frappe, jamais ce <input>
-		// lui-même — même raisonnement (perte de focus en cours de saisie)
-		// que SelectListModal/CopyCardModal.
+		// Only rebuilds the list on each keystroke, never this <input> itself —
+		// same reasoning (focus loss while typing) as
+		// SelectListModal/CopyCardModal.
 		const renderRows = () => this.renderFolderRows(listEl, paths, searchInput.value);
 		searchInput.addEventListener("input", () => {
 			this.folderQuery = searchInput.value;
@@ -290,17 +288,16 @@ export class ExportDestinationModal extends Modal {
 		});
 	}
 
-	// Racine, dossier par défaut et dossier courant sont toujours proposés
-	// même s'ils n'existent pas encore (le premier export sur une vault
-	// vierge, un dossier mémorisé depuis supprimé) — ensureFolder les créera
-	// à l'écriture.
+	// Root, default folder and current folder are always offered even if they
+	// don't exist yet (the first export on a blank vault, a remembered folder
+	// since deleted) — ensureFolder will create them on write.
 	private listFolderPaths(): string[] {
 		const set = new Set<string>(this.app.vault.getAllFolders(true).map((f) => (f.path === "" ? "/" : f.path)));
 		set.add("/");
 		set.add(DEFAULT_EXPORT_FOLDER);
 		set.add(this.folder === "" ? "/" : this.folder);
 		return Array.from(set).sort((a, b) => {
-			// Racine d'abord, puis le dossier par défaut, puis l'ordre alphabétique.
+			// Root first, then the default folder, then alphabetical order.
 			const rank = (p: string) => (p === "/" ? 0 : p === DEFAULT_EXPORT_FOLDER ? 1 : 2);
 			return rank(a) - rank(b) || a.localeCompare(b);
 		});
@@ -311,8 +308,8 @@ export class ExportDestinationModal extends Modal {
 		const q = query.trim().toLowerCase();
 		const rows: { path: string; isNew: boolean }[] = [];
 
-		// Un chemin tapé qui ne correspond à aucun dossier existant devient une
-		// ligne "Create folder" en tête de liste.
+		// A typed path that matches no existing folder becomes a "Create folder"
+		// row at the head of the list.
 		const typed = q === "" ? null : sanitizeFolderPath(query);
 		if (typed && !paths.some((p) => p.toLowerCase() === typed.toLowerCase())) {
 			rows.push({ path: typed, isNew: true });

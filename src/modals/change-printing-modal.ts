@@ -12,25 +12,24 @@ import { applyModalOpenAnimation, closeModalAnimated, addModalCloseButton } from
 
 export class ChangePrintingModal extends Modal {
 	private plugin: MTGCollectionPlugin;
-	// `scry` optionnel reçu par le rappelant — nécessaire pour le flux Deck
-	// uniquement (voir AddCardsModal.openChangePrintingForEntry) : contrairement
-	// à changeCollectionCardPrinting/changeWantlistCardPrinting (jamais de fusion,
-	// mutent toujours la même ligne en place), changeDeckCardPrinting
-	// (plugin.ts) peut fusionner avec une ligne déjà présente pour la même
-	// impression dans ce deck — la ligne d'origine que l'appelant connaissait
-	// peut donc avoir disparu, et seul le NOUVEAU scryfallId (`scry.id`) reste
-	// une clé fiable pour la retrouver après coup. Un rappelant qui n'en a pas
-	// besoin (Collection/Wantlist, tous deux passés par une fonction ()=>{})
-	// reste valide tel quel — une fonction à 0 paramètre est assignable à ce
-	// type, TypeScript/JS l'appellent simplement avec un argument ignoré.
+	// Optional `scry` received by the caller — needed for the Deck flow only (see
+	// AddCardsModal.openChangePrintingForEntry): unlike
+	// changeCollectionCardPrinting/changeWantlistCardPrinting (never merge, always
+	// mutate the same row in place), changeDeckCardPrinting (plugin.ts) can merge
+	// with a row already present for the same printing in this deck — the original
+	// row the caller knew may therefore have disappeared, and only the NEW
+	// scryfallId (`scry.id`) remains a reliable key to find it afterwards. A
+	// caller that doesn't need it (Collection/Wantlist, both passing a ()=>{}
+	// function) remains valid as is — a function with 0 parameters is assignable
+	// to this type, TypeScript/JS simply call it with an ignored argument.
 	private onChanged: (scry?: ScryfallCard) => void;
-	// `id` optionnel : DeckCard n'a pas de champ id propre (voir "Data model
-	// notes" dans CLAUDE.md) — inutilisé quand source === "deck", auquel cas
-	// deckContext (scryfallId + catégorie) sert de clé à la place, voir
+	// Optional `id`: DeckCard has no id field of its own (see "Data model
+	// notes" in CLAUDE.md) — unused when source === "deck", in which case
+	// deckContext (scryfallId + category) serves as the key instead, see
 	// changeDeckCardPrinting (plugin.ts).
 	private card: { id?: string; name: string; scryfallId: string };
-	// Distingue quelle méthode plugin appeler (les trois ne touchent pas le
-	// même tableau — collection/wantlist/decks) sans dupliquer toute la modale.
+	// Distinguishes which plugin method to call (the three don't touch the same
+	// array — collection/wantlist/decks) without duplicating the whole modal.
 	private source: "collection" | "wantlist" | "deck";
 	private deckContext?: { deckId: string; category: DeckCardCategory };
 	private allPrintings: ScryfallCard[] = [];
@@ -54,11 +53,11 @@ export class ChangePrintingModal extends Modal {
 	}
 
 	async onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		const { contentEl } = this;
 		contentEl.addClass("mtg-search-modal");
@@ -98,11 +97,10 @@ export class ChangePrintingModal extends Modal {
 		this.renderFiltered();
 	}
 
-	// Filtre côté client (pas une nouvelle requête Scryfall) : this.allPrintings
-	// est déjà l'ensemble fermé des impressions de cette carte précise, donc un
-	// simple filtre texte sur nom/code d'édition ou numéro suffit — pas besoin
-	// de la barre de puces complète de AddCardsModal, faite pour interroger
-	// tout Scryfall.
+	// Client-side filter (not a new Scryfall request): this.allPrintings is
+	// already the closed set of printings of this specific card, so a simple
+	// text filter on name/set code or number is enough — no need for
+	// AddCardsModal's full chip bar, made to query all of Scryfall.
 	private renderFiltered() {
 		const q = this.searchInput.value.trim().toLowerCase();
 		const filtered = q
@@ -129,15 +127,15 @@ export class ChangePrintingModal extends Modal {
 			this.resultsEl,
 			scry,
 			(el) => {
-				// Doit passer par ce même conteneur intermédiaire que
-				// renderAddControl (add-cards-modal.ts) — .mtg-result-card-add-btn a
-				// height:100%, pensé pour se caler sur le height:1.9em fixe de
-				// .mtg-result-card-add-control. Sans ce wrapper, le bouton devient
-				// lui-même un enfant flex direct de la tuile (flex-direction:
-				// column) et son height:100% se résout contre la hauteur de LA
-				// TUILE elle-même (étirée par align-items:stretch sur la piste du
-				// carrousel) au lieu de 1.9em — bug rapporté avec capture d'écran,
-				// bouton "Select"/"Current" démesurément grand.
+				// Must go through this same intermediate container as renderAddControl
+				// (add-cards-modal.ts) — .mtg-result-card-add-btn has height:100%,
+				// designed to settle on the fixed height:1.9em of
+				// .mtg-result-card-add-control. Without this wrapper, the button itself
+				// becomes a direct flex child of the tile (flex-direction: column) and its
+				// height:100% resolves against the height of THE TILE itself (stretched by
+				// align-items:stretch on the carousel track) instead of 1.9em — bug
+				// reported with a screenshot, "Select"/"Current" button disproportionately
+				// large.
 				const control = el.createDiv({ cls: "mtg-result-card-add-control" });
 				const selectBtn = control.createEl("button", {
 					cls: "mtg-result-card-add-btn",

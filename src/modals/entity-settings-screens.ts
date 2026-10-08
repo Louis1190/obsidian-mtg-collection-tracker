@@ -12,24 +12,24 @@ import { MANA_ICON_LETTERS, OTHER_ICON_SYMBOLS } from "./entity-icon-options";
 import { setSvgMarkup } from "../ui/svg-markup";
 
 /* -------------------------------------------------------------------------- */
-/*  Sous-écrans communs aux modales de réglages (liste / wantlist / deck)     */
-/*  — List/Wantlist/DeckSettingsModal, et InboxSettingsModal pour la          */
-/*  confirmation                                                              */
+/* Sub-screens common to the settings modals (list / wantlist / deck) — */
+/* List/Wantlist/DeckSettingsModal, and InboxSettingsModal for the */
+/* confirmation */
 /* -------------------------------------------------------------------------- */
-// Chaque modale de réglages remplace tout son contenu par un « sous-écran » (confirmation, choix de la cible
-// d'une fusion, de la couverture, de l'icône) puis revient à l'écran principal. Ces sous-écrans étaient copiés
-// trois fois, identiques aux noms près ; ce qui change vraiment d'une section à l'autre est un paramètre :
-// le nom de l'entité ("list"/"wantlist"/"deck"), ses cartes et la clé qui les identifie (CollectionCard.id,
-// DeckCard.scryfallId), les candidats à la fusion (l'Inbox exclue côté liste), et quelle méthode du plugin
-// enregistre le résultat.
+// Each settings modal replaces all of its content with a "sub-screen" (confirmation, choice of a merge's
+// target, of the cover, of the icon) then goes back to the main screen. These sub-screens were copied three
+// times, identical apart from the names; what really changes from one section to another is a parameter: the
+// entity's name ("list"/"wantlist"/"deck"), its cards and the key that identifies them (CollectionCard.id,
+// DeckCard.scryfallId), the merge candidates (Inbox excluded on the list side), and which plugin method saves
+// the result.
 //
-// La modale garde ses drapeaux (confirmingDelete, pickingIcon…) et son draw() : elle appelle la fonction
-// d'écran, qui construit le contenu et rappelle `onCancel` / `onDone` — c'est la modale qui bascule le drapeau
-// et redessine.
+// The modal keeps its flags (confirmingDelete, pickingIcon…) and its draw(): it calls the screen function,
+// which builds the content and calls back `onCancel` / `onDone` — it is the modal that flips the flag and
+// redraws.
 
-// Écran de confirmation plein-format (Delete / Clear) : titre, message, « Yes, … » en rouge, « No, cancel ».
-// Pas le swap Delete/Cancel en place de la barre d'actions groupées — cohérent entre les actions destructives
-// de ces fenêtres.
+// Full-format confirmation screen (Delete / Clear): title, message, red "Yes, …", "No, cancel". Not the
+// in-place Delete/Cancel swap of the bulk-actions bar — consistent among the destructive actions of these
+// windows.
 export function renderConfirmScreen(
 	contentEl: HTMLElement,
 	c: { title: string; message: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void }
@@ -46,18 +46,18 @@ export function renderConfirmScreen(
 	noBtn.addEventListener("click", c.onCancel);
 }
 
-// Choix de la 2ᵉ entité d'une fusion (« Merge with another … »). Ne fait que choisir : le reste (nom éditable,
-// confirmation, mutation) est délégué à MergeListsModal/MergeWantlistsModal/MergeDecksModal (merge-modals.ts) par
-// `onChoose`. Même mécanique que le Merge groupé d'une galerie, demandé explicitement : une NOUVELLE entité est
-// créée avec les deux, et LES DEUX originales (y compris celle-ci) sont supprimées — pas une simple absorption.
-// Les candidats sont fournis par la modale, déjà filtrés (côté listes, l'Inbox est exclue : mergeLists l'ignore
-// silencieusement, la proposer mènerait à un « merge » qui ne fait rien de visible) et dans l'ordre voulu.
-// Présenté comme « Move to »/« Copy to » (CopyCardModal) — demandé explicitement, à la place du <select> texte
-// d'avant : même galerie de tuiles (couverture/nom/« N cards »), même barre de recherche, même apparition
-// échelonnée des premières tuiles (revealTile). Cliquer une tuile choisit directement la 2ᵉ entité, comme cliquer
-// une tuile de CopyCardModal déclenche directement le copy/move — pas de bouton « Merge » séparé. Pas d'onglets
-// (une seule destination possible) ni de tuile « + New X » (la fusion suppose une entité existante) ; mêmes
-// classes .mtg-copy-card-gallery-* que CopyCardModal, aucune scopée sous .mtg-copy-card-modal.
+// Choice of the 2nd entity of a merge ("Merge with another …"). Only chooses: the rest (editable name,
+// confirmation, mutation) is delegated to MergeListsModal/MergeWantlistsModal/MergeDecksModal (merge-modals.ts)
+// through `onChoose`. Same mechanism as a gallery's grouped Merge, explicitly requested: a NEW entity is created
+// with the two, and BOTH originals (this one included) are deleted — not a simple absorption. The candidates are
+// supplied by the modal, already filtered (on the list side, Inbox is excluded: mergeLists silently ignores it,
+// offering it would lead to a "merge" that does nothing visible) and in the wanted order.
+// Presented like "Move to"/"Copy to" (CopyCardModal) — explicitly requested, in place of the former text
+// <select>: same gallery of tiles (cover/name/"N cards"), same search bar, same staggered appearance of the
+// first tiles (revealTile). Clicking a tile directly chooses the 2nd entity, just as clicking a CopyCardModal
+// tile directly triggers the copy/move — no separate "Merge" button. No tabs (a single possible destination) nor
+// "+ New X" tile (a merge assumes an existing entity); same .mtg-copy-card-gallery-* classes as CopyCardModal,
+// none scoped under .mtg-copy-card-modal.
 export interface MergeCandidate {
 	id: string;
 	name: string;
@@ -70,7 +70,7 @@ export function renderMergeTargetScreen(
 	s: {
 		// "list" | "wantlist" | "deck"
 		noun: string;
-		// Nom de l'entité dont on ouvre les réglages (citée dans le texte d'aide).
+		// Name of the entity whose settings are being opened (quoted in the help text).
 		currentName: string;
 		candidates: MergeCandidate[];
 		onChoose: (targetId: string) => void;
@@ -130,10 +130,10 @@ export function renderMergeTargetScreen(
 			galleryEl.createEl("p", { text: `No ${s.noun} found.`, cls: "mtg-status" });
 		}
 	};
-	// Ne reconstruit QUE la galerie à chaque frappe, jamais tout
-	// contentEl via this.draw() — reconstruire ce <input> lui-même
-	// couperait le focus au milieu de la saisie (même risque déjà
-	// documenté pour CopyCardModal.searchInputEl).
+	// Rebuilds ONLY the gallery on each keystroke, never the whole contentEl
+	// via this.draw() — rebuilding this <input> itself would cut the focus in
+	// the middle of typing (same risk already documented for
+	// CopyCardModal.searchInputEl).
 	searchInput.addEventListener("input", () => renderMergeGallery(false));
 	renderMergeGallery(true);
 
@@ -142,19 +142,19 @@ export function renderMergeTargetScreen(
 	cancelBtn.addEventListener("click", s.onCancel);
 }
 
-// « Choose cover image » : une carte de CETTE entité, dont l'illustration remplace le choix automatique (la plus
-// chère, voir pickCoverImage/resolveCoverImage, core/price.ts) partout où ce groupe est affiché (grille de la
-// section, galerie de CopyCardModal… — tout passe par groupByList/groupByWantlist/resolveDeckCoverImage, donc rien
-// d'autre à toucher). Grille de 3 colonnes d'illustrations SEULES (artCropUrl — le crop Scryfall de l'art seul,
-// pas le scan complet de la carte, demandé explicitement) avec juste le nom en dessous, en discret. Sélection par
-// contour (même recette que .mtg-set-tile-selected de la grille principale : outline, pas border, pour ne jamais
-// décaler la boîte au clic) plutôt qu'un bouton « Use this » par tuile — un seul choix à la fois, validé par un
-// unique « Save » en bas ; naviguer dans la grille ne touche donc pas encore la couverture enregistrée. Pas de
-// barre de recherche (volontairement proportionné à ce qui a été demandé).
-// « Automatic » est toujours la 1ʳᵉ tuile (pas seulement quand un choix manuel est déjà fait) — sans elle, rien
-// n'indiquerait que c'est l'état actif tant qu'aucune carte n'a jamais été choisie.
-// `key` identifie une carte pour cette section (CollectionCard.id / WantlistCard.id côté listes et wantlists,
-// DeckCard.scryfallId côté deck, qui n'a pas d'id propre) ; `currentKey` est la couverture actuelle.
+// "Choose cover image": a card of THIS entity, whose artwork replaces the automatic choice (the most expensive,
+// see pickCoverImage/resolveCoverImage, core/price.ts) wherever this group is displayed (section grid,
+// CopyCardModal gallery… — everything goes through groupByList/groupByWantlist/resolveDeckCoverImage, so nothing
+// else to touch). Grid of 3 columns of artworks ONLY (artCropUrl — the Scryfall crop of the art alone, not the
+// full card scan, explicitly requested) with just the name below, discreet. Selection by outline (same recipe as
+// .mtg-set-tile-selected of the main grid: outline, not border, so as never to shift the box on click) rather
+// than a "Use this" button per tile — a single choice at a time, validated by a single "Save" at the bottom;
+// browsing the grid therefore doesn't touch the saved cover yet. No search bar (deliberately proportioned to
+// what was asked for).
+// "Automatic" is always the 1st tile (not only when a manual choice has already been made) — without it, nothing
+// would indicate that it is the active state as long as no card has ever been chosen.
+// `key` identifies a card for this section (CollectionCard.id / WantlistCard.id on the lists and wantlists side,
+// DeckCard.scryfallId on the deck side, which has no id of its own); `currentKey` is the current cover.
 export interface CoverCard {
 	key: string;
 	name: string;
@@ -168,9 +168,9 @@ export function renderCoverPickerScreen(
 		noun: string;
 		cards: CoverCard[];
 		currentKey: string | undefined;
-		// Enregistre le choix (undefined = automatique) — c'est la modale qui appelle la bonne méthode du plugin.
+		// Saves the choice (undefined = automatic) — the modal calls the right plugin method.
 		save: (key: string | undefined) => void;
-		// Après l'enregistrement (la modale quitte le sous-écran et redessine).
+		// After the save (the modal leaves the sub-screen and redraws).
 		onDone: () => void;
 		onCancel: () => void;
 	}
@@ -190,10 +190,9 @@ export function renderCoverPickerScreen(
 		cls: "mtg-status",
 	});
 
-	// État local à cet écran, validé seulement par "Save" plus bas —
-	// naviguer dans la grille ne touche pas encore list.coverCardId,
-	// contrairement à l'ancienne version qui appliquait chaque clic
-	// immédiatement.
+	// State local to this screen, validated only by "Save" further down —
+	// browsing the grid doesn't touch list.coverCardId yet, unlike the old
+	// version that applied each click immediately.
 	let selectedKey: string | undefined = s.currentKey;
 
 	const grid = contentEl.createDiv({ cls: "mtg-cover-picker-grid" });
@@ -206,9 +205,9 @@ export function renderCoverPickerScreen(
 		selectedKey = key;
 	};
 
-	// "Automatic" toujours en 1ʳᵉ tuile (pas seulement quand un choix
-	// manuel est déjà fait) — sans elle, rien n'indique que c'est
-	// l'état actif tant qu'aucune carte n'a jamais été choisie.
+	// "Automatic" always as the 1st tile (not only when a manual choice has
+	// already been made) — without it, nothing indicates that it is the active
+	// state as long as no card has ever been chosen.
 	const autoTile = grid.createDiv({
 		cls: "mtg-cover-picker-tile mtg-cover-picker-tile-auto" + (!s.currentKey ? " is-selected" : ""),
 	});
@@ -248,15 +247,15 @@ export function renderCoverPickerScreen(
 	cancelBtn.addEventListener("click", s.onCancel);
 }
 
-// État du sélecteur d'icône, porté par la modale (un CHAMP D'INSTANCE plutôt qu'une variable locale à draw())
-// pour survivre à un changement d'onglet (Mana Symbol/Set Symbol/Other symbol) : le corps de l'écran est
-// reconstruit à chaque changement d'onglet, une variable locale y serait réinitialisée depuis l'entité, perdant un
-// choix pas encore sauvegardé au moment de simplement changer d'onglet pour regarder l'autre.
-//  - pendingIcon : choix en cours, pas encore enregistré (validé seulement par « Save ») ;
-//  - tab : onglet affiché ;
-//  - dedupedSets : liste des éditions dédupliquées par symbole, mémorisée une fois calculée (dedupeSetsByIcon sur
-//    ~1000 entrées, pas gratuit) plutôt que recalculée à chaque ouverture — getAllScryfallSets() lui-même est déjà
-//    mis en cache côté plugin, mais la déduplication ne l'était pas.
+// State of the icon picker, carried by the modal (an INSTANCE FIELD rather than a local variable of draw()) to
+// survive a tab change (Mana Symbol/Set Symbol/Other symbol): the screen body is rebuilt on every tab change, a
+// local variable would be reset from the entity there, losing a choice not yet saved when simply switching tab
+// to look at the other one.
+// - pendingIcon: current choice, not yet saved (validated only by "Save");
+// - tab: displayed tab;
+// - dedupedSets: list of sets deduplicated by symbol, memoized once computed (dedupeSetsByIcon over ~1000
+//   entries, not free) rather than recomputed at every opening — getAllScryfallSets() itself is already cached
+//   on the plugin side, but the deduplication wasn't.
 export interface IconPickerState {
 	pendingIcon: ListIcon | undefined;
 	tab: "mana" | "set" | "other";
@@ -267,9 +266,9 @@ export function newIconPickerState(): IconPickerState {
 	return { pendingIcon: undefined, tab: "mana", dedupedSets: null };
 }
 
-// À appeler au clic sur « Choose icon » de l'écran principal : reprend le choix depuis l'icône actuelle de
-// l'entité et ouvre l'onglet qui la contient (set → « Set Symbol », symbole de OTHER_ICON_SYMBOLS → « Other
-// symbol », sinon « Mana Symbol »).
+// To be called on click of "Choose icon" on the main screen: takes the choice from the entity's current
+// icon and opens the tab that contains it (set → "Set Symbol", OTHER_ICON_SYMBOLS symbol → "Other symbol",
+// otherwise "Mana Symbol").
 export function openIconPicker(state: IconPickerState, icon: ListIcon | undefined) {
 	state.pendingIcon = icon;
 	state.tab =
@@ -280,21 +279,20 @@ export function openIconPicker(state: IconPickerState, icon: ListIcon | undefine
 				: "mana";
 }
 
-// « Choose icon » : un pictogramme affiché devant les 3 lignes de texte de l'entité (grille de la section ET
-// galerie de CopyCardModal — tout part de group.icon, posé une seule fois via setListIcon/setWantlistIcon/
-// setDeckIcon). 3 onglets, même langage visuel ET même mécanique que « My Collection »/« My Decks »/« My
-// Wantlists » dans CopyCardModal : les boutons d'onglet + la barre glissante (.mtg-copy-card-tab-indicator) sont
-// construits UNE SEULE FOIS ci-dessous (jamais recréés par un changement d'onglet), exactement comme
-// CopyCardModal.buildChrome — un changement d'onglet appelle switchIconTab (repositionne juste la barre +
-// reconstruit le corps), jamais un redessin complet, qui détruirait ces boutons et ferait réapparaître la barre déjà
-// en place sans glissement. state.pendingIcon garde le choix en cours d'un onglet à l'autre.
+// "Choose icon": a pictogram displayed in front of the entity's 3 lines of text (section grid AND CopyCardModal
+// gallery — everything starts from group.icon, set once via setListIcon/setWantlistIcon/setDeckIcon). 3 tabs,
+// same visual language AND same mechanism as "My Collection"/"My Decks"/"My Wantlists" in CopyCardModal: the tab
+// buttons + the sliding bar (.mtg-copy-card-tab-indicator) are built ONLY ONCE below (never recreated by a tab
+// change), exactly like CopyCardModal.buildChrome — a tab change calls switchIconTab (just repositions the bar +
+// rebuilds the body), never a complete redraw, which would destroy these buttons and make the bar reappear
+// already in place without sliding. state.pendingIcon keeps the current choice from one tab to another.
 export function renderIconPickerScreen(
 	contentEl: HTMLElement,
 	ctx: {
 		plugin: MTGCollectionPlugin;
 		noun: string;
 		state: IconPickerState;
-		// Enregistre le choix (undefined = aucune icône) — c'est la modale qui appelle la bonne méthode du plugin.
+		// Saves the choice (undefined = no icon) — the modal calls the right plugin method.
 		save: (icon: ListIcon | undefined) => void;
 		onDone: () => void;
 		onCancel: () => void;
@@ -328,28 +326,24 @@ export function renderIconPickerScreen(
 		tabIndicatorEl.style.transform = `translateX(${btn.offsetLeft}px)`;
 		tabIndicatorEl.style.width = `${btn.offsetWidth}px`;
 	};
-	// Positionnement initial SYNCHRONE, dans le même tick que la
-	// création de la barre — rien n'a encore été peint à une autre
-	// position dont il faudrait glisser, elle apparaît donc déjà au
-	// bon endroit sans glissement non désiré à l'ouverture (même
-	// raisonnement que CopyCardModal.buildChrome).
+	// SYNCHRONOUS initial positioning, in the same tick as the creation of the
+	// bar — nothing has been painted at another position yet from which to
+	// slide, so it appears already at the right place with no unwanted sliding
+	// on opening (same reasoning as CopyCardModal.buildChrome).
 	positionIndicator(tabButtons[state.tab]!);
 
-	// Hauteur minimale fixe pour que la fenêtre ne change pas de
-	// taille selon l'onglet actif (demandé explicitement) — bornée à
-	// la même valeur que le plafond de la grille "Set Symbol"
-	// (.mtg-icon-picker-grid, max-height:45vh) puisque c'est
-	// l'onglet le plus haut des 3 ; les onglets plus courts (Mana/
-	// Other) laissent juste de l'espace vide en dessous plutôt que
-	// de faire varier la hauteur totale de la fenêtre.
+	// Fixed minimum height so the window doesn't change size depending on the
+	// active tab (explicitly requested) — bounded to the same value as the cap
+	// of the "Set Symbol" grid (.mtg-icon-picker-grid, max-height:45vh) since
+	// it is the tallest tab of the 3; the shorter tabs (Mana/Other) just leave
+	// empty space below rather than vary the window's total height.
 	const body = contentEl.createDiv({ cls: "mtg-icon-picker-body" });
 
-	// Mana Symbol/Other symbol : même grille de 5 colonnes que Set
-	// Symbol (demandé explicitement) — .mtg-icon-picker-grid partagée
-	// par les 3 onglets (voir styles.css) est ce qui garantit à la
-	// fois la présentation identique ET la hauteur identique d'un
-	// onglet à l'autre (même conteneur, même max-height/overflow-y,
-	// juste moins de tuiles à faire défiler).
+	// Mana Symbol/Other symbol: same 5-column grid as Set Symbol (explicitly
+	// requested) — .mtg-icon-picker-grid, shared by the 3 tabs (see
+	// styles.css), is what guarantees both the identical presentation AND the
+	// identical height from one tab to another (same container, same
+	// max-height/overflow-y, just fewer tiles to scroll).
 	const renderSymbolGrid = (symbols: { letter: string; label: string; recolor?: boolean }[]) => {
 		const grid = body.createDiv({ cls: "mtg-icon-picker-grid" });
 		const selectTile = (tile: HTMLElement, icon: ListIcon | undefined) => {
@@ -359,11 +353,11 @@ export function renderIconPickerScreen(
 			tile.addClass("is-selected");
 			state.pendingIcon = icon;
 		};
-		// La tuile "None" (effacer le pictogramme) a été retirée du 1er
-		// onglet (demandé explicitement) — le bouton "Choose icon" de la
-		// fenêtre principale porte déjà sa propre petite croix pour ça
-		// une fois une icône choisie (voir plus bas, removeIconBtn), donc
-		// une case vide en tête de grille faisait doublon.
+		// The "None" tile (clear the pictogram) was removed from the 1st tab
+		// (explicitly requested) — the "Choose icon" button of the main window
+		// already carries its own small cross for that once an icon is chosen (see
+		// below, removeIconBtn), so an empty cell at the head of the grid was
+		// redundant.
 		symbols.forEach(({ letter, label, recolor }) => {
 			const tile = grid.createDiv({
 				cls:
@@ -376,47 +370,40 @@ export function renderIconPickerScreen(
 			void ctx.plugin.getManaSymbolSvg(letter).then((svg) => {
 				if (!svg) return;
 				setSvgMarkup(tile, svg);
-				// Seuls les symboles "Other symbol" mono-couleur (#000 pur,
-				// sans arrière-plan) demandent ce recolorage — voir le
-				// commentaire de OTHER_ICON_SYMBOLS pour le détail vérifié
-				// symbole par symbole. Jamais appliqué à un symbole de mana
-				// (recolor toujours absent sur MANA_ICON_LETTERS), qui doit
-				// garder sa vraie couleur.
+				// Only the single-color "Other symbol" symbols (pure #000, no background)
+				// need this recoloring — see the comment of OTHER_ICON_SYMBOLS for the
+				// detail checked symbol by symbol. Never applied to a mana symbol (recolor
+				// always absent on MANA_ICON_LETTERS), which must keep its true color.
 				if (recolor) applySvgColor(tile, "var(--text-muted)");
 			});
 			tile.addEventListener("click", () => selectTile(tile, { kind: "mana", value: letter }));
 		});
 	};
 
-	// Onglet "Set Symbol" : recherche + grille de 5 colonnes, le
-	// symbole seul — le nom du set en infobulle plutôt qu'en texte
-	// sous chaque tuile (demandé explicitement). dedupeSetsByIcon
-	// (api/scryfall.ts) évite de lister séparément plusieurs sets qui
-	// partagent le même symbole (tokens/promos/art series d'une même
-	// édition, très fréquent — 987 éditions non-numériques mais
-	// seulement 337 symboles distincts, vérifié en direct sur
-	// l'API — voir le commentaire de cette fonction). Toutes les
-	// tuiles sont construites UNE SEULE FOIS (dès que la liste de
-	// sets arrive) ; la recherche ne fait plus que masquer/afficher
-	// les tuiles déjà en place plutôt que les détruire/recréer à
-	// chaque frappe — une tuile reconstruite exactement sous un
-	// curseur resté immobile ne redéclenche pas l'infobulle native du
-		// navigateur tant qu'aucun nouvel événement mouseover n'arrive
-	// dessus (bug signalé : "l'infobulle n'apparaît pas tout le
-	// temps"), alors qu'une tuile qui reste le même nœud DOM tout du
-	// long garde son survol continu.
+	// "Set Symbol" tab: search + 5-column grid, the symbol alone — the set
+	// name in a tooltip rather than as text under each tile (explicitly
+	// requested). dedupeSetsByIcon (api/scryfall.ts) avoids listing separately
+	// several sets that share the same symbol (tokens/promos/art series of the
+	// same set, very frequent — 987 non-digital sets but only 337 distinct
+	// symbols, checked live on the API — see that function's comment). All the
+	// tiles are built ONLY ONCE (as soon as the list of sets arrives); the
+	// search now only hides/shows the tiles already in place rather than
+	// destroying/recreating them on each keystroke — a tile rebuilt exactly
+	// under a cursor that stayed still doesn't re-trigger the browser's native
+	// tooltip as long as no new mouseover event arrives on it (reported bug:
+	// "the tooltip doesn't always appear"), whereas a tile that stays the same
+	// DOM node throughout keeps its continuous hover.
 	//
-	// Groupée par catégorie (Core Sets/Expansion Sets/Commander &
-	// Multiplayer/etc. — demandé explicitement, sur le modèle de la
-	// page de référence Keyrune) via getSetGroupLabel/SET_GROUP_ORDER
-	// (api/scryfall.ts), dérivés du champ set_type de Scryfall plutôt
-	// que d'une liste de sets écrite à la main — voir le commentaire de
-	// ces deux exports pour le raisonnement complet. La recherche
-	// reste globale, à travers tous les groupes à la fois (choisi
-	// explicitement plutôt qu'un repli/dépli par groupe) : un en-tête
-	// de groupe (grid-column:1/-1, comme .mtg-status juste en dessous)
-	// se masque simplement si plus aucune de ses tuiles n'est visible,
-	// exactement le même mécanisme que noResultsEl.
+	// Grouped by category (Core Sets/Expansion Sets/Commander &
+	// Multiplayer/etc. — explicitly requested, modeled on the Keyrune
+	// reference page) via getSetGroupLabel/SET_GROUP_ORDER (api/scryfall.ts),
+	// derived from Scryfall's set_type field rather than from a hand-written
+	// list of sets — see the comment of these two exports for the full
+	// reasoning. The search remains global, across all groups at once
+	// (explicitly chosen rather than a fold/unfold per group): a group header
+	// (grid-column:1/-1, like .mtg-status just below) simply hides if none of
+	// its tiles is visible any more, exactly the same mechanism as
+	// noResultsEl.
 	const renderSetTab = () => {
 		const searchInput = body.createEl("input", {
 			type: "text",
@@ -450,10 +437,9 @@ export function renderIconPickerScreen(
 			tiles = [];
 			groupSections = [];
 			SET_GROUP_ORDER.forEach((groupLabel) => {
-				// sets est déjà trié alphabétiquement dans son ensemble
-				// (voir state.dedupedSets ci-dessous) — un simple filter()
-				// préserve cet ordre relatif à l'intérieur du groupe,
-				// aucun second tri n'est nécessaire ici.
+				// sets is already sorted alphabetically as a whole (see state.dedupedSets
+				// below) — a simple filter() preserves this relative order within the
+				// group, no second sort is needed here.
 				const groupSets = sets.filter((s) => getSetGroupLabel(s.set_type) === groupLabel);
 				if (groupSets.length === 0) return;
 				const headerEl = setGridEl.createDiv({
@@ -494,15 +480,13 @@ export function renderIconPickerScreen(
 			buildTiles(state.dedupedSets);
 		} else {
 			void ctx.plugin.getAllScryfallSets().then((sets) => {
-				// Plus récent en premier (demandé explicitement) — released_at
-				// est une chaîne ISO (YYYY-MM-DD), donc comparable lexicalement
-				// sans parsing ; vérifié en direct que les 987 éditions
-				// non-numériques l'ont toutes renseignée (le repli sur ""
-				// ci-dessous n'est donc là que par prudence, jamais réellement
-				// atteint aujourd'hui). Trié une seule fois ici, globalement —
-				// buildTiles ne fait plus que filtrer par groupe (voir plus
-				// haut), donc l'ordre "plus récent d'abord" se retrouve tout
-				// seul à l'intérieur de chaque groupe sans second tri.
+				// Most recent first (explicitly requested) — released_at is an ISO string
+				// (YYYY-MM-DD), hence comparable lexically without parsing; checked live
+				// that all 987 non-digital sets have it filled in (the fallback to ""
+				// below is therefore only there out of caution, never actually reached
+				// today). Sorted only once here, globally — buildTiles now only filters by
+				// group (see above), so the "most recent first" order is found by itself
+				// within each group with no second sort.
 				state.dedupedSets = dedupeSetsByIcon(sets).sort((a, b) =>
 					(b.released_at ?? "").localeCompare(a.released_at ?? "")
 				);
@@ -518,10 +502,10 @@ export function renderIconPickerScreen(
 		else renderSetTab();
 	};
 
-	// Référencée par les clics d'onglet plus haut (fermeture, résolue
-	// seulement au moment du clic — jamais avant ce point du code, donc
-	// pas de souci d'ordre malgré la déclaration const plus bas, même
-	// convention que noneTile/setSelect ailleurs dans ce fichier).
+	// Referenced by the tab clicks above (closure, resolved only at click time
+	// — never before this point in the code, so no ordering concern despite
+	// the const declaration further down, same convention as
+	// noneTile/setSelect elsewhere in this file).
 	const switchIconTab = (tab: "mana" | "set" | "other") => {
 		if (state.tab === tab) return;
 		state.tab = tab;

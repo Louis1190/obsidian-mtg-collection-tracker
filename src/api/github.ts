@@ -1,48 +1,47 @@
 import { arrayBufferToBase64, requestUrl, RequestUrlResponse } from "obsidian";
 
 /* -------------------------------------------------------------------------- */
-/*  Client minimal de l'API REST GitHub (Contents) pour la synchronisation des
-    données (2026-10-03, découpées en fragments depuis 2026-10-05) — voir
-    src/plugin/github-sync.ts pour le moteur et core/github-shards.ts pour le découpage.
+/* Minimal client for GitHub's REST API (Contents) for data synchronization
+    (2026-10-03, split into shards since 2026-10-05) — see src/plugin/github-sync.ts for
+    the engine and core/github-shards.ts for the split.
 
-    Choix, tous pour la même raison (quelques fichiers, quelques Mo, un seul
-    utilisateur) :
-    - API "Contents" (un PUT = un commit) plutôt que Git Data (blobs/arbres/
-      commits/refs) : une requête au lieu de quatre, et le `sha` exigé pour
-      remplacer un fichier est exactement la compare-and-swap dont on a besoin
-      (409/422 si quelqu'un est passé entre-temps).
-    - Lecture en `raw` : pas de limite de 1 Mo comme pour la représentation JSON
-      (qui renvoie un contenu vide entre 1 et 100 Mo). Le `sha` de ce contenu est
-      donc CALCULÉ ici (sha1 d'un blob git), pas lu : il correspond ainsi
-      exactement aux octets qu'on vient de fusionner, et pas à une version
-      arrivée entre une lecture et une seconde requête de métadonnées.
-    - Sondage par le listage du dossier, en requête conditionnelle (If-None-Match) :
-      un 304 authentifié ne compte pas dans la limite de 5 000 requêtes/heure, et un
-      200 donne le sha de tous les fichiers d'un coup.
-    - Les écritures sont SÉQUENTIELLES : deux PUT simultanés sur la même branche se
-      refusent mutuellement (chacun crée un commit sur la même tête).
-    Aucune fonction ici ne journalise ni ne renvoie le jeton.  */
+    Choices, all for the same reason (a few files, a few MB, a single user):
+    - "Contents" API (one PUT = one commit) rather than Git Data
+      (blobs/trees/commits/refs): one request instead of four, and the `sha` required to
+      replace a file is exactly the compare-and-swap we need (409/422 if someone got in
+      between).
+    - Reading as `raw`: no 1 MB limit as with the JSON representation (which returns
+      empty content between 1 and 100 MB). The `sha` of this content is therefore
+      COMPUTED here (sha1 of a git blob), not read: it thus matches exactly the bytes we
+      just merged, and not a version that arrived between a read and a second metadata
+      request.
+    - Polling through the folder listing, as a conditional request (If-None-Match): an
+      authenticated 304 does not count against the 5,000 requests/hour limit, and a 200
+      gives the sha of all the files at once.
+    - Writes are SEQUENTIAL: two simultaneous PUTs on the same branch reject each other
+      (each creates a commit on the same head).
+    No function here logs or returns the token. */
 /* -------------------------------------------------------------------------- */
 
 export const GITHUB_API_BASE = "https://api.github.com";
-// Depuis 1.0.512 les données sont découpées en plusieurs fichiers (core.json.gz, list-<id>.json.gz… — voir
-// core/github-shards.ts), tous dans le même dossier. Les deux anciens fichiers uniques ne sont plus que LUS,
-// une fois, pour amorcer les fragments : `data.json.gz` (1.0.507 à 1.0.511, gzip du JSON compact) et
-// `data.json` (≤ 1.0.506, JSON brut).
+// Since 1.0.512 the data is split into several files (core.json.gz, list-<id>.json.gz… — see
+// core/github-shards.ts), all in the same folder. The two old single files are now only READ, once, to seed
+// the shards: `data.json.gz` (1.0.507 to 1.0.511, gzip of the compact JSON) and `data.json` (≤ 1.0.506, raw
+// JSON).
 export const GITHUB_DATA_FILE = "data.json.gz";
 export const GITHUB_LEGACY_FILE = "data.json";
 const API_VERSION = "2022-11-28";
 
 export interface GithubTarget {
-	/** "propriétaire/nom" */
+	/** "owner/name" */
 	repo: string;
 	branch: string;
-	/** Dossier du dépôt qui contient le fichier ("" = racine). */
+	/** Folder of the repository that contains the file ("" = root). */
 	path: string;
 	token: string;
-	/** Surchargeable pour les tests ; GITHUB_API_BASE sinon. */
+	/** Overridable for tests; GITHUB_API_BASE otherwise. */
 	apiBase?: string;
-	/** Délai maximum d'une lecture (ms) ; REQUEST_TIMEOUT_MS sinon. L'envoi a le triple. */
+	/** Maximum duration of a read (ms); REQUEST_TIMEOUT_MS otherwise. Uploading gets triple. */
 	timeoutMs?: number;
 }
 
@@ -71,7 +70,7 @@ export type GithubGetResult =
 
 export interface GithubEntry {
 	name: string;
-	/** sha du blob git du fichier (celui des octets STOCKÉS, compressés). */
+	/** sha of the file's git blob (the one of the STORED, compressed bytes). */
 	sha: string;
 	size: number;
 }
@@ -79,31 +78,31 @@ export interface GithubEntry {
 export type GithubListResult =
 	| { kind: "ok"; entries: GithubEntry[]; etag: string | null }
 	| { kind: "notModified" }
-	/** Le dossier n'existe pas encore (le dépôt et la branche, eux, existent). */
+	/** The folder doesn't exist yet (the repository and the branch do). */
 	| { kind: "missing" }
 	| GithubFailure;
 
 export type GithubPutResult =
 	| { kind: "ok"; sha: string }
-	/** Le fichier a changé (ou existe déjà) depuis la version qu'on remplace : relire, fusionner, réessayer. */
+	/** The file has changed (or already exists) since the version being replaced: re-read, merge, retry. */
 	| { kind: "conflict" }
 	| GithubFailure;
 
 export interface GithubFailure {
 	kind: "error";
-	status: number; // 0 = pas de réponse (réseau)
-	/** Phrase prête à afficher, jamais le contenu brut de la réponse. */
+	status: number; // 0 = no response (network)
+	/** Ready-to-display sentence, never the raw content of the response. */
 	message: string;
-	/** Faute durable (jeton, droits, dépôt) : inutile de réessayer tel quel. */
+	/** Lasting fault (token, permissions, repository): no point retrying as is. */
 	fatal: boolean;
 	retryAfterS?: number;
 }
 
 /* ------------------------------- compression ------------------------------- */
 
-// CompressionStream / DecompressionStream : Chromium (Obsidian desktop, WebView Android) et WebKit
-// 16.4+ (iOS / iPadOS). Un appareil qui ne les a pas ne peut pas lire le fichier GitHub : on le lui dit
-// plutôt que de le laisser diverger en silence.
+// CompressionStream / DecompressionStream: Chromium (Obsidian desktop, Android WebView) and WebKit
+// 16.4+ (iOS / iPadOS). A device that lacks them cannot read the GitHub file: we tell it so rather than
+// let it silently diverge.
 export function compressionSupported(): boolean {
 	return typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined";
 }
@@ -134,7 +133,7 @@ function cleanPath(path: string): string {
 		.join("/");
 }
 
-// Chemin d'un fichier du dossier de données dans le dépôt.
+// Path of a file of the data folder in the repository.
 export function githubFilePath(target: GithubTarget, name: string): string {
 	const dir = cleanPath(target.path);
 	return dir ? `${dir}/${name}` : name;
@@ -146,7 +145,7 @@ function repoBase(target: GithubTarget): string | null {
 	return `${target.apiBase ?? GITHUB_API_BASE}/repos/${r.owner}/${r.name}/contents`;
 }
 
-// URL de l'API "contents" d'un fichier du dossier de données (name) ou du dossier lui-même (name = null).
+// URL of the "contents" API for a file of the data folder (name) or for the folder itself (name = null).
 function contentsUrl(target: GithubTarget, name: string | null, withRef: boolean): string | null {
 	const base = repoBase(target);
 	if (!base) return null;
@@ -170,15 +169,15 @@ function authHeaders(target: GithubTarget, accept: string): Record<string, strin
 	};
 }
 
-// Un compteur, pas seulement l'heure : deux sondages dans la même milliseconde (et l'horloge figée des
-// tests) donneraient sinon la même URL.
+// A counter, not just the time: two polls within the same millisecond (and the tests' frozen clock)
+// would otherwise give the same URL.
 let freshCounter = 0;
 function freshUrl(url: string): string {
 	return `${url}${url.includes("?") ? "&" : "?"}_=${Date.now().toString(36)}${(++freshCounter).toString(36)}`;
 }
 
-// sha1 d'un blob git : sha1("blob <taille>\0" + octets). C'est le `sha` que l'API
-// attend pour remplacer un fichier.
+// sha1 of a git blob: sha1("blob <size>\0" + bytes). This is the `sha` the API
+// expects in order to replace a file.
 export async function gitBlobSha(bytes: Uint8Array): Promise<string> {
 	const header = new TextEncoder().encode(`blob ${bytes.length}\0`);
 	const all = new Uint8Array(header.length + bytes.length);
@@ -233,8 +232,8 @@ function failure(res: RequestUrlResponse | null, fallback: string): GithubFailur
 
 const NETWORK_FAILURE = "Could not reach GitHub (offline, or a network that blocks it).";
 
-// Le message d'une exception réseau est ce qui distingue "hors ligne" d'un certificat refusé, d'un DNS qui
-// bloque ou d'un délai dépassé : on l'ajoute au texte affiché (jamais le jeton, jamais l'URL complète).
+// The message of a network exception is what tells "offline" apart from a rejected certificate, a blocking
+// DNS or a timeout: we add it to the displayed text (never the token, never the full URL).
 function networkMessage(step: string, e: unknown): string {
 	console.warn(`MTG Collection Tracker: GitHub request failed (${step}).`, e);
 	const reason = (e instanceof Error ? e.message : String(e))
@@ -244,10 +243,9 @@ function networkMessage(step: string, e: unknown): string {
 	return `${NETWORK_FAILURE} [${step}: ${reason || "no detail"}]`;
 }
 
-// Lit un fichier du dossier de données et rend son texte (décompressé s'il se termine par .gz) et son sha.
-// Lecture en `raw` : pas de limite de 1 Mo comme pour la représentation JSON. Le sha est CALCULÉ sur les octets
-// reçus, pas lu : il correspond exactement à ce qu'on vient de fusionner, même si le fichier a changé entre
-// un listage et cette lecture.
+// Reads a file of the data folder and returns its text (decompressed if it ends in .gz) and its sha.
+// Read as `raw`: no 1 MB limit as with the JSON representation. The sha is COMPUTED over the bytes received,
+// not read: it matches exactly what we just merged, even if the file changed between a listing and this read.
 export async function githubGetFile(target: GithubTarget, name: string): Promise<GithubGetResult> {
 	const gz = name.endsWith(".gz");
 	if (gz && !compressionSupported()) return unsupportedCompression();
@@ -273,8 +271,8 @@ export async function githubGetFile(target: GithubTarget, name: string): Promise
 		}
 		return { kind: "ok", text, sha };
 	}
-	// Fichier absent (dépôt et branche existent, le fichier pas encore) ≠ dépôt introuvable : GitHub
-	// répond 404 aux deux, seul le message les distingue.
+	// File missing (the repository and branch exist, the file doesn't yet) ≠ repository not found:
+	// GitHub answers 404 to both, only the message tells them apart.
 	if (res.status === 404 && /not found/i.test(safeMessage(res)) && !/repository|branch|ref/i.test(safeMessage(res))) {
 		return { kind: "missing" };
 	}
@@ -299,11 +297,10 @@ function safeMessage(res: RequestUrlResponse): string {
 	}
 }
 
-// Liste le dossier de données : le nom et le sha de chaque fichier, quelques centaines d'octets par fichier
-// quelle que soit leur taille. C'est le sondage : une requête conditionnelle (If-None-Match) dont la réponse
-// 304 ne coûte rien, et dont un 200 donne d'un coup les empreintes de TOUS les fragments — on ne télécharge
-// que ceux dont le sha a changé. L'API tronque un dossier à 1 000 fichiers : on s'en plaint plutôt que de
-// synchroniser une partie des données en silence.
+// Lists the data folder: the name and sha of each file, a few hundred bytes per file whatever their size.
+// This is the polling: a conditional request (If-None-Match) whose 304 answer costs nothing, and whose 200
+// gives the fingerprints of ALL the shards at once — we only download those whose sha has changed. The API
+// truncates a folder at 1,000 files: we complain rather than silently synchronize part of the data.
 export async function githubListFolder(target: GithubTarget, etag: string | null): Promise<GithubListResult> {
 	const url = contentsUrl(target, null, true);
 	if (!url) return { kind: "error", status: 0, fatal: true, message: 'The repository must look like "owner/name".' };
@@ -338,12 +335,12 @@ export async function githubListFolder(target: GithubTarget, etag: string | null
 		return { kind: "ok", entries, etag: header(res, "etag") };
 	}
 	if (res.status === 404 && /not found/i.test(safeMessage(res)) && !/repository|branch|ref/i.test(safeMessage(res))) {
-		return { kind: "missing" }; // dossier pas encore créé : les fichiers non plus
+		return { kind: "missing" }; // folder not created yet: neither are the files
 	}
 	return failure(res, NETWORK_FAILURE);
 }
 
-// Écrit un fichier du dossier de données (toujours compressé). `sha` = version qu'on remplace (null = on le crée).
+// Writes a file of the data folder (always compressed). `sha` = the version being replaced (null = we create it).
 export async function githubPutFile(
 	target: GithubTarget,
 	name: string,
@@ -379,11 +376,11 @@ export async function githubPutFile(
 	}
 	if (res.status === 200 || res.status === 201) {
 		const created = (res.json as { content?: { sha?: unknown } } | undefined)?.content?.sha;
-		// Sans sha dans la réponse, on le recalcule : c'est celui des octets qu'on vient d'envoyer.
+		// With no sha in the response, we recompute it: it is the one of the bytes we just sent.
 		return { kind: "ok", sha: typeof created === "string" ? created : await gitBlobSha(bytes) };
 	}
-	// 409 : le fichier a changé depuis `sha`. 422 : "sha wasn't supplied" (il existe déjà) ou "does
-	// not match" — même remède, relire puis fusionner. Les autres 422 sont de vraies erreurs.
+	// 409: the file has changed since `sha`. 422: "sha wasn't supplied" (it already exists) or
+	// "does not match" — same remedy, re-read then merge. Other 422s are real errors.
 	if (res.status === 409) return { kind: "conflict" };
 	if (res.status === 422 && /\bsha\b/i.test(safeMessage(res))) return { kind: "conflict" };
 	return failure(res, NETWORK_FAILURE);
@@ -394,9 +391,9 @@ export interface GithubConnectionReport {
 	lines: string[];
 }
 
-// Vérifie, sans rien écrire, que le jeton ouvre bien le dépôt, que la branche existe et ce
-// qui s'y trouve déjà. Les droits d'écriture ne se prouvent que par une écriture : ils sont
-// jugés au premier envoi.
+// Checks, without writing anything, that the token does open the repository, that the
+// branch exists and what is already in it. Write permissions can only be proven by a write:
+// they are judged on the first upload.
 export async function githubTestConnection(target: GithubTarget): Promise<GithubConnectionReport> {
 	const r = parseRepo(target.repo);
 	if (!r) return { ok: false, lines: ['✕ The repository must look like "owner/name".'] };

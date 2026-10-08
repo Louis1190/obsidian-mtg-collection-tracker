@@ -3,7 +3,7 @@ import { CONDITION_NONE_ICON_SVG, getFlagSvgDataUri, LANGUAGE_NONE_ICON_SVG } fr
 import { setSvgMarkup } from "./svg-markup";
 
 /* ---------------------------------------------------------------------------- */
-/*  Fabriques DOM des pictogrammes de langue (drapeau) et de condition (badge).*/
+/* DOM factories for the language (flag) and condition (badge) pictograms. */
 /* ---------------------------------------------------------------------------- */
 
 export function createFlagImg(
@@ -16,15 +16,14 @@ export function createFlagImg(
 		attr: { src: getFlagSvgDataUri(countryCode), alt: "" },
 	});
 }
-// Rend le drapeau d'une langue de carte, ou LANGUAGE_NONE_ICON_SVG (brand-assets.ts)
-// quand code est vide/non reconnu (une carte sans langue choisie — "None"
-// n'est plus une entrée de LANGUAGES (core/card-model.ts), donc plus jamais un
-// choix listé dans un picker, seulement ce repli visuel). Tout appelant qui
-// affiche la langue *propre* d'une CollectionCard (par opposition à une langue
-// d'impression Scryfall connue d'avance, toujours un vrai code) doit passer
-// par ici plutôt que createFlagImg directement. extraCls permet d'assortir
-// la taille de l'icône à celle du drapeau dans un contexte donné (ex.
-// mtg-card-detail-image-icon-glyph au-dessus de l'image d'une carte).
+// Renders the flag of a card language, or LANGUAGE_NONE_ICON_SVG (brand-assets.ts)
+// when code is empty/unrecognized (a card with no language chosen — "None" is no
+// longer an entry of LANGUAGES (core/card-model.ts), so never again a choice listed
+// in a picker, only this visual fallback). Any caller that displays the *own*
+// language of a CollectionCard (as opposed to a Scryfall print language known in
+// advance, always a real code) must go through here rather than createFlagImg
+// directly. extraCls makes it possible to match the icon's size to that of the flag
+// in a given context (e.g. mtg-card-detail-image-icon-glyph above a card's image).
 
 export function createLanguageIcon(
 	container: HTMLElement,
@@ -42,9 +41,9 @@ export function createLanguageIcon(
 	}
 	return createFlagImg(container, lang.flag, imgCls);
 }
-// Rend le badge de condition (glyph coloré), ou CONDITION_NONE_ICON_SVG
-// (brand-assets.ts) quand value est vide (une carte sans condition choisie — même
-// traitement, mêmes raisons que createLanguageIcon ci-dessus).
+// Renders the condition badge (colored glyph), or CONDITION_NONE_ICON_SVG
+// (brand-assets.ts) when value is empty (a card with no condition chosen — same
+// treatment, same reasons as createLanguageIcon above).
 
 export function createConditionIcon(
 	container: HTMLElement,

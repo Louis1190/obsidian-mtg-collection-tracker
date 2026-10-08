@@ -50,8 +50,8 @@ function settings(extra: Obj = {}): Obj {
 
 const ids = (arr: Obj[]) => arr.map((e) => e.id);
 
-// mergeSettings renvoie un objet "inconnu" (le module ne connaît pas la forme
-// des réglages) : on le retype ici pour que les assertions restent lisibles.
+// mergeSettings returns an "unknown" object (the module doesn't know the
+// shape of the settings): we retype it here so the assertions stay readable.
 function run(base: Obj | null, local: Obj, remote: Obj): { merged: Obj; report: MergeReport } {
 	const res = mergeSettings(base, local, remote);
 	return { merged: res.merged as Obj, report: res.report };
@@ -112,8 +112,8 @@ describe("mergeSettings — presence", () => {
 	});
 
 	it("does not resurrect a card when the remote simply skipped a version (no base needed)", () => {
-		// L'iPad a vu une version où Y existait, le Mac l'a supprimée : sans pierre
-		// tombale, l'iPad ne peut pas savoir que ce n'est pas "une carte qu'il a ajoutée".
+		// The iPad saw a version where Y existed, the Mac deleted it: without a tombstone,
+		// the iPad cannot know that it isn't "a card it added".
 		const ipad = settings({ collection: [card("a"), card("y", { dateModified: 200 })] });
 		const mac = settings({ collection: [card("a")], syncTombstones: { collection: { y: 300 } } });
 		expect(ids(run(null, ipad, mac).merged.collection)).toEqual(["a"]);
@@ -145,13 +145,13 @@ describe("mergeSettings — entity contents", () => {
 
 	it("a non-timestamped edit (price refresh) on a device that is not behind is kept", () => {
 		const base = settings({ collection: [card("a")] });
-		const local = settings({ collection: [card("a", { priceUsd: "2.50" })] }); // aucune date touchée
+		const local = settings({ collection: [card("a", { priceUsd: "2.50" })] }); // no date touched
 		const remote = settings({ collection: [card("a")] });
 		expect(run(base, local, remote).merged.collection[0].priceUsd).toBe("2.50");
 	});
 
 	it("a remote entity touched AFTER ours wins even if it looks like the old base (revert)", () => {
-		// Réglage remis à sa valeur d'origine ailleurs : sans la date, on le prendrait pour "inchangé".
+		// Setting put back to its original value elsewhere: without the date, it would be taken for "unchanged".
 		const base = settings({ collection: [card("a", { condition: "NM", dateModified: 100 })] });
 		const local = settings({ collection: [card("a", { condition: "LP", dateModified: 200 })] });
 		const remote = settings({ collection: [card("a", { condition: "NM", dateModified: 300 })] });
@@ -281,8 +281,8 @@ describe("mergeSettings — scalars and decks", () => {
 	});
 });
 
-// Un réglage posé avant 1.0.503 n'a pas d'horodatage ; un appareil NEUF a les valeurs par défaut : sans base ni
-// horodatage, l'ordre alphabétique décidait ("usd" > "eur"), et la devise de toute la collection basculait en USD.
+// A setting set before 1.0.503 has no timestamp; a NEW device has the default values: with no base or timestamp,
+// alphabetical order decided ("usd" > "eur"), and the currency of the whole collection flipped to USD.
 describe("mergeSettings — a value nobody touched never beats the one the user chose", () => {
 	const DEFAULTS: Obj = { priceCurrency: "usd", accentColor: "" };
 	const merge = (base: Obj | null, local: Obj, remote: Obj, defaults: Obj | undefined = DEFAULTS) =>
@@ -414,7 +414,7 @@ describe("snapshotKeys / recordTombstones", () => {
 		const prev = { collection: new Set<string>() } as Record<string, Set<string>>;
 		recordTombstones(s, prev, 1000);
 		expect(s.syncTombstones).toBeUndefined();
-		// Sans cela, un autre appareil qui garde la pierre tombale la ferait disparaître à nouveau.
+		// Without this, another device that keeps the tombstone would make it disappear again.
 		expect(s.collection[0].dateModified).toBe(1000);
 		const other = settings({ syncTombstones: { collection: { a: 500 } } });
 		expect(ids(run(null, s, other).merged.collection)).toEqual(["a"]);
@@ -512,7 +512,7 @@ describe("device-local settings are outside the merge", () => {
 		const { merged, report } = run(null, local, remote);
 		expect(merged.collectionViewMode).toBeUndefined();
 		expect(merged.navCollapsed).toBeUndefined();
-		// Un réglage partagé reste fusionné normalement (conflit sans date : ordre canonique, donc "usd").
+		// A shared setting is still merged normally (conflict with no date: canonical order, hence "usd").
 		expect(merged.priceCurrency).toBe("usd");
 		expect(report.changedLocal).toBe(false);
 		const same = { ...local, collectionViewMode: "list", navCollapsed: false };

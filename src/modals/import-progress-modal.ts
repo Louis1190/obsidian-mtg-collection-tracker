@@ -7,21 +7,21 @@ import { applyModalOpenAnimation, addModalCloseButton, closeModalAnimated } from
 
 export class ImportProgressModal extends Modal {
 	private statusEl!: HTMLElement;
-	// Titre configurable — repris tel quel par l'import de decklist (voir
-	// NewDeckModal), qui réutilise cette même fenêtre de progression plutôt
-	// que d'en construire une 2ᵉ quasi identique. "Importing collection…"
-	// reste la valeur par défaut pour ne rien changer aux appelants CSV
-	// existants (triggerImportCollection/triggerImportWantlist, view.ts).
+	// Configurable title — taken as is by the decklist import (see
+	// NewDeckModal), which reuses this same progress window rather than
+	// building a 2nd near-identical one. "Importing collection…" remains the
+	// default value so as to change nothing for the existing CSV callers
+	// (triggerImportCollection/triggerImportWantlist, view.ts).
 	constructor(app: App, private title: string = "Importing collection…") {
 		super(app);
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		this.contentEl.addClass("mtg-import-modal");
 		this.contentEl.createEl("h2", { text: this.title });
@@ -46,14 +46,14 @@ export class ImportProgressModal extends Modal {
 /* -------------------------------------------------------------------------- */
 /*  Decklist import result modal                                             */
 /* -------------------------------------------------------------------------- */
-// Résumé affiché après un import de decklist collée dans NewDeckModal (voir
-// MTGCollectionPlugin.importDecklistToDeck) — n'ouvre cette fenêtre que
-// lorsqu'il y a quelque chose à montrer au-delà du Notice déjà affiché par
-// l'appelant (au moins une ligne non résolue), voir ce call site. Même
-// gabarit que RestoreBackupConfirmModal (confirm-modals.ts) (titre +
-// paragraphe(s) + boutons dans .mtg-card-detail-actions) mais purement
-// informatif : l'import a déjà eu lieu au moment où cette fenêtre s'ouvre,
-// rien à confirmer.
+// Summary displayed after an import of a decklist pasted in NewDeckModal
+// (see MTGCollectionPlugin.importDecklistToDeck) — only opens this window
+// when there is something to show beyond the Notice already displayed by
+// the caller (at least one unresolved line), see that call site. Same
+// template as RestoreBackupConfirmModal (confirm-modals.ts) (title +
+// paragraph(s) + buttons in .mtg-card-detail-actions) but purely
+// informational: the import has already taken place by the time this window
+// opens, nothing to confirm.
 
 export class DecklistImportResultModal extends Modal {
 	constructor(
@@ -86,9 +86,9 @@ export class DecklistImportResultModal extends Modal {
 		this.unresolved.forEach((line) => list.createEl("li", { text: line }));
 
 		const actions = contentEl.createDiv({ cls: "mtg-card-detail-actions" });
-		// navigator.clipboard.writeText : même précédent déjà établi ailleurs
-		// dans ce plugin (voir copyListSelectionTxt, view.ts) — un .catch()
-		// explicite plutôt qu'une résolution supposée systématique.
+		// navigator.clipboard.writeText: same precedent already established
+		// elsewhere in this plugin (see copyListSelectionTxt, view.ts) — an
+		// explicit .catch() rather than a resolution assumed to be systematic.
 		const copyBtn = actions.createEl("button", { text: "Copy list" });
 		copyBtn.addEventListener("click", () => {
 			navigator.clipboard

@@ -6,20 +6,20 @@ import type { MTGCollectionView } from "../view";
 /* -------------------------------------------------------------------------- */
 /*  Importing a file picked by the user (CSV or decklist .txt)                */
 /* -------------------------------------------------------------------------- */
-// Les six imports de fichier du plugin (CSV et decklist .txt, pour My Collection, My Wantlists et My Decks)
-// suivent le même flux : sélecteur de fichier, fenêtre de progression, appel du plugin, résumé en Notice,
-// rafraîchissement de la vue, erreur affichée dans la fenêtre. Écrit ici UNE fois ; chaque section n'indique que
-// ce qui change (l'extension acceptée, le titre, la méthode du plugin, comment résumer son résultat) via ses
-// trigger* (collection-render.ts, wantlist-render.ts, deck-render.ts).
+// The plugin's six file imports (CSV and decklist .txt, for My Collection, My Wantlists and My Decks) follow the
+// same flow: file picker, progress window, plugin call, summary in a Notice, view refresh, error shown in the
+// window. Written here ONCE; each section only states what changes (the accepted extension, the title, the
+// plugin method, how to summarize its result) via its trigger* functions (collection-render.ts,
+// wantlist-render.ts, deck-render.ts).
 
 interface FileImport<R> {
 	accept: string;
-	// Titre de la fenêtre de progression ; absent = celui par défaut d'ImportProgressModal.
+	// Title of the progress window; absent = the default one of ImportProgressModal.
 	progressTitle?: string;
 	run: (text: string, onStatus: (msg: string) => void) => Promise<R>;
-	// Voir formatImportSummary : sans « Done: » ni point final.
+	// See formatImportSummary: without "Done: " and without a final period.
 	summarize: (result: R) => string;
-	// Après le rafraîchissement de la vue ; une exception ici s'affiche comme une erreur d'import.
+	// After the view refresh; an exception here is displayed as an import error.
 	afterRender?: (result: R) => void;
 }
 
@@ -49,8 +49,8 @@ function importFromFile<R>(view: MTGCollectionView, spec: FileImport<R>) {
 	input.click();
 }
 
-// CSV : le plugin renvoie ce qu'il a ajouté, mis à jour et écarté. `skippedLabel` nomme les lignes écartées
-// (« not found » pour une collection/wantlist, « skipped » pour un deck).
+// CSV: the plugin returns what it added, updated and discarded. `skippedLabel` names the discarded rows
+// ("not found" for a collection/wantlist, "skipped" for a deck).
 export function importCsvFile(
 	view: MTGCollectionView,
 	spec: {
@@ -68,9 +68,10 @@ export function importCsvFile(
 	});
 }
 
-// Decklist .txt (Moxfield/Archidekt/texte brut) dans une liste, un deck ou une wantlist existant(e) : les lignes que
-// Scryfall ne résout pas ouvrent DecklistImportResultModal (déjà utilisée par NewDeckModal pour le même besoin).
-// `entityName` est lu APRÈS l'import (un renommage entre-temps y est vu) ; `noun` sert de repli s'il n'y a plus de nom.
+// Decklist .txt (Moxfield/Archidekt/plain text) into an existing list, deck or wantlist: the lines that Scryfall
+// doesn't resolve open DecklistImportResultModal (already used by NewDeckModal for the same need). `entityName`
+// is read AFTER the import (a rename in the meantime is seen there); `noun` serves as a fallback if there is no
+// name anymore.
 export function importDecklistFile(
 	view: MTGCollectionView,
 	spec: {

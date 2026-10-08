@@ -8,9 +8,9 @@ export const BACKUP_SCHEMA_VERSION = 1;
 export const AUTO_BACKUP_FILE_PREFIX = "mtg-collection-backup-auto-";
 
 export function exportBackup(this: MTGCollectionPlugin): string {
-	// Déstructuration plutôt que `delete` sur une copie : garantit que
-	// this.settings lui-même (et sa clé, toujours nécessaire en mémoire
-	// pour les appels cardbase.dev de cette session) n'est jamais muté.
+	// Destructuring rather than `delete` on a copy: guarantees that
+	// this.settings itself (and its key, still needed in memory for this
+	// session's cardbase.dev calls) is never mutated.
 	const { cardbaseApiKey, ...settingsWithoutKey } = this.settings;
 	const backup = {
 		format: BACKUP_FORMAT_MARKER,
@@ -21,12 +21,12 @@ export function exportBackup(this: MTGCollectionPlugin): string {
 	};
 	return JSON.stringify(backup, null, 2);
 }
-// Valide et résume un fichier de sauvegarde sans rien appliquer — utilisé
-// par setting-tab.ts pour construire le récapitulatif affiché dans
-// RestoreBackupConfirmModal avant confirmation. `settings` n'est qu'un
-// Partial<MTGCollectionSettings> : un fichier plus ancien peut manquer des
-// champs ajoutés depuis (restoreBackup les complète via DEFAULT_SETTINGS,
-// même principe que loadSettings avec data.json).
+// Validates and summarizes a backup file without applying anything — used
+// by setting-tab.ts to build the summary displayed in
+// RestoreBackupConfirmModal before confirmation. `settings` is only a
+// Partial<MTGCollectionSettings>: an older file may lack fields added
+// since (restoreBackup fills them in via DEFAULT_SETTINGS, same principle
+// as loadSettings with data.json).
 
 export function parseBackupFile(this: MTGCollectionPlugin, text: string): { settings: Partial<MTGCollectionSettings>; summary: BackupSummary } | { error: string } {
 	let parsed: unknown;
@@ -74,23 +74,20 @@ export async function maybeAutoBackup(this: MTGCollectionPlugin) {
 	if (elapsedMs < hours * 60 * 60 * 1000) return;
 	await this.runAutoBackup();
 }
-// Chemin partagé par le déclenchement automatique ci-dessus ET le bouton
-// "Back up now" (setting-tab.ts) — un seul endroit qui écrit réellement
-// le fichier, pas deux à tenir synchronisés. Utilise l'API Vault
-// (createFolder/create/modify), pas vault.adapter comme les caches
-// Scryfall privés du plugin (loadPersistedMapCache et consorts,
-// désormais dans src/plugin/scryfall-cache.ts) : ces fichiers-ci doivent être de
-// VRAIS fichiers de la vault — visibles dans l'explorateur d'Obsidian,
-// déplaçables, et suivis par n'importe quelle synchronisation de vault
-// déjà en place — pas des données privées du plugin. Nom de fichier à la
-// journée (pas à la seconde) comme le téléchargement manuel : un 2ème
-// déclenchement le même jour (ex. "Back up now" cliqué le jour même
-// d'une sauvegarde automatique déjà faite) écrase simplement le fichier
-// du jour au lieu d'en créer un doublon — la sauvegarde la plus récente
-// du jour l'emporte, ce qui reste le comportement voulu.
+// Path shared by the automatic trigger above AND the "Back up now" button
+// (setting-tab.ts) — a single place that actually writes the file, not two to
+// keep in sync. Uses the Vault API (createFolder/create/modify), not
+// vault.adapter like the plugin's private Scryfall caches (loadPersistedMapCache
+// and the like, now in src/plugin/scryfall-cache.ts): these files must be REAL
+// vault files — visible in Obsidian's explorer, movable, and tracked by any
+// vault synchronization already in place — not private plugin data. Per-day file
+// name (not per-second) like the manual download: a 2nd trigger on the same day
+// (e.g. "Back up now" clicked the same day as an already done automatic backup)
+// simply overwrites the day's file instead of creating a duplicate — the most
+// recent backup of the day wins, which remains the wanted behavior.
 
-// Le dossier des sauvegardes (réglage « Backup folder »), le même pour les écrire (runAutoBackup) et pour les lister
-// (listBackupFiles) : un seul calcul, donc jamais deux dossiers différents.
+// The backups folder ("Backup folder" setting), the same one to write them (runAutoBackup) and to list them
+// (listBackupFiles): a single computation, hence never two different folders.
 export function backupFolderPath(plugin: MTGCollectionPlugin): string {
 	return normalizePath(plugin.settings.autoBackupFolder.trim() || "MTG Backups");
 }
@@ -99,10 +96,10 @@ export async function runAutoBackup(this: MTGCollectionPlugin): Promise<{ path: 
 	try {
 		const folderPath = backupFolderPath(this);
 		if (!this.app.vault.getAbstractFileByPath(folderPath)) {
-			// Peut légitimement lever si un autre appel a créé le dossier
-			// entre-temps (ex. clic sur "Back up now" pendant que le
-			// déclenchement automatique tourne déjà) — ignoré volontairement,
-			// le create()/modify() ci-dessous fera surface toute vraie erreur.
+			// May legitimately throw if another call created the folder in the
+			// meantime (e.g. a click on "Back up now" while the automatic trigger is
+			// already running) — deliberately ignored, the create()/modify() below
+			// will surface any real error.
 			try {
 				await this.app.vault.createFolder(folderPath);
 			} catch {
@@ -129,8 +126,9 @@ export async function runAutoBackup(this: MTGCollectionPlugin): Promise<{ path: 
 		return { error: e instanceof Error ? e.message : String(e) };
 	}
 }
-// Les fichiers du dossier des sauvegardes, bruts : core/backup-files.ts (listBackups) garde ceux qui sont des sauvegardes et les
-// ordonne. Un dossier absent ou vide donne une liste vide, jamais une erreur. Pas récursif, comme pruneAutoBackups.
+// The files of the backups folder, raw: core/backup-files.ts (listBackups) keeps those that are backups and
+// orders them. A missing or empty folder gives an empty list, never an error. Not recursive, like
+// pruneAutoBackups.
 export function listBackupFiles(this: MTGCollectionPlugin): BackupFileInfo[] {
 	const folder = this.app.vault.getAbstractFileByPath(backupFolderPath(this));
 	if (!(folder instanceof TFolder)) return [];
@@ -139,20 +137,19 @@ export function listBackupFiles(this: MTGCollectionPlugin): BackupFileInfo[] {
 		.map((f) => ({ path: f.path, name: f.name, mtime: f.stat.mtime, size: f.stat.size }));
 }
 
-// Le texte d'un fichier de sauvegarde du coffre, par l'API Vault (aucun sélecteur de fichier du système n'intervient).
+// The text of a vault backup file, via the Vault API (no system file picker is involved).
 export async function readBackupFile(this: MTGCollectionPlugin, path: string): Promise<string> {
 	const file = this.app.vault.getAbstractFileByPath(normalizePath(path));
 	if (!(file instanceof TFile)) throw new Error("This backup file no longer exists in the vault.");
 	return this.app.vault.read(file);
 }
-// Garde au plus settings.autoBackupKeepCount sauvegardes AUTOMATIQUES
-// (préfixe AUTO_BACKUP_FILE_PREFIX uniquement) dans le dossier — les plus
-// anciennes sont déplacées à la corbeille (vault.trash avec `false`,
-// respecte le réglage "corbeille système vs .trash" d'Obsidian plutôt
-// qu'une suppression définitive), jamais un fichier qui ne porte pas ce
-// préfixe. Le nom de fichier intègre déjà la date au format ISO
-// (YYYY-MM-DD), donc un tri alphabétique est aussi un tri chronologique
-// — pas besoin de lire `stat.ctime` sur chaque fichier.
+// Keeps at most settings.autoBackupKeepCount AUTOMATIC backups
+// (AUTO_BACKUP_FILE_PREFIX prefix only) in the folder — the oldest ones
+// are moved to the trash (vault.trash with `false`, respects Obsidian's
+// "system trash vs .trash" setting rather than a permanent deletion),
+// never a file that doesn't carry this prefix. The file name already
+// embeds the date in ISO format (YYYY-MM-DD), so an alphabetical sort is
+// also a chronological sort — no need to read `stat.ctime` on each file.
 
 export async function pruneAutoBackups(this: MTGCollectionPlugin, folderPath: string) {
 	const keep = Math.max(1, Math.floor(this.settings.autoBackupKeepCount) || 7);

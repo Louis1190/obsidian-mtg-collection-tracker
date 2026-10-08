@@ -28,19 +28,18 @@ import type MTGCollectionPlugin from "../plugin";
 /*  My Decks: card + deck mutations. Split out of plugin.ts on 2026-09-10.  */
 /* -------------------------------------------------------------------------- */
 
-// Même principe que changeCollectionCardPrinting (collection-mutations.ts)/
-// changeWantlistCardPrinting (wantlist-mutations.ts), pour une carte de
-// deck — DeckCard n'a simplement pas de champ id propre (voir "Data model
-// notes" dans CLAUDE.md), la ligne se retrouve donc par scryfallId +
-// catégorie plutôt que par id, la même clé d'unicité déjà utilisée
-// ailleurs pour un deck (voir addCardToDeck/importDecklistToDeck). Aucun
-// champ date de sortie ici (DeckCard n'en persiste toujours aucun,
-// contrairement à CollectionCard/WantlistCard — le prix, lui, est mis à
-// jour ci-dessous depuis le 2026-09-02) ;
-// count/category/dateAdded/owned/finish/language/condition/grading/
-// customPrice restent inchangés (un changement d'impression ne change pas
-// l'exemplaire physique lui-même), seuls les champs dérivés de
-// l'impression Scryfall elle-même bougent.
+// Same principle as changeCollectionCardPrinting
+// (collection-mutations.ts)/changeWantlistCardPrinting
+// (wantlist-mutations.ts), for a deck card — DeckCard simply has no id
+// field of its own (see "Data model notes" in CLAUDE.md), so the row is
+// found by scryfallId + category rather than by id, the same uniqueness key
+// already used elsewhere for a deck (see
+// addCardToDeck/importDecklistToDeck). No release-date field here (DeckCard
+// still persists none, unlike CollectionCard/WantlistCard — the price, for
+// its part, is updated below since 2026-09-02);
+// count/category/dateAdded/owned/finish/language/condition/grading/customPrice
+// stay unchanged (a printing change doesn't change the physical copy
+// itself), only the fields derived from the Scryfall printing itself move.
 
 export function changeDeckCardPrinting(this: MTGCollectionPlugin,
 	deckId: string,
@@ -54,12 +53,11 @@ export function changeDeckCardPrinting(this: MTGCollectionPlugin,
 		(c) => c.scryfallId === scryfallId && getDeckCardCategory(c) === category
 	);
 	if (!card) return;
-	// Une autre ligne de ce même deck (même catégorie ET même statut
-	// Commander — voir isDeckCommander, data-model.ts, pour pourquoi
-	// category seule ne suffit plus) pointe déjà vers l'impression
-	// choisie — fusionne au lieu de dupliquer, même raisonnement que
-	// partout ailleurs qu'un deck fusionne par cette clé plutôt que
-	// d'accumuler deux lignes pour la même carte.
+	// Another row of this same deck (same category AND same Commander status —
+	// see isDeckCommander, data-model.ts, for why category alone is no longer
+	// enough) already points to the chosen printing — merges instead of
+	// duplicating, same reasoning as everywhere else that a deck merges by
+	// this key rather than accumulating two rows for the same card.
 	const wasCommander = isDeckCommander(card);
 	const existing = deck.cards.find(
 		(c) =>
@@ -116,9 +114,8 @@ export function createDeck(this: MTGCollectionPlugin, name: string, format?: str
 	return deck;
 }
 
-// Modifiable après coup depuis DeckSettingsModal — un format choisi à la
-// création n'est pas figé pour toujours, même logique que renameDeck
-// juste au-dessus.
+// Editable afterwards from DeckSettingsModal — a format chosen at creation
+// isn't frozen forever, same logic as renameDeck just above.
 
 export function setDeckFormat(this: MTGCollectionPlugin, deckId: string, format: string | undefined) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -127,9 +124,9 @@ export function setDeckFormat(this: MTGCollectionPlugin, deckId: string, format:
 	void this.saveSettings();
 }
 
-// Vide un deck (retire toutes ses cartes) sans le supprimer — même
-// raisonnement/couple avec deleteDeck que clearList/deleteList côté liste
-// (voir clearList, collection-mutations.ts).
+// Empties a deck (removes all its cards) without deleting it — same
+// reasoning/pairing with deleteDeck as clearList/deleteList on the list
+// side (see clearList, collection-mutations.ts).
 
 export function clearDeck(this: MTGCollectionPlugin, deckId: string) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -138,10 +135,10 @@ export function clearDeck(this: MTGCollectionPlugin, deckId: string) {
 	void this.saveSettings();
 }
 
-// Fixe (ou efface, scryfallId undefined) l'image de couverture d'un deck —
-// voir Deck.coverCardId/resolveDeckCoverImage (core/price.ts). Identifié
-// par scryfallId plutôt que par id comme setListCoverCard : DeckCard n'a
-// pas de champ id propre (voir "Data model notes" dans CLAUDE.md).
+// Sets (or clears, scryfallId undefined) a deck's cover image — see
+// Deck.coverCardId/resolveDeckCoverImage (core/price.ts). Identified by
+// scryfallId rather than by id like setListCoverCard: DeckCard has no id
+// field of its own (see "Data model notes" in CLAUDE.md).
 
 export function setDeckCoverCard(this: MTGCollectionPlugin, deckId: string, scryfallId: string | undefined) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -150,8 +147,8 @@ export function setDeckCoverCard(this: MTGCollectionPlugin, deckId: string, scry
 	void this.saveSettings();
 }
 
-// Fixe (ou efface, icon undefined) le pictogramme d'un deck — voir
-// Deck.deckIcon (core/data-model.ts) pour la résolution côté affichage
+// Sets (or clears, icon undefined) a deck's pictogram — see Deck.deckIcon
+// (core/data-model.ts) for the resolution on the display side
 // (renderDeckGrid/CopyCardModal.renderDecksTab).
 
 export function setDeckIcon(this: MTGCollectionPlugin, deckId: string, icon: ListIcon | undefined) {
@@ -167,7 +164,7 @@ export function deleteDeck(this: MTGCollectionPlugin, deckId: string) {
 	void this.saveSettings();
 }
 
-// Version groupée de deleteDeck ci-dessus — voir bulkDeleteLists.
+// Grouped version of deleteDeck above — see bulkDeleteLists.
 
 export function bulkDeleteDecks(this: MTGCollectionPlugin, deckIds: string[]) {
 	const idSet = new Set(deckIds);
@@ -191,8 +188,8 @@ export function copyDeck(this: MTGCollectionPlugin, deckId: string): Deck {
 		name: `${source?.name ?? "Deck"} copy`,
 		cards: (source?.cards ?? []).map((c) => ({ ...c })),
 		dateCreated: Date.now(),
-		// Une copie reprend le format du deck source — c'est bien le même
-		// deck, cartes ET format, juste dupliqué (voir Deck.format).
+		// A copy takes over the source deck's format — it really is the same deck,
+		// cards AND format, just duplicated (see Deck.format).
 		format: source?.format,
 	};
 	this.settings.decks.push(newDeck);
@@ -207,24 +204,22 @@ export function createDeckSilent(this: MTGCollectionPlugin, name: string, format
 	return deck;
 }
 
-// Fusionne les doublons stricts d'UN SEUL deck — DeckCard n'a pas de champ
-// id propre (voir "Data model notes" dans CLAUDE.md), donc retrouvés par
-// scryfallId + catégorie + statut Commander plutôt que par id comme
-// findListDuplicateGroups/mergeListDuplicateGroup (collection-mutations.ts) ou
-// findWantlistDuplicateGroups/mergeWantlistDuplicateGroup
-// (wantlist-mutations.ts) — même clé d'identité déjà établie ailleurs pour les decks
-// (addCardToDeck à l'ajout, changeDeckCardPrinting, l'import de
-// decklist), PAS la clé plus étroite scryfallId seul qu'utilisent
-// changeDeckCardCount/removeDeckCard/undoAddToDeck (voir leur propre
-// commentaire) : deux entrées au même scryfallId+catégorie mais l'une
-// Commander et l'autre non (une carte Background comptée à la fois comme
-// Commander et comme mainboard ordinaire, par exemple — voir
-// isDeckCommander) ne sont PAS des doublons.
-// Écrit directement plutôt que factorisé en findDeckDuplicateGroups/
-// mergeDeckDuplicateGroup séparés (comme côté collection/wantlist) :
-// aucun écran de revue groupe par groupe n'est demandé ici, juste une
-// action immédiate depuis DeckSettingsModal — pas de second appelant qui
-// aurait besoin de la sélection sans l'application.
+// Merges the strict duplicates of ONE SINGLE deck — DeckCard has no id field of its
+// own (see "Data model notes" in CLAUDE.md), so they are found by scryfallId +
+// category + Commander status rather than by id like
+// findListDuplicateGroups/mergeListDuplicateGroup (collection-mutations.ts) or
+// findWantlistDuplicateGroups/mergeWantlistDuplicateGroup (wantlist-mutations.ts) —
+// the same identity key already established elsewhere for decks (addCardToDeck on
+// adding, changeDeckCardPrinting, the decklist import), NOT the narrower key
+// scryfallId alone that changeDeckCardCount/removeDeckCard/undoAddToDeck use (see
+// their own comment): two entries with the same scryfallId+category but one
+// Commander and the other not (a Background card counted both as Commander and as
+// ordinary mainboard, for example — see isDeckCommander) are NOT duplicates.
+// Written directly rather than factored into separate
+// findDeckDuplicateGroups/mergeDeckDuplicateGroup (as on the collection/wantlist
+// side): no group-by-group review screen is asked for here, just an immediate action
+// from DeckSettingsModal — no second caller that would need the selection without
+// the application.
 
 export function mergeDeckDuplicates(this: MTGCollectionPlugin, deckId: string): { merged: number; removed: number } {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -254,13 +249,11 @@ export function mergeDeckDuplicates(this: MTGCollectionPlugin, deckId: string): 
 	return { merged: dupGroups.length, removed };
 }
 
-// "Merge decks" (DeckSettingsModal, sur le modèle de mergeLists
-// (collection-mutations.ts)/mergeWantlists (wantlist-mutations.ts)) — crée un nouveau deck, y copie toutes les
-// cartes des decks sélectionnés (copie, pas une réaffectation comme
-// mergeLists : contrairement à CollectionCard, une DeckCard n'a pas de champ
-// listId à réaffecter, elle vit directement dans Deck.cards), supprime
-// les decks d'origine, puis fusionne les doublons désormais dans le même
-// deck en réutilisant mergeDeckDuplicates ci-dessus.
+// "Merge decks" (DeckSettingsModal, modeled on mergeLists (collection-mutations.ts)/mergeWantlists
+// (wantlist-mutations.ts)) — creates a new deck, copies into it all the cards of the selected decks (a copy,
+// not a reassignment like mergeLists: unlike CollectionCard, a DeckCard has no listId field to reassign, it
+// lives directly in Deck.cards), deletes the original decks, then merges the duplicates now in the same deck
+// by reusing mergeDeckDuplicates above.
 
 export function mergeDecks(this: MTGCollectionPlugin, deckIds: string[], name: string): Deck {
 	const newDeck = this.createDeckSilent(name);
@@ -274,16 +267,15 @@ export function mergeDecks(this: MTGCollectionPlugin, deckIds: string[], name: s
 	return newDeck;
 }
 
-// Renvoie la ligne résultante (nouvelle ou fusionnée) — même convention
-// que addCardToCollection/addCardToWantlist, jusque-là seule cette
-// méthode-ci renvoyait void. Nécessaire pour que le flux "Add cards" du
-// Deck puisse s'harmoniser avec Collection/Wantlist (voir le call site
-// dans view.ts, onAdd) : AddCardsModalOptions.onAdd attend { id,
-// count, listId } pour transformer le bouton "Add" en stepper — DeckCard
-// n'a pas de champ id propre (voir data-model.ts), donc le call site
-// utilise scryfallId à sa place, la même clé que changeDeckCardCount/
-// removeDeckCard/undoAddToDeck utilisent déjà pour retrouver une ligne
-// dans deck.cards.
+// Returns the resulting row (new or merged) — same convention as
+// addCardToCollection/addCardToWantlist, until now only this method
+// returned void. Needed so that the Deck's "Add cards" flow can be
+// harmonized with Collection/Wantlist (see the call site in view.ts,
+// onAdd): AddCardsModalOptions.onAdd expects { id, count, listId } to turn
+// the "Add" button into a stepper — DeckCard has no id field of its own
+// (see data-model.ts), so the call site uses scryfallId in its place, the
+// same key that changeDeckCardCount/removeDeckCard/undoAddToDeck already
+// use to find a row in deck.cards.
 
 export function addCardToDeck(this: MTGCollectionPlugin, deckId: string, card: ScryfallCard): DeckCard | undefined {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -330,10 +322,10 @@ export function addCardToDeck(this: MTGCollectionPlugin, deckId: string, card: S
 	return newCard;
 }
 
-// Copie une carte déjà présente dans la collection (une "List") vers un deck.
-// Une carte ainsi ajoutée est possédée par définition : si elle fusionne
-// avec une entrée existante venue d'une wantlist (owned: false), celle-ci
-// passe à "possédée" — on a maintenant au moins un exemplaire réel.
+// Copies a card already present in the collection (a "List") to a deck. A
+// card added this way is owned by definition: if it merges with an existing
+// entry from a wantlist (owned: false), that entry becomes "owned" — we now
+// have at least one real copy.
 
 export function addCollectionCardToDeck(this: MTGCollectionPlugin, card: DeckSourceCard, deckId: string) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -367,16 +359,16 @@ export function addCollectionCardToDeck(this: MTGCollectionPlugin, card: DeckSou
 			frame: card.frame,
 			frameEffects: card.frameEffects,
 			oracleText: card.oracleText,
-			// Voir DeckSourceCard.finish/condition/language — reprend
-			// l'exemplaire physique réel qu'on copie (une CollectionCard a les
-			// trois), plutôt que le repli "Regular"/aucune par défaut
-			// d'une carte de deck vraiment nouvelle (voir addCardToDeck).
+			// See DeckSourceCard.finish/condition/language — takes over the real
+			// physical copy being copied (a CollectionCard has all three), rather than
+			// the default "Regular"/none fallback of a truly new deck card (see
+			// addCardToDeck).
 			finish: card.finish,
 			condition: card.condition,
 			language: card.language,
-			// Voir DeckSourceCard.priceUsd/etc. — même raisonnement, prix
-			// déjà connu de la carte source plutôt qu'un "pas encore su"
-			// en attendant backfillDeckCardPrices().
+			// See DeckSourceCard.priceUsd/etc. — same reasoning, price already known
+			// from the source card rather than a "not yet known" while waiting for
+			// backfillDeckCardPrices().
 			priceUsd: card.priceUsd,
 			priceUsdFoil: card.priceUsdFoil,
 			priceEur: card.priceEur,
@@ -388,9 +380,9 @@ export function addCollectionCardToDeck(this: MTGCollectionPlugin, card: DeckSou
 	void this.saveSettings();
 }
 
-// Ajoute une carte pas encore possédée (depuis une wantlist) à un deck.
-// Contrairement à addCollectionCardToDeck, une fusion avec une entrée déjà
-// possédée ne la rétrograde pas : owned ne descend jamais, seulement monte.
+// Adds a not-yet-owned card (from a wantlist) to a deck. Unlike
+// addCollectionCardToDeck, a merge with an already owned entry doesn't
+// demote it: owned never goes down, only up.
 
 export function addWantlistCardToDeck(this: MTGCollectionPlugin, card: DeckSourceCard, deckId: string) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -423,10 +415,9 @@ export function addWantlistCardToDeck(this: MTGCollectionPlugin, card: DeckSourc
 			frame: card.frame,
 			frameEffects: card.frameEffects,
 			oracleText: card.oracleText,
-			// Voir addCollectionCardToDeck — même raisonnement, mais
-			// condition/language restent absents : une WantlistCard
-			// n'a ni l'un ni l'autre (pas encore possédée), même
-			// asymétrie déjà établie ailleurs pour ce type de carte.
+			// See addCollectionCardToDeck — same reasoning, but condition/language
+			// stay absent: a WantlistCard has neither (not owned yet), same asymmetry
+			// already established elsewhere for this type of card.
 			finish: card.finish,
 			priceUsd: card.priceUsd,
 			priceUsdFoil: card.priceUsdFoil,
@@ -463,20 +454,17 @@ export function removeDeckCard(this: MTGCollectionPlugin, deckId: string, scryfa
 	void this.saveSettings();
 }
 
-// Harmonisation My Decks/My Collection (2026-08-25) — équivalents de
-// setCollectionCardFinish/setCollectionCardCondition/setCollectionCardLanguage/setCollectionCardGrading/
-// setCollectionCardCustomPrice (collection-mutations.ts), pour une carte de deck. Retrouvent leur
-// ligne par scryfallId SEUL, comme changeDeckCardCount/removeDeckCard/
-// undoAddToDeck ci-dessus/ci-dessous — pas par scryfallId + catégorie
-// comme changeDeckCardPrinting : ce sont les mêmes deux conventions déjà
-// établies pour un deck (voir leurs propres commentaires), pas une
-// nouvelle divergence introduite ici. Une même carte présente deux fois
-// dans un deck sous deux catégories différentes (ex. mainboard ET
-// sideboard), ou une fois en Commander et une fois hors Commander (ex.
-// import decklist avec un Background compté séparément — voir
-// isDeckCommander), reste donc ambiguë pour ces 5 méthodes — une
-// limitation déjà acceptée pour changeDeckCardCount/removeDeckCard/
-// undoAddToDeck, pas propre à finish/condition/langue/grading/prix perso.
+// My Decks/My Collection harmonization (2026-08-25) — equivalents of
+// setCollectionCardFinish/setCollectionCardCondition/setCollectionCardLanguage/setCollectionCardGrading/setCollectionCardCustomPrice
+// (collection-mutations.ts), for a deck card. They find their row by scryfallId ALONE, like
+// changeDeckCardCount/removeDeckCard/undoAddToDeck above/below — not by scryfallId + category like
+// changeDeckCardPrinting: these are the same two conventions already established for a deck (see their
+// own comments), not a new divergence introduced here. A same card present twice in a deck under two
+// different categories (e.g. mainboard AND sideboard), or once as Commander and once as non-Commander
+// (e.g. decklist import with a Background counted separately — see isDeckCommander), therefore remains
+// ambiguous for these 5 methods — a limitation already accepted for
+// changeDeckCardCount/removeDeckCard/undoAddToDeck, not specific to
+// finish/condition/language/grading/custom price.
 
 export function setDeckCardFinish(this: MTGCollectionPlugin, deckId: string, scryfallId: string, finish: Finish) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -510,13 +498,12 @@ export function setDeckCardLanguage(this: MTGCollectionPlugin, deckId: string, s
 	void this.saveSettings();
 }
 
-// Boîte "Board" de DeckCardDetailModal (2026-09-06 sous le nom
-// "Category", renommée "Board" le 2026-09-08 — voir DeckCardCategory
-// pour pourquoi Commander n'en fait plus partie) — correction manuelle
-// de DeckCard.category (Mainboard/Sideboard/Maybeboard), même ambiguïté
-// acceptée pour une carte présente deux fois sous deux catégories
-// différentes que les 5 méthodes ci-dessus (voir leur commentaire) : la
-// première ligne correspondante l'emporte.
+// "Board" box of DeckCardDetailModal (2026-09-06 under the name
+// "Category", renamed "Board" on 2026-09-08 — see DeckCardCategory for why
+// Commander is no longer part of it) — manual correction of
+// DeckCard.category (Mainboard/Sideboard/Maybeboard), same ambiguity
+// accepted for a card present twice under two different categories as the
+// 5 methods above (see their comment): the first matching row wins.
 
 export function setDeckCardCategory(this: MTGCollectionPlugin, deckId: string, scryfallId: string, category: DeckCardCategory) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -528,12 +515,12 @@ export function setDeckCardCategory(this: MTGCollectionPlugin, deckId: string, s
 	void this.saveSettings();
 }
 
-// "Group by Function" (2026-09-02) — correction manuelle d'une détection
-// automatique erronée/absente (voir DeckCard.deckFunctionOverride, "Group
-// by Function"/vue Stacks, view.ts). `undefined` = revient à la
-// détection automatique (le picker propose "Auto (…)" pour ça, voir
-// DeckCardDetailModal), même convention que setDeckCardCustomPrice pour
-// "champ vide = pas de repli forcé".
+// "Group by Function" (2026-09-02) — manual correction of an
+// erroneous/missing automatic detection (see
+// DeckCard.deckFunctionOverride, "Group by Function"/Stacks view,
+// view.ts). `undefined` = goes back to automatic detection (the picker
+// offers "Auto (…)" for that, see DeckCardDetailModal), same convention as
+// setDeckCardCustomPrice for "empty field = no forced fallback".
 
 export function setDeckCardFunction(this: MTGCollectionPlugin, deckId: string, scryfallId: string, functionOverride: string | undefined) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -564,8 +551,8 @@ export function setDeckCardGrading(this: MTGCollectionPlugin,
 	void this.saveSettings();
 }
 
-// Voir setCollectionCardCustomPrice (collection-mutations.ts) — même raison d'être séparée de
-// setDeckCardGrading.
+// See setCollectionCardCustomPrice (collection-mutations.ts) — same reason for being separate
+// from setDeckCardGrading.
 
 export function setDeckCardCustomPrice(this: MTGCollectionPlugin, deckId: string, scryfallId: string, customPrice: string) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -577,18 +564,17 @@ export function setDeckCardCustomPrice(this: MTGCollectionPlugin, deckId: string
 	void this.saveSettings();
 }
 
-// Voir undoAddToCollection (collection-mutations.ts)/undoAddToWantlist
-// (wantlist-mutations.ts) — même
-// raisonnement, côté deck, pour le panneau "Add history" de la fenêtre
-// "Add cards" (uniformisation demandée explicitement avec Collection/
-// Wantlist). Clé de dédoublonnage plus courte que ses 2 homologues :
-// addCardToDeck ne fusionne que par scryfallId, jamais par finish/
-// language/condition (contrairement à undoAddToCollection/
-// undoAddToWantlist) — DeckCard porte bien ces 3 champs depuis
-// l'harmonisation My Decks/My Collection (2026-08-25), mais un deck ne
-// distingue toujours qu'UNE ligne par carte (voir addCardToDeck), pas une
-// par combinaison finish/langue/condition comme Collection/Wantlist —
-// pas besoin d'un 2ᵉ paramètre "options" ici.
+// See undoAddToCollection (collection-mutations.ts)/undoAddToWantlist
+// (wantlist-mutations.ts) — same reasoning, on the deck side, for the "Add
+// history" panel of the "Add cards" window (uniformization explicitly
+// requested with Collection/Wantlist). Shorter deduplication key than its
+// 2 counterparts: addCardToDeck only merges by scryfallId, never by
+// finish/language/condition (unlike undoAddToCollection/undoAddToWantlist)
+// — DeckCard does carry these 3 fields since the My Decks/My Collection
+// harmonization (2026-08-25), but a deck still only distinguishes ONE row
+// per card (see addCardToDeck), not one per finish/language/condition
+// combination like Collection/Wantlist — no need for a 2nd "options"
+// parameter here.
 
 export function undoAddToDeck(this: MTGCollectionPlugin, scryfallId: string, deckId: string, delta: number): DeckCard | undefined {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -605,28 +591,25 @@ export function undoAddToDeck(this: MTGCollectionPlugin, scryfallId: string, dec
 	return row;
 }
 
-// "Move card" depuis la boîte "Deck" du panneau de détail (harmonisation
-// avec la boîte "List"/"Wantlist" de CardDetailModal/
-// WantlistCardDetailModal, 2026-08-25, demandée explicitement) — 3
-// destinations possibles (List/Deck/Wantlist), voir CopyCardModal
-// (sourceKind === "deck"). DeckCard n'a toujours aucun champ releasedAt
-// (voir "Data model notes" dans CLAUDE.md — le prix, lui, EST en cache
-// depuis le 2026-09-02, mais pas ce champ-là), contrairement à
-// copyCollectionCardToList/copyWantlistCardToList qui peuvent réutiliser tels
-// quels les champs déjà présents sur leur carte source — copyDeckCard-
-// ToList/copyDeckCardToWantlist ci-dessous ont donc toujours besoin d'un
-// aller-retour Scryfall frais, même fonction (fetchScryfallCollection)
-// qu'addCardToDeck utilise déjà pour construire une DeckCard depuis un
-// ScryfallCard tout neuf. finish/condition/langue de l'exemplaire
-// physique sont en revanche repris tels quels depuis la carte de deck
-// (getDeckCardFinish/etc.) — ce sont des attributs de CET exemplaire,
-// pas des données Scryfall à rafraîchir. Renvoient `true` seulement si
-// une carte a réellement été créée/fusionnée côté destination — un
-// aller-retour Scryfall raté (limite de requêtes, coupure réseau) laisse
-// tout inchangé plutôt que de construire une carte à moitié remplie ;
-// move*ToList/move*ToWantlist ci-dessous ne retirent la carte du deck
-// QUE si ce retour vaut `true`, pour ne jamais faire disparaître une
-// carte du deck sans qu'elle atterrisse nulle part.
+// "Move card" from the "Deck" box of the detail panel (harmonization with the
+// "List"/"Wantlist" box of CardDetailModal/WantlistCardDetailModal,
+// 2026-08-25, explicitly requested) — 3 possible destinations
+// (List/Deck/Wantlist), see CopyCardModal (sourceKind === "deck"). DeckCard
+// still has no releasedAt field (see "Data model notes" in CLAUDE.md — the
+// price IS cached since 2026-09-02, but not that field), unlike
+// copyCollectionCardToList/copyWantlistCardToList which can reuse as is the
+// fields already present on their source card —
+// copyDeckCardToList/copyDeckCardToWantlist below therefore always need a
+// fresh Scryfall round trip, the same function (fetchScryfallCollection) that
+// addCardToDeck already uses to build a DeckCard from a brand-new
+// ScryfallCard. The physical copy's finish/condition/language, on the other
+// hand, are taken as is from the deck card (getDeckCardFinish/etc.) — they
+// are attributes of THAT copy, not Scryfall data to refresh. Return `true`
+// only if a card was actually created/merged on the destination side — a
+// failed Scryfall round trip (rate limit, network cut) leaves everything
+// unchanged rather than build a half-filled card; move*ToList/move*ToWantlist
+// below only remove the card from the deck IF this return is `true`, so as
+// never to make a card vanish from the deck without it landing anywhere.
 
 export async function copyDeckCardToList(this: MTGCollectionPlugin, 
 	deckId: string,
@@ -709,10 +692,10 @@ export async function moveDeckCardToList(this: MTGCollectionPlugin,
 	if (copied) this.removeDeckCard(deckId, scryfallId);
 }
 
-// Voir copyDeckCardToList ci-dessus — même raisonnement (aller-retour
-// Scryfall, condition/langue omises comme pour copyCollectionCardToWantlist/
-// copyWantlistCardToWantlist : une wantlist item n'a ni l'une ni
-// l'autre).
+// See copyDeckCardToList above — same reasoning (Scryfall round trip,
+// condition/language omitted as for
+// copyCollectionCardToWantlist/copyWantlistCardToWantlist: a wantlist item
+// has neither).
 
 export async function copyDeckCardToWantlist(this: MTGCollectionPlugin, 
 	deckId: string,
@@ -786,15 +769,14 @@ export async function moveDeckCardToWantlist(this: MTGCollectionPlugin,
 	if (copied) this.removeDeckCard(deckId, scryfallId);
 }
 
-// Deck → deck, contrairement aux 2 paires ci-dessus : source ET
-// destination sont déjà des DeckCard de forme identique, aucun aller-
-// retour Scryfall nécessaire — simple relocalisation, synchrone, jamais
-// à moitié faite. `fromDeckId === toDeckId` est un no-op explicite
-// (garde défensive ; CopyCardModal exclut déjà le deck source de sa
-// propre galerie de destinations, voir renderDecksTab) : sans elle,
-// `existing` retrouverait la carte SOURCE elle-même dans le même
-// tableau, doublerait son compteur puis la supprimerait — une perte de
-// carte, pas un no-op.
+// Deck → deck, unlike the 2 pairs above: source AND destination are
+// already DeckCards of identical shape, no Scryfall round trip needed —
+// simple relocation, synchronous, never half done. `fromDeckId ===
+// toDeckId` is an explicit no-op (defensive guard; CopyCardModal already
+// excludes the source deck from its own gallery of destinations, see
+// renderDecksTab): without it, `existing` would find the SOURCE card
+// itself in the same array, double its counter then delete it — a loss of
+// card, not a no-op.
 
 export function copyDeckCardToDeck(this: MTGCollectionPlugin, fromDeckId: string, scryfallId: string, category: DeckCardCategory, toDeckId: string) {
 	if (fromDeckId === toDeckId) return;
@@ -803,10 +785,10 @@ export function copyDeckCardToDeck(this: MTGCollectionPlugin, fromDeckId: string
 	if (!fromDeck || !toDeck) return;
 	const card = fromDeck.cards.find((c) => c.scryfallId === scryfallId && getDeckCardCategory(c) === category);
 	if (!card) return;
-	// + statut Commander (voir isDeckCommander) sur la fusion destination
-	// — même raisonnement que mergeDeckDuplicates/changeDeckCardPrinting :
-	// category seule ne suffit plus à distinguer un Commander d'une carte
-	// mainboard ordinaire depuis que les deux valent "mainboard".
+	// + Commander status (see isDeckCommander) on the destination merge — same
+	// reasoning as mergeDeckDuplicates/changeDeckCardPrinting: category alone
+	// is no longer enough to tell a Commander from an ordinary mainboard card
+	// since both are "mainboard".
 	const isCommanderCard = isDeckCommander(card);
 	const existing = toDeck.cards.find(
 		(c) => c.scryfallId === scryfallId && getDeckCardCategory(c) === category && isDeckCommander(c) === isCommanderCard
@@ -828,8 +810,8 @@ export function moveDeckCardToDeck(this: MTGCollectionPlugin, fromDeckId: string
 	this.removeDeckCard(fromDeckId, scryfallId);
 }
 
-// Versions "en masse" des actions groupées : une seule écriture sur disque
-// pour tout le lot, plutôt qu'un appel à saveSettings() par carte.
+// "Bulk" versions of the grouped actions: a single disk write for the
+// whole batch, rather than a saveSettings() call per card.
 
 export function bulkRemoveDeckCards(this: MTGCollectionPlugin, deckId: string, scryfallIds: string[]) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -855,14 +837,14 @@ export function bulkSetDeckCardCount(this: MTGCollectionPlugin, deckId: string, 
 	void this.saveSettings();
 }
 
-// Équivalents "en masse" de setDeckCardCondition/setDeckCardLanguage/
-// setDeckCardFinish ci-dessus — ajoutés lors de l'harmonisation de la
-// barre d'actions groupées de My Decks avec celle de My Collection
-// (2026-09-08, demandée explicitement), une fois DeckCard réellement doté
-// de ces 3 champs (harmonisation My Decks/My Collection, 2026-08-25).
-// Même clé scryfallId SEUL par carte (pas scryfallId + catégorie) que
-// leurs homologues carte-par-carte — même ambiguïté déjà acceptée pour une
-// carte présente deux fois sous deux catégories différentes.
+// "Bulk" equivalents of
+// setDeckCardCondition/setDeckCardLanguage/setDeckCardFinish above — added
+// when harmonizing My Decks' bulk-actions bar with My Collection's
+// (2026-09-08, explicitly requested), once DeckCard actually had these 3
+// fields (My Decks/My Collection harmonization, 2026-08-25). Same
+// scryfallId-ONLY key per card (not scryfallId + category) as their
+// card-by-card counterparts — same ambiguity already accepted for a card
+// present twice under two different categories.
 
 export function bulkSetDeckCardCondition(this: MTGCollectionPlugin, deckId: string, scryfallIds: string[], condition: string) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -908,14 +890,13 @@ export function bulkSetDeckCardFinish(this: MTGCollectionPlugin, deckId: string,
 	void this.saveSettings();
 }
 
-// Équivalents "en masse" de setDeckCardCategory/setDeckCardFunction
-// ci-dessus — "Board"/"Function" ajoutés à la barre d'actions groupées de
-// My Decks (2026-09-08, demandé explicitement) une fois les 3 onglets de
-// board ("Category" renommé "Board" dans DeckCardDetailModal) et la
-// Function d'une carte de deck déjà réglables une par une. Même clé
-// scryfallId SEUL par carte que bulkSetDeckCardCondition/Language/Finish
-// ci-dessus — même ambiguïté déjà acceptée pour une carte présente deux
-// fois sous deux catégories différentes.
+// "Bulk" equivalents of setDeckCardCategory/setDeckCardFunction above —
+// "Board"/"Function" added to My Decks' bulk-actions bar (2026-09-08,
+// explicitly requested) once the 3 board tabs ("Category" renamed "Board"
+// in DeckCardDetailModal) and a deck card's Function were already settable
+// one by one. Same scryfallId-ONLY key per card as
+// bulkSetDeckCardCondition/Language/Finish above — same ambiguity already
+// accepted for a card present twice under two different categories.
 
 export function bulkSetDeckCardCategory(this: MTGCollectionPlugin, deckId: string, scryfallIds: string[], category: DeckCardCategory) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -931,10 +912,10 @@ export function bulkSetDeckCardCategory(this: MTGCollectionPlugin, deckId: strin
 	void this.saveSettings();
 }
 
-// functionOverride undefined = revient à la détection automatique pour
-// toute la sélection (le picker propose toujours "Auto" en tête, même
-// convention que setDeckCardFunction ci-dessus pour "champ vide = pas de
-// repli forcé").
+// functionOverride undefined = goes back to automatic detection for the
+// whole selection (the picker always offers "Auto" at the top, same
+// convention as setDeckCardFunction above for "empty field = no forced
+// fallback").
 
 export function bulkSetDeckCardFunction(this: MTGCollectionPlugin, deckId: string, scryfallIds: string[], functionOverride: string | undefined) {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
@@ -950,16 +931,16 @@ export function bulkSetDeckCardFunction(this: MTGCollectionPlugin, deckId: strin
 	void this.saveSettings();
 }
 
-// Import de decklist externe collée dans NewDeckModal (Moxfield/Archidekt/
-// texte brut) — parseDecklistText (decklist-import.ts, pur) sépare déjà
-// quantité/nom/édition/catégorie pour chaque ligne ; cette méthode résout
-// chaque nom via Scryfall puis ajoute au deck. Résolution ligne par
-// ligne via searchScryfall (même chemin qu'importCsv pour ses lignes sans
-// Scryfall Id) plutôt qu'un lot par nom sur /cards/collection : un nom
-// seul n'est pas un identifiant fiable pour ce point d'accès (il choisit
-// arbitrairement une impression), alors que searchScryfall accepte déjà
-// nom+édition+numéro et applique la même logique de résolution qu'une
-// recherche normale. Chaque appel passe par requestScryfall, qui impose
-// déjà un espacement global entre requêtes Scryfall (voir son propre
-// commentaire) — pas besoin d'une pause locale supplémentaire ici, à la
-// différence de l'ancienne boucle d'importCsv qui prédate ce mécanisme.
+// Import of an external decklist pasted in NewDeckModal
+// (Moxfield/Archidekt/plain text) — parseDecklistText (decklist-import.ts,
+// pure) already separates quantity/name/set/category for each line; this
+// method resolves each name via Scryfall then adds to the deck.
+// Line-by-line resolution via searchScryfall (same path as importCsv for
+// its lines without Scryfall Id) rather than a batch by name on
+// /cards/collection: a name alone isn't a reliable identifier for that
+// endpoint (it arbitrarily picks a printing), whereas searchScryfall
+// already accepts name+set+number and applies the same resolution logic as
+// a normal search. Each call goes through requestScryfall, which already
+// imposes a global spacing between Scryfall requests (see its own comment)
+// — no need for an additional local pause here, unlike the old importCsv
+// loop which predates this mechanism.

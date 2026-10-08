@@ -5,18 +5,17 @@ import { renderColorPieChart, renderManaCurveChart, renderTypeBarChart } from ".
 import { applyModalOpenAnimation, closeModalAnimated, addModalCloseButton } from "../ui/modal-animation";
 
 /* -------------------------------------------------------------------------- */
-/*  "Deck Stats" (2026-09-02) — mana curve/couleurs/types d'UN deck ouvert.   */
-/*  Une modale, pas un mode d'affichage : un premier essai en 5e bouton du   */
-/*  cluster liste/grille/tableau/carte (voir CardViewMode, git history) a    */
-/*  été demandé explicitement en retour à cette forme-ci — même trio         */
-/*  cardsInDeckStatsScope/computeManaCurve/computeColorBreakdown/            */
-/*  computeTypeBreakdown (core/deck-stats.ts) et même dessin de graphiques   */
-/*  (ui/deck-stats-fx.ts), tous les deux déjà purs/testés et donc réutilisés */
-/*  ici tels quels — seule la façon de les afficher a changé. Pas d'état qui */
-/*  change après ouverture (contrairement au bloc "Market Trends" du        */
-/*  dashboard Home, qui a des onglets période/vendeur — home-render.ts) :    */
-/*  tout est construit une seule fois dans onOpen(), pas de draw() séparé   */
-/*  à rappeler.                                                             */
+/* "Deck Stats" (2026-09-02) — mana curve/colors/types of ONE open deck. A */
+/* modal, not a display mode: a first attempt as a 5th button of the */
+/* list/grid/table/card cluster (see CardViewMode, git history) was */
+/* explicitly asked to be returned to this form — same */
+/* cardsInDeckStatsScope/computeManaCurve/computeColorBreakdown/computeTypeBreakdown */
+/* trio (core/deck-stats.ts) and same chart drawing (ui/deck-stats-fx.ts), */
+/* both already pure/tested and therefore reused here as is — only the way to */
+/* display them changed. No state that changes after opening (unlike the */
+/* "Market Trends" block of the Home dashboard, which has period/vendor tabs */
+/* — home-render.ts): everything is built only once in onOpen(), no separate */
+/* draw() to call again. */
 /* -------------------------------------------------------------------------- */
 
 export class DeckStatsModal extends Modal {

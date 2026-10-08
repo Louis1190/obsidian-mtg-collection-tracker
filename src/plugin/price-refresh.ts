@@ -5,7 +5,7 @@ import type MTGCollectionPlugin from "../plugin";
 import { MTGCollectionView } from "../view";
 
 /* ---------------------------------------------------------------------------- */
-/*  Rafraîchissement des prix stockés des cartes, manuel et automatique (MTGCollectionPlugin).*/
+/* Refresh of the stored prices of cards, manual and automatic (MTGCollectionPlugin). */
 /* ---------------------------------------------------------------------------- */
 
 export const MANUAL_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
@@ -24,10 +24,10 @@ export async function refreshAllPrices(this: MTGCollectionPlugin,
 		}
 	}
 
-	// Decks inclus depuis 2026-09-02 (voir DeckCard.priceUsd/etc.,
-	// data-model.ts) — un même id compte pour un seul aller-retour, même
-	// s'il apparaît à la fois en collection, en wantlist ET dans un ou
-	// plusieurs decks.
+	// Decks included since 2026-09-02 (see DeckCard.priceUsd/etc.,
+	// data-model.ts) — a same id counts for a single round trip, even if it
+	// appears in the collection, in the wantlist AND in one or more decks at
+	// once.
 	const deckCards = this.settings.decks.flatMap((d) => d.cards);
 	const uniqueIds = Array.from(
 		new Set(
@@ -68,11 +68,10 @@ export async function refreshAllPrices(this: MTGCollectionPlugin,
 	};
 	this.settings.collection.forEach(applyPrices);
 	this.settings.wantlist.forEach(applyPrices);
-	// DeckCard n'affecte pas directement via applyPrices ci-dessus : ses 6
-	// champs sont optionnels (voir son propre commentaire, data-model.ts),
-	// donc ne satisfont pas structurellement PricedCard (qui les exige
-	// non-optionnels) — même valeurs, simplement écrites à la main plutôt
-	// que via cette fonction générique.
+	// DeckCard isn't assigned directly via applyPrices above: its 6 fields are
+	// optional (see its own comment, data-model.ts), so don't structurally
+	// satisfy PricedCard (which requires them non-optional) — same values,
+	// simply written by hand rather than via this generic function.
 	deckCards.forEach((c) => {
 		const scry = priceMap.get(c.scryfallId);
 		if (!scry) return;
@@ -104,9 +103,9 @@ export async function refreshAllPrices(this: MTGCollectionPlugin,
 	await this.saveSettings();
 	return { updated };
 }
-// Vérifie si le délai configuré (Settings > Interface) est écoulé depuis
-// le dernier rafraîchissement, et lance une mise à jour en arrière-plan si
-// besoin. "0" désactive complètement la fonctionnalité.
+// Checks whether the configured delay (Settings > Interface) has elapsed
+// since the last refresh, and launches an update in the background if
+// needed. "0" disables the feature entirely.
 
 export async function maybeAutoRefreshPrices(this: MTGCollectionPlugin) {
 	const hours = this.settings.priceRefreshIntervalHours;

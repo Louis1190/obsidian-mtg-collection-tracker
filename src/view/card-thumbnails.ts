@@ -6,18 +6,17 @@ import type { MTGCollectionView } from "../view";
 import { setSvgMarkup } from "../ui/svg-markup";
 
 /* ---------------------------------------------------------------------------- */
-/*  Vignettes de carte avec badge d'édition, aperçu au survol, rayon des coins en mode Card.*/
+/* Card thumbnails with set badge, hover preview, corner radius in Card mode. */
 /* ---------------------------------------------------------------------------- */
 
-// Affiche l'aperçu flottant au survol du NOM d'une carte, en mode Tableau
-// uniquement (voir buildCollectionCardRow/buildDeckCardRow/buildWantlistCardRow, qui
-// n'attachent les écouteurs mouseenter/mouseleave appelant ces deux
-// méthodes que quand this.viewMode/deckViewMode/wantlistViewMode ===
-// "table"). anchor est l'élément survolé (le <span>/<div> du nom lui-même,
-// pas toute la cellule) — sert uniquement à calculer la position, jamais
-// stocké. Pas d'aperçu pour une carte sans image connue (imageUrl vide,
-// cas rare mais possible pour une entrée CSV importée sans round-trip
-// Scryfall réussi).
+// Displays the floating preview on hovering a card's NAME, in Table mode only (see
+// buildCollectionCardRow/buildDeckCardRow/buildWantlistCardRow, which only attach
+// the mouseenter/mouseleave listeners calling these two methods when
+// this.viewMode/deckViewMode/wantlistViewMode === "table"). anchor is the hovered
+// element (the <span>/<div> of the name itself, not the whole cell) — used only to
+// compute the position, never stored. No preview for a card with no known image
+// (empty imageUrl, rare but possible case for a CSV entry imported without a
+// successful Scryfall round trip).
 
 export function showCardNamePreview(this: MTGCollectionView, anchor: HTMLElement, imageUrl: string) {
 	if (!imageUrl) return;
@@ -26,10 +25,10 @@ export function showCardNamePreview(this: MTGCollectionView, anchor: HTMLElement
 	const margin = 12;
 	const previewWidth = this.cardNamePreviewEl.offsetWidth || 220;
 	const previewHeight = previewWidth * (680 / 488);
-	// Par défaut à droite du nom survolé ; bascule à gauche si ça
-	// déborderait du viewport à droite (fenêtre étroite, ou nom proche du
-	// bord). Clampé ensuite des deux côtés au cas où NI la droite NI la
-	// gauche ne suffiraient (fenêtre plus étroite que l'aperçu lui-même).
+	// By default to the right of the hovered name; flips to the left if that
+	// would overflow the viewport on the right (narrow window, or name close
+	// to the edge). Then clamped on both sides in case NEITHER the right nor
+	// the left is enough (window narrower than the preview itself).
 	let left = r.right + margin;
 	if (left + previewWidth > window.innerWidth - margin) {
 		left = r.left - previewWidth - margin;
@@ -45,33 +44,32 @@ export function showCardNamePreview(this: MTGCollectionView, anchor: HTMLElement
 export function hideCardNamePreview(this: MTGCollectionView) {
 	this.cardNamePreviewEl.removeClass("is-visible");
 }
-// Voir le commentaire de computeCardTileRadius (card-detail-fx.ts) pour
-// pourquoi la vue Carte n'observe PAS ses tuiles individuellement comme
-// setupCardTilt le fait pour la fenêtre de détail. this.mainEl est
-// persistant (jamais détruit/reconstruit, contrairement aux tuiles
-// elles-mêmes ou à this.bodyEl) — un seul ResizeObserver posé une fois
-// ici, pour toute la durée de vie de la vue, plutôt qu'un par tuile.
+// See the comment of computeCardTileRadius (card-detail-fx.ts) for why the
+// Card view does NOT observe its tiles individually like setupCardTilt
+// does for the detail window. this.mainEl is persistent (never
+// destroyed/rebuilt, unlike the tiles themselves or this.bodyEl) — a
+// single ResizeObserver set up once here, for the whole lifetime of the
+// view, rather than one per tile.
 
 export function setupCardTileRadiusObserver(this: MTGCollectionView) {
 	const observer = new ResizeObserver(() => this.updateCardTileRadius());
 	observer.observe(this.mainEl);
 }
-// Échantillonne la largeur d'une tuile de vue Carte ACTUELLEMENT affichée
-// (n'importe laquelle : les 4 colonnes de la grille ont toutes la même
-// largeur, voir .mtg-collection-list-cards) et pose --mtg-card-tile-radius
-// sur this.containerEl (également persistant) — hérité de là par toutes
-// les tuiles affichées, sans qu'aucune d'elles n'ait besoin de le poser
-// elle-même. Appelée (1) juste après l'échange atomique dans render(),
-// où une tuile fraîchement construite est déjà attachée, et (2) depuis le
-// ResizeObserver de setupCardTileRadiusObserver ci-dessus, à chaque
-// redimensionnement du panneau. Aucune des deux ne dépend d'observer un
-// nœud tuile individuel, qui s'est révélé peu fiable (voir
-// computeCardTileRadius) : celui-ci est régulièrement recréé, réutilisé
-// depuis le cache (cachedListRowElements) et redéplacé d'un rendu à
-// l'autre, un terrain bien plus fragile pour un ResizeObserver que
-// this.mainEl, qui ne bouge jamais. Sans tuile actuellement affichée
-// (vue Liste/Grille/Tableau active, ou vue Carte sur une liste vide),
-// ne fait rien — rien à mettre à jour.
+// Samples the width of a Card view tile CURRENTLY displayed (any one: the
+// 4 columns of the grid all have the same width, see
+// .mtg-collection-list-cards) and sets --mtg-card-tile-radius on
+// this.containerEl (also persistent) — inherited from there by all the
+// displayed tiles, without any of them having to set it itself. Called (1)
+// right after the atomic swap in render(), where a freshly built tile is
+// already attached, and (2) from the ResizeObserver of
+// setupCardTileRadiusObserver above, on every resize of the panel. Neither
+// depends on observing an individual tile node, which proved unreliable
+// (see computeCardTileRadius): the latter is regularly recreated, reused
+// from the cache (cachedListRowElements) and moved again from one render
+// to the next, much more fragile ground for a ResizeObserver than
+// this.mainEl, which never moves. With no tile currently displayed
+// (List/Grid/Table view active, or Card view on an empty list), does
+// nothing — nothing to update.
 
 export function updateCardTileRadius(this: MTGCollectionView) {
 	const sampleWrap = this.containerEl.querySelector<HTMLElement>(".mtg-card-tile-thumb-shadow-wrap");
@@ -86,43 +84,42 @@ export function renderThumbWithBadge(this: MTGCollectionView,
 	setCode: string,
 	rarity: string,
 	showFoilLook = false,
-	// Carte pas encore possédée (deck contenant une carte issue d'une
-	// wantlist) : un petit ruban en coin plutôt qu'un paramètre séparé par
-	// appelant, pour rester générique et réutilisable ailleurs si besoin.
+	// Card not yet owned (deck containing a card coming from a wantlist): a
+	// small corner ribbon rather than a separate parameter per caller, to stay
+	// generic and reusable elsewhere if needed.
 	wanted = false,
-	// "tile" : vue Carte (voir buildCollectionCardTile/buildDeckCardTile/
-	// buildWantlistCardTile) — la carte s'affiche en entier, pleine largeur
-	// de la tuile, plutôt qu'en miniature fixe recadrée.
+	// "tile": Card view (see
+	// buildCollectionCardTile/buildDeckCardTile/buildWantlistCardTile) — the
+	// card is displayed in full, full width of the tile, rather than as a
+	// fixed cropped thumbnail.
 	variant: "row" | "tile" = "row",
-	// Petit badge couronne en coin (My Decks uniquement, voir
-	// isDeckCommander, data-model.ts) — ajouté en DERNIER paramètre plutôt
-	// qu'entre wanted/variant pour ne casser aucun appel positionnel
-	// existant (plusieurs passent déjà 7 arguments jusqu'à variant).
+	// Small crown badge in a corner (My Decks only, see isDeckCommander,
+	// data-model.ts) — added as the LAST parameter rather than between
+	// wanted/variant so as not to break any existing positional call (several
+	// already pass 7 arguments up to variant).
 	isCommander = false
 ) {
-	// Vue Carte : l'ombre portée demandée ("légère, diffuse, vers le bas")
-	// doit vivre sur un ancêtre qui n'a PAS overflow:hidden — .mtg-thumb-wrap
-	// (ci-dessous) en a besoin pour découper le halo foil/la bordure aux
-	// coins arrondis (voir son propre commentaire), et un box-shadow posé
-	// sur un élément qui se découpe lui-même en overflow:hidden est
-	// silencieusement rogné, pas juste assombri. D'où ce conteneur
-	// supplémentaire, purement décoratif (pas de fond, pas de clip),
-	// uniquement en variante "tile".
+	// Card view: the requested drop shadow ("light, diffuse, downward") must
+	// live on an ancestor that does NOT have overflow:hidden — .mtg-thumb-wrap
+	// (below) needs it to clip the foil halo/the border at the rounded corners
+	// (see its own comment), and a box-shadow set on an element that clips
+	// itself with overflow:hidden is silently cropped, not just darkened.
+	// Hence this additional container, purely decorative (no background, no
+	// clip), only in the "tile" variant.
 	const shadowWrap =
 		variant === "tile" ? container.createDiv({ cls: "mtg-card-tile-thumb-shadow-wrap" }) : container;
-	// Radius responsive (--mtg-card-tile-radius) : PAS posé ici par-tuile —
-	// voir updateCardTileRadius/setupCardTileRadiusObserver (même
-	// fichier), et le commentaire de computeCardTileRadius
-	// (card-detail-fx.ts), pour pourquoi un observer par tuile construite
-	// ici (dans le clone détaché de render()) s'est révélé peu fiable en
-	// vrai Obsidian malgré plusieurs correctifs successifs.
-	// Alpha (Limited Edition Alpha) a un radius physique bien plus grand que
-	// les autres éditions — même besoin qu'en vue Liste/Grille
-	// (mtg-card-row-thumb-alpha), mais ici la MÊME classe modificatrice
-	// (mtg-card-tile-alpha) doit s'ajouter aux TROIS éléments qui portent un
-	// border-radius (le wrapper d'ombre, le wrap qui découpe, et l'image
-	// elle-même) — un radius différent entre celui qui découpe et celui de
-	// l'image découpée désynchroniserait leur apparence (voir styles.css).
+	// Responsive radius (--mtg-card-tile-radius): NOT set here per tile — see
+	// updateCardTileRadius/setupCardTileRadiusObserver (same file), and the
+	// comment of computeCardTileRadius (card-detail-fx.ts), for why an
+	// observer per tile built here (in the detached clone of render()) proved
+	// unreliable in real Obsidian despite several successive fixes.
+	// Alpha (Limited Edition Alpha) has a physical radius much larger than the
+	// other sets — same need as in the List/Grid view
+	// (mtg-card-row-thumb-alpha), but here the SAME modifier class
+	// (mtg-card-tile-alpha) must be added to the THREE elements that carry a
+	// border-radius (the shadow wrapper, the clipping wrap, and the image
+	// itself) — a different radius between the one that clips and that of the
+	// clipped image would desynchronize their appearance (see styles.css).
 	const isAlpha = variant === "tile" && isAlphaSet(setCode);
 	const wrap = shadowWrap.createDiv({
 		cls:
@@ -151,24 +148,23 @@ export function renderThumbWithBadge(this: MTGCollectionView,
 		wrap.createDiv({ cls: "mtg-thumb-wanted-ribbon", text: "Wanted" });
 	}
 
-	// Coin haut-DROIT (haut-gauche déjà pris par le ruban "Wanted"
-	// ci-dessus et le repère "souhaité" de My Wantlists, voir leur propre
-	// commentaire dans styles.css — les deux peuvent en principe coexister
-	// avec ce badge sur une carte de deck pas encore possédée) — voir
-	// isDeckCommander (data-model.ts) : le Commander est une Function
-	// depuis le 2026-09-07, pas une catégorie, donc identifié ici via un
-	// badge sur la carte elle-même plutôt qu'un onglet/en-tête de groupe
-	// dédié (scoping confirmé explicitement).
+	// TOP-RIGHT corner (top-left already taken by the "Wanted" ribbon above
+	// and the "wanted" marker of My Wantlists, see their own comment in
+	// styles.css — the two can in principle coexist with this badge on a
+	// not-yet-owned deck card) — see isDeckCommander (data-model.ts): the
+	// Commander has been a Function since 2026-09-07, not a category, so it is
+	// identified here via a badge on the card itself rather than a dedicated
+	// tab/group header (scoping explicitly confirmed).
 	if (isCommander) {
 		setIcon(wrap.createDiv({ cls: "mtg-thumb-commander-badge" }), "crown");
 	}
 
-	// Le badge en coin (logo d'édition sur l'image même) fait double emploi
-	// en vue Carte, où la ligne 1 sous l'image affiche déjà ce même logo
-	// (voir buildCollectionCardTile/buildDeckCardTile/buildWantlistCardTile) —
-	// supprimé pour cette seule variante, sur demande explicite. Les vues
-	// Liste/Grille/Tableau n'ont, elles, aucun autre endroit où ce logo
-	// apparaît : le badge y reste indispensable.
+	// The corner badge (set logo on the image itself) is redundant in the Card
+	// view, where line 1 under the image already displays this same logo (see
+	// buildCollectionCardTile/buildDeckCardTile/buildWantlistCardTile) —
+	// removed for this variant alone, on explicit request. The List/Grid/Table
+	// views have no other place where this logo appears: the badge is
+	// indispensable there.
 	if (variant !== "tile") {
 		const badge = wrap.createDiv({ cls: "mtg-thumb-set-badge" });
 		void this.plugin.getSetIconSvg(setCode).then((svg) => {

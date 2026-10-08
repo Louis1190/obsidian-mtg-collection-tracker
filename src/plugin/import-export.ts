@@ -82,20 +82,17 @@ export async function importDecklistToDeck(this: MTGCollectionPlugin,
 	resolved.forEach(({ line, scryfallId }) => {
 		const scry = enrichMap.get(scryfallId!);
 		if (!scry) return;
-		// "mainboard" reste absent plutôt que persisté explicitement — voir
-		// DeckCard.category (data-model.ts), le cas de très loin le plus
-		// courant.
+		// "mainboard" stays absent rather than explicitly persisted — see
+		// DeckCard.category (data-model.ts), by far the most common case.
 		const category: DeckCardCategory | undefined =
 			line.category === "mainboard" ? undefined : line.category;
-		// Fusionne uniquement avec une entrée déjà présente pour la MÊME
-		// catégorie ET le même statut Commander — une carte peut
-		// légitimement apparaître à la fois comme Commander et comme carte
-		// du deck principal (les Backgrounds, par exemple, ou simplement 2
-		// copies d'un même Commander de partenaire comptées séparément),
-		// fusionner les deux compterait à tort les deux rôles ensemble.
-		// Category seule ne suffit plus à les distinguer depuis que
-		// Commander est devenu une Function plutôt qu'une 4e catégorie
-		// (les deux valent désormais "mainboard") — d'où ce 2e critère.
+		// Merges only with an entry already present for the SAME category AND the
+		// same Commander status — a card can legitimately appear both as Commander
+		// and as a card of the main deck (Backgrounds, for example, or simply 2
+		// copies of a same partner Commander counted separately), merging the two
+		// would wrongly count both roles together. Category alone is no longer
+		// enough to tell them apart since Commander became a Function rather than
+		// a 4th category (both are now "mainboard") — hence this 2nd criterion.
 		const existing = deck.cards.find(
 			(c) =>
 				c.scryfallId === scry.id &&
@@ -105,11 +102,10 @@ export async function importDecklistToDeck(this: MTGCollectionPlugin,
 		if (existing) {
 			existing.count += line.quantity;
 			existing.dateModified = Date.now();
-			// Une ligne Commander qui fusionne dans une entrée déjà taguée
-			// Commander n'a rien de plus à faire ici (deckFunctionOverride
-			// déjà posé) — pas de branche séparée nécessaire, contrairement à
-			// category, qui n'a jamais eu besoin d'être réécrit sur un merge
-			// non plus.
+			// A Commander line that merges into an entry already tagged Commander has
+			// nothing more to do here (deckFunctionOverride already set) — no separate
+			// branch needed, unlike category, which never needed rewriting on a merge
+			// either.
 		} else {
 			const now = Date.now();
 			deck.cards.push({
@@ -141,11 +137,10 @@ export async function importDecklistToDeck(this: MTGCollectionPlugin,
 				priceUsdEtched: scry.prices?.usd_etched ?? "",
 				priceEurEtched: scry.prices?.eur_etched ?? "",
 				category,
-				// "Commander" (voir isDeckCommander/DECK_FUNCTION_CATEGORIES,
-				// data-model.ts/deck-function.ts) — jamais posé pour une ligne
-				// mainboard/sideboard/maybeboard ordinaire, laissé absent
-				// plutôt que persisté explicitement, même repli que category
-				// ci-dessus.
+				// "Commander" (see isDeckCommander/DECK_FUNCTION_CATEGORIES,
+				// data-model.ts/deck-function.ts) — never set for an ordinary
+				// mainboard/sideboard/maybeboard line, left absent rather than explicitly
+				// persisted, same fallback as category above.
 				deckFunctionOverride: line.isCommander ? "Commander" : undefined,
 			});
 		}
@@ -156,23 +151,18 @@ export async function importDecklistToDeck(this: MTGCollectionPlugin,
 	return { added, unresolved };
 }
 
-// Import CSV pour UN SEUL deck (DeckSettingsModal, "Import" → "Import CSV",
-// harmonisé sur ListSettingsModal) — jusqu'ici un deck n'avait aucun chemin
-// d'import CSV (voir "Data model notes" dans CLAUDE.md, "deck CSV reste
-// export-only"), seul l'import de decklist ci-dessus existait. Même
-// mécanique qu'importCsv plus bas (résolution Scryfall des lignes sans
-// Scryfall Id, une seule retentative après une courte pause, un seul
-// fetchScryfallCollection groupé), même en-tête de colonnes que
-// buildDeckCsvString (view.ts) — mais retrouve une ligne existante par
-// scryfallId + catégorie (même clé d'identité que mergeDeckDuplicates/
-// changeDeckCardPrinting, deck-mutations.ts, et l'import de decklist ci-dessus, même fichier), pas par
-// listId+finish+langue+condition comme importCsv. Aucune colonne
-// "Category"/board dans ce format CSV — chaque ligne importée devient une
-// entrée mainboard (même repli que toute carte ajoutée hors import de
-// decklist, voir DeckCardCategory). La branche "ligne déjà présente" ne
-// touche PAS finish/language/condition d'une entrée existante — même
-// convention déjà établie pour importCsv (un merge ne rafraîchit que les
-// champs sourcés de Scryfall + count, jamais ces trois-là).
+// CSV import for ONE SINGLE deck (DeckSettingsModal, "Import" → "Import CSV", harmonized with
+// ListSettingsModal) — until now a deck had no CSV import path (see "Data model notes" in CLAUDE.md,
+// "deck CSV remains export-only"), only the decklist import above existed. Same mechanism as importCsv
+// further down (Scryfall resolution of the lines without Scryfall Id, a single retry after a short
+// pause, a single grouped fetchScryfallCollection), same column header as buildDeckCsvString (view.ts)
+// — but finds an existing row by scryfallId + category (same identity key as
+// mergeDeckDuplicates/changeDeckCardPrinting, deck-mutations.ts, and the decklist import above, same
+// file), not by listId+finish+language+condition like importCsv. No "Category"/board column in this
+// CSV format — each imported row becomes a mainboard entry (same fallback as any card added outside a
+// decklist import, see DeckCardCategory). The "row already present" branch does NOT touch
+// finish/language/condition of an existing entry — same convention already established for importCsv
+// (a merge only refreshes the Scryfall-sourced fields + count, never those three).
 
 export async function importDeckCsv(this: MTGCollectionPlugin, 
 	deckId: string,
@@ -313,10 +303,10 @@ export async function importDeckCsv(this: MTGCollectionPlugin,
 			existing.dateModified = Date.now();
 			if (scry) {
 				existing.imageUrl = getImageUrl(scry) || existing.imageUrl;
-				// Même geste que importCsv (My Collection) — un merge rafraîchit
-				// le prix (pas immuable, contrairement à border/frame/oracleText,
-				// jamais touchés au merge), sans écraser finish/language/
-				// condition existants (voir le commentaire de cette méthode).
+				// Same gesture as importCsv (My Collection) — a merge refreshes the price
+				// (not immutable, unlike border/frame/oracleText, never touched on merge),
+				// without overwriting existing finish/language/condition (see this
+				// method's comment).
 				existing.priceUsd = scry.prices?.usd ?? existing.priceUsd;
 				existing.priceUsdFoil = scry.prices?.usd_foil ?? existing.priceUsdFoil;
 				existing.priceEur = scry.prices?.eur ?? existing.priceEur;
@@ -371,19 +361,18 @@ export async function importDeckCsv(this: MTGCollectionPlugin,
 	return { added, updated, skipped };
 }
 
-// Import de decklist externe (Moxfield/Archidekt/texte brut, "Import TXT"
-// de ListSettingsModal) directement dans une liste de My Collection — même
-// mécanique qu'importDecklistToDeck juste au-dessus (parseDecklistText,
-// résolution ligne par ligne via searchScryfall, enrichissement groupé via
-// fetchScryfallCollection), mais fusionne/crée des CollectionCard (settings.
-// collection) plutôt que des DeckCard, avec le même jeu de champs que la
-// branche "nouvelle ligne" d'importCsv plus bas (même source de données —
-// un ScryfallCard résolu — donc même forme). line.category/isCommander
-// sont ignorés ici : ce découpage n'a de sens que pour un deck, une liste
-// de collection n'a pas cette notion — chaque ligne devient une carte
-// "normale" de la liste. finish/language/condition
-// n'existent pas dans un fichier texte : mêmes replis qu'importCsv quand
-// ces colonnes sont absentes du CSV ("regular"/""/"").
+// Import of an external decklist (Moxfield/Archidekt/plain text, "Import
+// TXT" of ListSettingsModal) directly into a My Collection list — same
+// mechanism as importDecklistToDeck just above (parseDecklistText,
+// line-by-line resolution via searchScryfall, grouped enrichment via
+// fetchScryfallCollection), but merges/creates CollectionCards
+// (settings.collection) rather than DeckCards, with the same set of fields
+// as the "new row" branch of importCsv further down (same data source — a
+// resolved ScryfallCard — hence same shape). line.category/isCommander are
+// ignored here: this split only makes sense for a deck, a collection list
+// has no such notion — each line becomes a "normal" card of the list.
+// finish/language/condition don't exist in a text file: same fallbacks as
+// importCsv when these columns are absent from the CSV ("regular"/""/"").
 
 export async function importDecklistToList(this: MTGCollectionPlugin, 
 	listId: string,
@@ -409,8 +398,8 @@ export async function importDecklistToList(this: MTGCollectionPlugin,
 		const line = lines[i];
 		onProgress(`Resolving ${line.name} (${i + 1}/${lines.length})…`);
 		let scryfallId: string | undefined;
-		// Une seule retentative après une courte pause sur un échec réseau/
-		// HTTP — même raisonnement qu'importDecklistToDeck ci-dessus.
+		// A single retry after a short pause on a network/HTTP failure — same
+		// reasoning as importDecklistToDeck above.
 		for (let attempt = 0; attempt < 2; attempt++) {
 			try {
 				const { cards: results } = await searchScryfall(
@@ -508,15 +497,15 @@ export async function importDecklistToList(this: MTGCollectionPlugin,
 	return { added, updated, unresolved };
 }
 
-// Import de decklist externe (Moxfield/Archidekt/texte brut, "Import TXT"
-// de WantlistSettingsModal) directement dans une wantlist — même mécanique
-// qu'importDecklistToList juste au-dessus, mais fusionne/crée des
-// WantlistCard (settings.wantlist) plutôt que des CollectionCard, sans
-// langue/condition (WantlistCard n'a ni l'un ni l'autre — voir "Data
-// model notes" dans CLAUDE.md), donc une clé de fusion scryfallId+listId+
-// finish plutôt que +langue+condition comme importDecklistToList.
-// line.category/isCommander sont ignorés ici pour la même raison que côté
-// liste : pas de notion de "board" pour une wantlist.
+// Import of an external decklist (Moxfield/Archidekt/plain text, "Import
+// TXT" of WantlistSettingsModal) directly into a wantlist — same mechanism
+// as importDecklistToList just above, but merges/creates WantlistCards
+// (settings.wantlist) rather than CollectionCards, without
+// language/condition (WantlistCard has neither — see "Data model notes" in
+// CLAUDE.md), hence a merge key scryfallId+listId+finish rather than
+// +language+condition like importDecklistToList. line.category/isCommander
+// are ignored here for the same reason as on the list side: no notion of
+// "board" for a wantlist.
 
 export async function importDecklistToWantlist(this: MTGCollectionPlugin, 
 	wantlistId: string,
@@ -542,8 +531,8 @@ export async function importDecklistToWantlist(this: MTGCollectionPlugin,
 		const line = lines[i];
 		onProgress(`Resolving ${line.name} (${i + 1}/${lines.length})…`);
 		let scryfallId: string | undefined;
-		// Une seule retentative après une courte pause sur un échec réseau/
-		// HTTP — même raisonnement qu'importDecklistToList ci-dessus.
+		// A single retry after a short pause on a network/HTTP failure — same
+		// reasoning as importDecklistToList above.
 		for (let attempt = 0; attempt < 2; attempt++) {
 			try {
 				const { cards: results } = await searchScryfall(
@@ -701,11 +690,10 @@ export async function importCsv(this: MTGCollectionPlugin,
 		const row = rows[r];
 		const name = nameIdx !== -1 ? row[nameIdx]?.trim() : "";
 		if (!name) continue;
-		// Math.max(1, ...) : même clamp que changeCollectionCardCount/setCollectionCardCount ailleurs
-		// dans ce fichier — sans lui, une valeur négative ou à zéro dans la
-		// colonne Quantity (faute de frappe, export tiers malformé) créait
-		// silencieusement une entrée à count négatif/nul, faussant les totaux
-		// de liste, la valeur de collection et le tri par prix.
+		// Math.max(1, ...): same clamp as changeCollectionCardCount/setCollectionCardCount elsewhere
+		// in this file — without it, a negative or zero value in the Quantity column (typo, malformed
+		// third-party export) silently created an entry with a negative/zero count, skewing list
+		// totals, the collection's value and the sort by price.
 		const qty = qtyIdx !== -1 ? Math.max(1, parseInt(row[qtyIdx], 10) || 1) : 1;
 		const finishRaw = finishIdx !== -1 ? row[finishIdx] : legacyFoilIdx !== -1 ? row[legacyFoilIdx] : "";
 		const langRaw = languageIdx !== -1 ? row[languageIdx]?.trim().toLowerCase() : "";
@@ -732,10 +720,10 @@ export async function importCsv(this: MTGCollectionPlugin,
 			manaCost: manaCostIdx !== -1 ? row[manaCostIdx]?.trim() : "",
 			qty,
 			finish: parseFinishValue(finishRaw),
-			// Colonne Language absente/vide (langRaw === "") ou valeur importée
-			// non reconnue (ex. "Klingon") aboutissent toutes les deux au même
-			// repli "" (aucune langue choisie, voir getLanguage/types.ts) plutôt
-			// qu'un English arbitraire.
+			// A missing/empty Language column (langRaw === "") or an unrecognized
+			// imported value (e.g. "Klingon") both end up at the same "" fallback (no
+			// language chosen, see getLanguage/types.ts) rather than an arbitrary
+			// English.
 			language: LANGUAGES.some((l) => l.code === langRaw) ? langRaw : "",
 			condition: conditionIdx !== -1 ? row[conditionIdx]?.trim() : "",
 			gradingCompany,
@@ -747,20 +735,19 @@ export async function importCsv(this: MTGCollectionPlugin,
 
 	onProgress(`Parsed ${pending.length} rows…`);
 
-	// Les lignes sans Scryfall Id (format CSV générique) sont résolues une par
-	// une via la recherche classique, avec une petite pause pour rester
-	// raisonnable vis-à-vis de l'API Scryfall.
+	// Lines without a Scryfall Id (generic CSV format) are resolved one by one
+	// via the classic search, with a small pause to stay reasonable toward the
+	// Scryfall API.
 	const toResolve = pending.filter((r) => !r.scryfallId);
 	for (let i = 0; i < toResolve.length; i++) {
 		const row = toResolve[i];
 		onProgress(`Resolving ${row.name} (${i + 1}/${toResolve.length})…`);
-		// Une seule retentative après une courte pause sur un échec RÉSEAU/
-		// HTTP — même correctif/raisonnement qu'importDecklistToDeck plus bas
-		// (voir son propre commentaire pour le bug réel qui l'a motivé, sur
-		// un import de decklist, mais exactement la même faille latente ici :
-		// searchScryfall ne lève une exception QUE sur un vrai échec réseau/
-		// HTTP transitoire, jamais sur un "aucune carte trouvée" confirmé
-		// — cards: [] — donc rien à perdre à retenter une fois ici).
+		// A single retry after a short pause on a NETWORK/HTTP failure — same
+		// fix/reasoning as importDecklistToDeck further down (see its own comment
+		// for the real bug that motivated it, on a decklist import, but exactly
+		// the same latent flaw here: searchScryfall only throws on a real
+		// transient network/HTTP failure, never on a confirmed "no card found" —
+		// cards: [] — so nothing to lose by retrying once here).
 		for (let attempt = 0; attempt < 2; attempt++) {
 			try {
 				const { cards: results } = await searchScryfall(row.name, row.setCode, row.number);
@@ -768,7 +755,7 @@ export async function importCsv(this: MTGCollectionPlugin,
 				break;
 			} catch {
 				if (attempt === 0) await sleep(300);
-				// sinon carte non résolue, elle sera comptée comme "skipped"
+				// otherwise unresolved card, it will be counted as "skipped"
 			}
 		}
 		await new Promise((res) => window.setTimeout(res, 100));
@@ -861,9 +848,9 @@ export async function importCsv(this: MTGCollectionPlugin,
 	return { added, updated, skipped };
 }
 
-// Même logique qu'importCsv, sans condition/langue : une carte de
-// wantlist n'est pas encore possédée, donc ces colonnes (si présentes
-// dans le CSV) sont simplement ignorées.
+// Same logic as importCsv, without condition/language: a wantlist card
+// isn't owned yet, so these columns (if present in the CSV) are simply
+// ignored.
 
 export async function importWantlistCsv(this: MTGCollectionPlugin, 
 	text: string,
@@ -919,11 +906,10 @@ export async function importWantlistCsv(this: MTGCollectionPlugin,
 		const row = rows[r];
 		const name = nameIdx !== -1 ? row[nameIdx]?.trim() : "";
 		if (!name) continue;
-		// Math.max(1, ...) : même clamp que changeCollectionCardCount/setCollectionCardCount ailleurs
-		// dans ce fichier — sans lui, une valeur négative ou à zéro dans la
-		// colonne Quantity (faute de frappe, export tiers malformé) créait
-		// silencieusement une entrée à count négatif/nul, faussant les totaux
-		// de liste, la valeur de collection et le tri par prix.
+		// Math.max(1, ...): same clamp as changeCollectionCardCount/setCollectionCardCount elsewhere
+		// in this file — without it, a negative or zero value in the Quantity column (typo, malformed
+		// third-party export) silently created an entry with a negative/zero count, skewing list
+		// totals, the collection's value and the sort by price.
 		const qty = qtyIdx !== -1 ? Math.max(1, parseInt(row[qtyIdx], 10) || 1) : 1;
 		const finishRaw = finishIdx !== -1 ? row[finishIdx] : legacyFoilIdx !== -1 ? row[legacyFoilIdx] : "";
 		pending.push({
@@ -943,9 +929,8 @@ export async function importWantlistCsv(this: MTGCollectionPlugin,
 
 	onProgress(`Parsed ${pending.length} rows…`);
 
-	// Même correctif qu'importCsv ci-dessus (retentative unique après une
-	// courte pause sur un échec réseau/HTTP transitoire) — voir son propre
-	// commentaire.
+	// Same fix as importCsv above (a single retry after a short pause on a
+	// transient network/HTTP failure) — see its own comment.
 	const toResolve = pending.filter((r) => !r.scryfallId);
 	for (let i = 0; i < toResolve.length; i++) {
 		const row = toResolve[i];
@@ -957,7 +942,7 @@ export async function importWantlistCsv(this: MTGCollectionPlugin,
 				break;
 			} catch {
 				if (attempt === 0) await sleep(300);
-				// sinon carte non résolue, elle sera comptée comme "skipped"
+				// otherwise unresolved card, it will be counted as "skipped"
 			}
 		}
 		await new Promise((res) => window.setTimeout(res, 100));
@@ -1041,13 +1026,12 @@ export async function importWantlistCsv(this: MTGCollectionPlugin,
 
 /* ------------------------- Saved search filters ------------------------ */
 
-// "Save filter" (Add cards, add-cards-modal.ts) — capture l'état courant de
-// la barre de puces (+ tri actif le cas échéant) sous un nom choisi par
-// l'utilisateur, pour la retrouver ensuite dans la liste de suggestions
-// sans avoir à la retaper. `tokens` est copié (pas la référence de
-// chipTokens) : ce tableau est muté en place par la modale à chaque
-// interaction (ajout/retrait de puce), un instantané enregistré ne doit
-// pas continuer à bouger avec lui après coup.
+// "Save filter" (Add cards, add-cards-modal.ts) — captures the current
+// state of the chip bar (+ active sort if any) under a name chosen by the
+// user, to find it again later in the list of suggestions without having to
+// retype it. `tokens` is copied (not the chipTokens reference): that array
+// is mutated in place by the modal on every interaction (chip
+// added/removed), a saved snapshot must not keep moving with it afterwards.
 
 export function saveSearchFilter(this: MTGCollectionPlugin, 
 	label: string,

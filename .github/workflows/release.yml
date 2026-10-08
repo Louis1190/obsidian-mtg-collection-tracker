@@ -1,9 +1,9 @@
 name: Release
 
-# Publie une release quand un tag de version est poussé. Le tag doit être égal à la
-# "version" de manifest.json (c'est ce que l'annuaire d'Obsidian vérifie). Ce fichier est
-# copié tel quel dans le dépôt public par tools/publish-public.mjs ; il n'est pas utilisé
-# par le dépôt privé (dont le workflow est .github/workflows/release.yml).
+# Publishes a release when a version tag is pushed. The tag must equal the "version" of
+# manifest.json (this is what Obsidian's plugin directory checks). This file is copied as is
+# into the public repository by tools/publish-public.mjs; it is not used by the private
+# repository (whose workflow is .github/workflows/release.yml).
 
 on:
   push:
@@ -11,8 +11,8 @@ on:
 
 permissions:
   contents: write
-  id-token: write # signer l'attestation (jeton OIDC de courte durée)
-  attestations: write # publier l'attestation sur GitHub
+  id-token: write # sign the attestation (short-lived OIDC token)
+  attestations: write # publish the attestation on GitHub
 
 jobs:
   release:
@@ -41,9 +41,9 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Provenance signée des trois fichiers de la release (l'annuaire d'Obsidian la recommande) : chacun peut vérifier
-      # avec `gh attestation verify <fichier> --repo <propriétaire>/<dépôt>` qu'il a été construit par CE workflow,
-      # depuis CE dépôt. À faire AVANT l'envoi : ce sont les fichiers attestés qui sont envoyés.
+      # Signed provenance of the three release files (Obsidian's plugin directory recommends it): anyone can check
+      # with `gh attestation verify <file> --repo <owner>/<repository>` that it was built by THIS workflow,
+      # from THIS repository. To be done BEFORE uploading: the attested files are the ones that get uploaded.
       - name: Attest build provenance
         uses: actions/attest@v4
         with:
@@ -56,8 +56,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Les notes de version sont le corps du commit de publication (tools/publish-public.mjs --notes, obligatoire) ;
-          # le repli ne sert que si quelqu'un a poussé un tag sans passer par le script.
+          # The release notes are the body of the publication commit (tools/publish-public.mjs --notes, mandatory);
+          # the fallback is only used if someone pushed a tag without going through the script.
           git log -1 --format=%b "$GITHUB_SHA" > release-notes.md
           if ! grep -q '[^[:space:]]' release-notes.md; then echo "Release $GITHUB_REF_NAME" > release-notes.md; fi
           gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css \

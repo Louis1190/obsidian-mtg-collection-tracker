@@ -2,7 +2,7 @@
 import { GradingCompany } from "../core/card-model";
 
 /* ---------------------------------------------------------------------------- */
-/*  Images SVG embarquées : logos (gradation, magasins), drapeaux de langue, pictogrammes « aucun ».*/
+/* Embedded SVG images: logos (grading, stores), language flags, "none" pictograms. */
 /* ---------------------------------------------------------------------------- */
 
 export const PSA_LOGO_SVG = `<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 30"><path d="M45.2,6s0-.1,0-.1c-4.6.3-7.1.8-9.9,1.8-2.9,1-5.3,2.6-5.3,3.6s.5.8,1.4,1.1c.9.3,1.7.5,2.4.6l4.4,1c2.7.6,5.4,1.6,7,2.7,1.3.8,2,2,2,3.5,0,6-8.1,9.8-21.1,9.8s-6.3-.8-6.3-2.4.4-1.4,1.3-2.8c.7-1,1.1-1.3,1.7-1.5,2.8-.9,2.5-.8,2.8-.8s.3.1.3.3c0,.3,0,.4-.5.6l-.8.6s0,.1,0,.1c1.2,0,2.4,0,2.7,0,5.5,0,9.9-.8,13.7-2.5,1.7-.7,2.3-1.3,2.3-1.9s-.6-1-2.1-1.6c-1.4-.6-3.2-1.1-4.3-1.3l-7-1.3c-3.1-.6-4.3-1.6-4.3-3.8s.2-1.7.5-3c.7-2.7,1.3-3.5,3.5-4.7,4.5-2.6,10.2-4.1,15.6-4.1s3.5.2,5.2.6c.9.2,1.1.4,1.1,1.5s-.4,2.7-.9,3.4c-.5.7-.7.8-2.6,1.5-1.2.4-1.7.7-3.8,2.1-.5.3-.7.4-1,.4s-.7-.3-.7-.6,0-.4.5-.8l2.4-2.2h0ZM28,16.3c-2-.6-3.7-1.8-3.7-4.6s.3-2.3.5-3.3c.4-1.6.9-2.7,1.6-3.6,0,0,0,0,0-.1-1.3-1.3-3.4-2-6.6-2H.2c-.1,0-.2.1-.2.2v24c0,.1,0,.2.2.2h6.9c.1,0,.2,0,.2-.2v-5.7c0-.1,0-.2.2-.2h14.3c3.6,0,5.5-2,6.2-4.5h0s0,0,0,0ZM21.1,12.3c0,1.4-.7,2.6-2.4,2.6H7.5c-.1,0-.2,0-.2-.2v-5.7c0-.1,0-.2.2-.2h10.5c2.2,0,3,.9,3,2.6v.9ZM63.2,2.8c0,0-.1-.1-.2-.1h-9.3c0,0-.2,0-.2.1l-7,13.1c0,.1,0,.3,0,.4,1.1,1,1.7,2.3,1.7,3.8s-.7,4.5-3.8,6.7c0,0,0,.2,0,.2h4.1c0,0,.1,0,.2-.1l2.1-4.2s0,0,0,0h14.7s0,0,0,0l2.2,4.2c0,0,.1.1.2.1h7.9c0,0,0,0,0-.1,0,0-13-24.2-13-24.2ZM63,17.5h-9.2s0,0,0,0l4.5-9s0,0,0,0l4.7,9s0,0,0,0ZM78.7,24.9c-.7,0-1.3.6-1.3,1.3s.6,1.3,1.3,1.3,1.3-.6,1.3-1.3-.6-1.3-1.3-1.3ZM78.7,27.2c-.6,0-1-.5-1-1h0c0-.6.4-1,1-1s1,.5,1,1-.4,1-1,1ZM79.2,26.5c0-.2-.1-.3-.2-.3h0c.2,0,.3-.2.3-.3s0-.2-.1-.3c-.1,0-.2,0-.4,0s-.4,0-.5,0v1.3h.3v-.5h.1c.2,0,.2,0,.3.2,0,.2.1.3.1.3h.3s0-.1,0-.3ZM78.7,26.1h-.1v-.4s0,0,.2,0c.2,0,.3,0,.3.2s-.1.2-.3.2Z"/></svg>`;
@@ -34,35 +34,33 @@ export const FLAG_SVGS: Record<string, string> = {
 	cn: `<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 800 571.4285889"><rect fill="#f1361d" width="800" height="571.4285889" rx="58" ry="58"/><path fill="#ffdc42" fill-rule="evenodd" d="M283.1560059,79.1085739l27.5611267,1.1765671,6.6000061,26.7831421,10.9171448-26.1957169,27.5999756.6734314-20.81427-17.3662872,10.4571228-26.3671417-23.7799683,15.4628601-21.137146-16.9691429,6.1171265,26.9228592-23.5211182,15.8794289ZM335.7028809,155.3771362l26.4571228,7.8097229-.0742798,27.5848541,16.9285583-22.7762909,26.6199951,7.3314209-15.9942932-21.8862762,16.5257263-23.0537109-26.8143005,9.25-16.4057007-21.5797119-.5771484,27.6031494-26.6657104,9.7168579.0000305-.0000153ZM380.2628479,269.1471252l-22.0714417,16.5448608,8.1428528-27.1851501-21.7857056-16.9600067,27.1057129-.2568359,8.6085815-27.0265808,8.6085815,27.0265808,27.1057129.2568359-21.7857361,16.9600067,8.145752,27.1851501-22.0742798-16.5448608h-.0000305ZM289.1514282,346.9371338l26.6628418-7.0714417,14.2685852,23.608551,2.6314392-28.2571106,26.5542603-7.5628662-25.0371399-10.3914185,2.1428528-28.2857361-18.1057129,21.8342896-25.2285461-9.9142761,13.8457031,23.8857117-17.7342834,22.1542969ZM190.4768524,235.0474243l-67.1754303,47.8874512,24.7854309-78.68573-66.3022919-49.0894165,82.4937286-.7428589,26.1985626-78.2265701,26.198288,78.2265701,82.4934082.7428589-66.3016968,49.0894165,24.7854309,78.68573-67.1754303-47.8874512Z"/></svg>`,
 	tw: `<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 800 571.4285889"><path fill="#fe3030" fill-rule="evenodd" d="M58,571.4285889h684c32.0325155,0,58-25.9674845,58-58V58c0-32.0325155-25.9674845-58-58-58H58C25.9674845,0,0,25.9674845,0,58v455.4285889c0,32.0325155,25.9674845,58,58,58Z"/><path fill="#0909b6" fill-rule="evenodd" d="M0,304.7600036h419.0428558V0H58C25.9674845,0,0,25.9674845,0,58v246.7600036Z"/><path fill="#fff" fill-rule="evenodd" d="M209.5237167,199.9999981l-36.4459988,40.3694149,2.7742794-54.3168471-54.3168608,2.7742931,40.3697146-36.4459988-40.3697146-36.4459988,54.3168608,2.7742794-2.7742794-54.316854,36.4459988,40.3697146,36.4459988-40.3697146-2.7742931,54.316854,54.3160025-2.7742794-40.3685702,36.4459988,40.3685702,36.4459988-54.3160025-2.7742931,2.7742931,54.3168471-36.4459988-40.3694149Z"/></svg>`,
 };
-// data: URI plutôt qu'un fetch réseau (les anciens drapeaux venaient d'un
-// CDN, flag-icons) — les SVG ci-dessus sont maintenant embarqués dans le
-// bundle, donc pas de round-trip et rien à mettre en cache. encodeURIComponent
-// (pas base64) : ces SVG n'ont ni caractère non-ASCII ni raison de peser plus
-// lourd une fois encodés, donc pas besoin du coût CPU/taille du base64.
+// data: URI rather than a network fetch (the old flags came from a CDN,
+// flag-icons) — the SVGs above are now embedded in the bundle, so no round
+// trip and nothing to cache. encodeURIComponent (not base64): these SVGs have
+// neither non-ASCII characters nor any reason to weigh more once encoded, so
+// no need for base64's CPU/size cost.
 
 export function getFlagSvgDataUri(countryCode: string): string {
 	const svg = FLAG_SVGS[countryCode] ?? FLAG_SVGS.us;
 	return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
-// Icône Lucide "languages" (https://lucide.dev/icons/languages), affichée à
-// la place d'un drapeau quand une carte n'a pas encore de langue choisie.
-// Injectée en inline via setSvgMarkup (comme tous les autres logos embarqués de ce plugin
-// — PSA/BGS/CGC, Card Kingdom, TCGplayer...) plutôt que enregistrée via
-// addIcon()/appelée via setIcon() : ce fichier n'a par ailleurs aucune
-// dépendance à "obsidian" (voir "Conventions" dans CLAUDE.md — c'est ce qui
-// le rend testable sous Vitest sans mock du module obsidian, contrairement à
-// scryfall.ts), un import ajouté ici pour cette seule icône casserait cette
-// propriété pour tout le fichier. fill="none"/stroke="currentColor" (comme
-// ONE_COLUMN_ICON_SVG plus haut) permet la recoloration via CSS `color` sur
-// le conteneur, sans dépendre d'un <style> scopé. Source vérifiée verbatim
-// (mêmes attributs/paths, juste width/height/class retirés) contre
-// lucide-static@1.30.0.
+// Lucide "languages" icon (https://lucide.dev/icons/languages), displayed in place of a
+// flag when a card doesn't have a language chosen yet. Injected inline via setSvgMarkup
+// (like all the other embedded logos of this plugin — PSA/BGS/CGC, Card Kingdom,
+// TCGplayer...) rather than registered via addIcon()/called via setIcon(): this file
+// otherwise has no dependency on "obsidian" (see "Conventions" in CLAUDE.md — this is
+// what makes it testable under Vitest without mocking the obsidian module, unlike
+// scryfall.ts), an import added here for this single icon would break that property for
+// the whole file. fill="none"/stroke="currentColor" (like ONE_COLUMN_ICON_SVG above)
+// allows recoloring via CSS `color` on the container, without depending on a scoped
+// <style>. Source verified verbatim (same attributes/paths, just width/height/class
+// removed) against lucide-static@1.30.0.
 
 export const LANGUAGE_NONE_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>`;
-// Icône Lucide "astroid" (https://lucide.dev/icons/astroid — une courbe
-// géométrique à 4 pointes, pas le rocher spatial), affichée à la place du
-// badge lettré quand une carte n'a pas encore de condition choisie — même
-// raisonnement/vérification (setSvgMarkup, pas addIcon/setIcon) que
-// LANGUAGE_NONE_ICON_SVG ci-dessus.
+// Lucide "astroid" icon (https://lucide.dev/icons/astroid — a 4-pointed
+// geometric curve, not the space rock), displayed in place of the lettered
+// badge when a card doesn't have a condition chosen yet — same
+// reasoning/verification (setSvgMarkup, not addIcon/setIcon) as
+// LANGUAGE_NONE_ICON_SVG above.
 
 export const CONDITION_NONE_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.983 21.186a1 1 0 0 1-1.966 0 10 10 0 0 0-8.203-8.203 1 1 0 0 1 0-1.966 10 10 0 0 0 8.203-8.203 1 1 0 0 1 1.966 0 10 10 0 0 0 8.203 8.203 1 1 0 0 1 0 1.966 10 10 0 0 0-8.203 8.203"/></svg>`;

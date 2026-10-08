@@ -20,11 +20,11 @@ export class NewDeckModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		this.contentEl.addClass("mtg-new-deck-modal");
 		this.contentEl.createEl("h2", { text: "New deck" });
@@ -34,14 +34,14 @@ export class NewDeckModal extends Modal {
 		});
 		input.focus();
 
-		// Format — réutilise LEGALITY_SEARCH_FORMATS (card-search.ts, déjà
-		// utilisée par la recherche "legal:"/"banned:"/"restricted:" et par le
-		// bloc "Legal Formats" des fiches détail) plutôt qu'une 2ᵉ liste : même
-		// vocabulaire de formats partout dans le plugin. "None" en tête = pas de
-		// format choisi (Deck.format reste undefined) — n'active alors ni
-		// l'affichage du format ni le badge de légalité par carte (voir
-		// deckLegalityBadge, card-search.ts). Modifiable après coup depuis
-		// "Deck settings" (DeckSettingsModal, deck-settings-modal.ts).
+		// Format — reuses LEGALITY_SEARCH_FORMATS (card-search.ts, already used by
+		// the "legal:"/"banned:"/"restricted:" search and by the detail sheets'
+		// "Legal Formats" block) rather than a 2nd list: same vocabulary of
+		// formats everywhere in the plugin. "None" at the head = no format chosen
+		// (Deck.format stays undefined) — then enables neither the display of the
+		// format nor the per-card legality badge (see deckLegalityBadge,
+		// card-search.ts). Editable afterwards from "Deck settings"
+		// (DeckSettingsModal, deck-settings-modal.ts).
 		const formatField = this.contentEl.createDiv({ cls: "mtg-search-field" });
 		formatField.createEl("label", { text: "Format (optional)" });
 		const formatSelect = formatField.createEl("select");
@@ -50,10 +50,10 @@ export class NewDeckModal extends Modal {
 			formatSelect.createEl("option", { text: f.label, value: f.key })
 		);
 
-		// Import de decklist — voir MTGCollectionPlugin.importDecklistToDeck et
-		// decklist-import.ts (parseDecklistText) pour le détail du format
-		// accepté. Facultatif : un deck vide reste créé normalement si ce champ
-		// est laissé vide.
+		// Decklist import — see MTGCollectionPlugin.importDecklistToDeck and
+		// decklist-import.ts (parseDecklistText) for the detail of the accepted
+		// format. Optional: an empty deck is still created normally if this field
+		// is left empty.
 		const decklistField = this.contentEl.createDiv({ cls: "mtg-search-field" });
 		decklistField.createEl("label", { text: "Paste a decklist (optional)" });
 		const decklistTextarea = decklistField.createEl("textarea", {
@@ -84,18 +84,18 @@ export class NewDeckModal extends Modal {
 			text: "Create",
 			cls: "mtg-search-add-btn",
 		});
-		// Désactivé tant qu'aucun nom n'est saisi — évite un clic silencieux qui
-		// ne fait rien (comportement précédent : create() faisait juste un early
-		// return, sans aucun retour visuel).
+		// Disabled as long as no name is entered — avoids a silent click that does
+		// nothing (previous behavior: create() just did an early return, with no
+		// visual feedback).
 		createBtn.disabled = true;
 		input.addEventListener("input", () => {
 			createBtn.disabled = !input.value.trim();
 		});
 		createBtn.addEventListener("click", create);
-		// mtg-modal-cancel-btn : même gabarit que .mtg-search-add-btn (hauteur/
-		// padding) mais sans son remplissage accent — demandé explicitement pour
-		// que "Cancel" fasse la même taille que "Create" au lieu de paraître
-		// plus petit avec le style de bouton natif d'Obsidian.
+		// mtg-modal-cancel-btn: same template as .mtg-search-add-btn
+		// (height/padding) but without its accent fill — explicitly requested so
+		// that "Cancel" is the same size as "Create" instead of looking smaller
+		// with Obsidian's native button style.
 		const cancelBtn = actions.createEl("button", {
 			text: "Cancel",
 			cls: "mtg-modal-cancel-btn",
@@ -103,12 +103,12 @@ export class NewDeckModal extends Modal {
 		cancelBtn.addEventListener("click", () => this.close());
 	}
 
-	// Le deck existe déjà (créé par create() juste avant) — cette partie est
-	// un enrichissement en arrière-plan, pas une condition à la création du
-	// deck lui-même. Même schéma que triggerImportCollection/triggerImportWantlist
-	// (view.ts) pour l'import CSV : une ImportProgressModal de progression, réutilisée
-	// ici avec un titre dédié plutôt qu'une 2ᵉ fenêtre de progression quasi
-	// identique (voir ImportProgressModal, import-progress-modal.ts).
+	// The deck already exists (created by create() just before) — this part is a
+	// background enrichment, not a condition for creating the deck itself. Same scheme
+	// as triggerImportCollection/triggerImportWantlist (view.ts) for the CSV import:
+	// an ImportProgressModal for progress, reused here with a dedicated title rather
+	// than a 2nd near-identical progress window (see ImportProgressModal,
+	// import-progress-modal.ts).
 	private importDecklist(deck: Deck, text: string) {
 		const modal = new ImportProgressModal(this.app, `Importing decklist into "${deck.name}"…`);
 		modal.open();
@@ -119,9 +119,9 @@ export class NewDeckModal extends Modal {
 					result.unresolved.length > 0 ? `, ${result.unresolved.length} not found` : "";
 				modal.setStatus(`Done: ${result.added} added${unresolvedMsg}.`);
 				new Notice(`Decklist import complete: ${result.added} added${unresolvedMsg}.`);
-				// N'ouvre le rapport détaillé que s'il y a vraiment quelque chose
-				// à examiner au-delà du Notice ci-dessus — pas la peine d'imposer
-				// une 2ᵉ fenêtre quand tout a été résolu.
+				// Only opens the detailed report if there is really something to examine
+				// beyond the Notice above — no need to impose a 2nd window when everything
+				// was resolved.
 				if (result.unresolved.length > 0) {
 					new DecklistImportResultModal(this.app, deck.name, result.added, result.unresolved).open();
 				}
@@ -159,11 +159,11 @@ export class NewListModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		this.contentEl.addClass("mtg-new-deck-modal");
 		this.contentEl.createEl("h2", { text: "New list" });
@@ -190,18 +190,18 @@ export class NewListModal extends Modal {
 			text: "Create",
 			cls: "mtg-search-add-btn",
 		});
-		// Désactivé tant qu'aucun nom n'est saisi — évite un clic silencieux qui
-		// ne fait rien (comportement précédent : create() faisait juste un early
-		// return, sans aucun retour visuel).
+		// Disabled as long as no name is entered — avoids a silent click that does
+		// nothing (previous behavior: create() just did an early return, with no
+		// visual feedback).
 		createBtn.disabled = true;
 		input.addEventListener("input", () => {
 			createBtn.disabled = !input.value.trim();
 		});
 		createBtn.addEventListener("click", create);
-		// mtg-modal-cancel-btn : même gabarit que .mtg-search-add-btn (hauteur/
-		// padding) mais sans son remplissage accent — demandé explicitement pour
-		// que "Cancel" fasse la même taille que "Create" au lieu de paraître
-		// plus petit avec le style de bouton natif d'Obsidian.
+		// mtg-modal-cancel-btn: same template as .mtg-search-add-btn
+		// (height/padding) but without its accent fill — explicitly requested so
+		// that "Cancel" is the same size as "Create" instead of looking smaller
+		// with Obsidian's native button style.
 		const cancelBtn = actions.createEl("button", {
 			text: "Cancel",
 			cls: "mtg-modal-cancel-btn",
@@ -233,11 +233,11 @@ export class NewWantlistModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		this.contentEl.addClass("mtg-new-deck-modal");
 		this.contentEl.createEl("h2", { text: "New wantlist" });
@@ -264,18 +264,18 @@ export class NewWantlistModal extends Modal {
 			text: "Create",
 			cls: "mtg-search-add-btn",
 		});
-		// Désactivé tant qu'aucun nom n'est saisi — évite un clic silencieux qui
-		// ne fait rien (comportement précédent : create() faisait juste un early
-		// return, sans aucun retour visuel).
+		// Disabled as long as no name is entered — avoids a silent click that does
+		// nothing (previous behavior: create() just did an early return, with no
+		// visual feedback).
 		createBtn.disabled = true;
 		input.addEventListener("input", () => {
 			createBtn.disabled = !input.value.trim();
 		});
 		createBtn.addEventListener("click", create);
-		// mtg-modal-cancel-btn : même gabarit que .mtg-search-add-btn (hauteur/
-		// padding) mais sans son remplissage accent — demandé explicitement pour
-		// que "Cancel" fasse la même taille que "Create" au lieu de paraître
-		// plus petit avec le style de bouton natif d'Obsidian.
+		// mtg-modal-cancel-btn: same template as .mtg-search-add-btn
+		// (height/padding) but without its accent fill — explicitly requested so
+		// that "Cancel" is the same size as "Create" instead of looking smaller
+		// with Obsidian's native button style.
 		const cancelBtn = actions.createEl("button", {
 			text: "Cancel",
 			cls: "mtg-modal-cancel-btn",

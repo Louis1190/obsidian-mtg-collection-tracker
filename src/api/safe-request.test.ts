@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Un faux réseau scripté : chaque requête consomme l'étape suivante (la dernière se répète). Plus simple, ici, qu'un vi.fn() dont
-// l'état (mockReset / implémentation qui rejette) se comporte de façon surprenante dans vitest 4.
+// A scripted fake network: each request consumes the next step (the last one repeats). Simpler, here, than a
+// vi.fn() whose state (mockReset / rejecting implementation) behaves surprisingly in vitest 4.
 const net = vi.hoisted(() => ({ steps: [] as (() => unknown)[], calls: [] as unknown[] }));
 vi.mock("obsidian", () => ({
 	Platform: { isMobileApp: false },
@@ -43,8 +43,9 @@ describe("requestUrlOrNull", () => {
 	});
 });
 
-// Chaque fetcher promet « une valeur d'échec, jamais une exception » : c'est ce que l'interface (« — », « No price history available
-// yet. », colonne grisée) sait afficher. Une erreur de transport doit y mener comme un statut non 200.
+// Each fetcher promises "a failure value, never an exception": this is what the interface ("—", "No price
+// history available yet.", greyed-out column) knows how to display. A transport error must lead there like a
+// non-200 status.
 describe("the data-source fetchers resolve to their failure value when the network is down", () => {
 	it("Card Kingdom and Mana Pool pricelists: an empty map", async () => {
 		script(down);

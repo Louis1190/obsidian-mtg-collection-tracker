@@ -3,8 +3,8 @@ import { DEFAULT_SETTINGS } from "./data-model";
 import { DEVICE_LOCAL_KEYS, omitDeviceLocal, pickDeviceLocal } from "./device-settings";
 
 describe("DEVICE_LOCAL_KEYS", () => {
-	// Une faute de frappe ici ne ferait aucune erreur : la clé visée resterait simplement
-	// synchronisée entre appareils. D'où ce contrôle croisé avec le modèle de données.
+	// A typo here wouldn't raise any error: the targeted key would simply stay synced
+	// across devices. Hence this cross-check with the data model.
 	it("only names settings that exist, with a plain (string/boolean) default", () => {
 		for (const k of DEVICE_LOCAL_KEYS) {
 			expect(Object.keys(DEFAULT_SETTINGS), `${k} is not a setting`).toContain(k);

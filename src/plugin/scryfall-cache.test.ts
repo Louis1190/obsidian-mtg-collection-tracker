@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Faux réseau scripté (voir api/safe-request.test.ts) : chaque requête consomme l'étape suivante, la dernière se répète.
+// Scripted fake network (see api/safe-request.test.ts): each request consumes the next step, the last one repeats.
 const net = vi.hoisted(() => ({ steps: [] as (() => unknown)[], calls: 0 }));
 vi.mock("obsidian", () => ({
 	normalizePath: (p: string) => p,
@@ -10,7 +10,8 @@ vi.mock("obsidian", () => ({
 		return step();
 	},
 }));
-// scryfall-cache.ts n'utilise la vue que pour retrouver les vues ouvertes : sans importance ici, et la charger tirerait toute l'application.
+// scryfall-cache.ts only uses the view to find the open views: irrelevant here, and loading it would pull in the
+// whole application.
 vi.mock("../view", () => ({ MTGCollectionView: class {} }));
 
 import { bulkFetchLegalities, fetchCardLegalities, fetchScryfallImmutableSnapshot, getCardLegalities, getScryfallImmutableSnapshots } from "./scryfall-cache";
@@ -22,7 +23,7 @@ const okCollection = (cards: unknown[]) => () => ({ status: 200, json: { data: c
 const script = (...steps: (() => unknown)[]) => { net.steps = steps; };
 const card = (id: string, extra: object = {}) => ({ id, legalities: { modern: "legal" }, oracle_text: "text", set: "lea", rarity: "rare", ...extra });
 
-// Un faux plugin : les caches et les requêtes « en vol » que lisent ces fonctions, et leurs voisines réelles.
+// A fake plugin: the caches and the "in-flight" requests that these functions read, and their real neighbors.
 function fakePlugin() {
 	const plugin = {
 		legalitiesCache: new Map<string, Record<string, string>>(),
@@ -50,7 +51,7 @@ describe("a network failure is an unavailable card, not a rejected promise", () 
 		await settle();
 		expect(plugin.legalitiesCache.size).toBe(0);
 		expect(plugin.legalitiesInFlight.size).toBe(0);
-		// la connexion revient : la même carte est demandée de nouveau et fonctionne
+		// the connection comes back: the same card is requested again and works
 		script(okCollection([card("c1")]));
 		await expect(getCardLegalities.call(plugin, "c1")).resolves.toEqual({ modern: "legal" });
 		expect(plugin.legalitiesCache.get("c1")).toEqual({ modern: "legal" });
@@ -79,7 +80,7 @@ describe("a network failure is an unavailable card, not a rejected promise", () 
 		await settle();
 		expect(plugin.legalitiesInFlight.size).toBe(0);
 		expect(plugin.scheduleLegalitiesPersist).toHaveBeenCalled();
-		// ce que l'ancien code bloquait : ouvrir la fiche de l'une d'elles ensuite
+		// what the old code blocked: opening the detail of one of them afterwards
 		script(okCollection([card("a")]));
 		await expect(getCardLegalities.call(plugin, "a")).resolves.toEqual({ modern: "legal" });
 	}, 10000);

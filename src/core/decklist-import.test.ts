@@ -96,8 +96,8 @@ describe("parseDecklistText", () => {
 		const { lines } = parseDecklistText("1x Sol Ring (C21) 263 [Commander]\n1x Chrome Mox (MRD) 227 [Ramp]");
 		expect(lines[0].category).toBe("mainboard");
 		expect(lines[0].isCommander).toBe(true);
-		// "[Ramp]" n'est pas un rôle de board représentable — retiré de la
-		// ligne, catégorie inchangée (mainboard, la section par défaut).
+		// "[Ramp]" is not a representable board role — removed from the line,
+		// category unchanged (mainboard, the default section).
 		expect(lines[1].category).toBe("mainboard");
 		expect(lines[1].isCommander).toBe(false);
 		expect(lines[1].name).toBe("Chrome Mox");

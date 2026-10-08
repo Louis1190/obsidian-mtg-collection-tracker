@@ -54,21 +54,20 @@ import { setSvgMarkup } from "../ui/svg-markup";
 /*  Suggested filters (below the search bar)                                  */
 /* -------------------------------------------------------------------------- */
 
-// Un clic applique directement le filtre/tri, sans avoir à le taper à la
-// main — "chip" ajoute (ou retire, en re-cliquant) un jeton dans la barre de
-// puces existante (même moteur que la saisie manuelle, voir card-search.ts) ;
-// "sort" bascule l'ordre de tri Scryfall lui-même (voir sortOverride plus
-// bas), un jeton de puce ne pouvant pas exprimer un ORDRE de résultats,
-// seulement une contrainte de filtre.
+// A click directly applies the filter/sort, without having to type it by hand
+// — "chip" adds (or removes, on re-click) a token in the existing chip bar
+// (same engine as manual entry, see card-search.ts); "sort" toggles
+// Scryfall's sort order itself (see sortOverride further down), since a chip
+// token cannot express an ORDER of results, only a filter constraint.
 type SuggestedFilter =
 	| { kind: "chip"; label: string; token: string }
 	| { kind: "sort"; label: string; order: string; dir: "asc" | "desc" };
 
-// Fixe pour l'instant — prévu (pas encore fait, demandé explicitement comme
-// "dans un second temps") pour qu'une liste de filtres personnalisés
-// enregistrés par l'utilisateur vienne s'ajouter à celle-ci plus tard, sans
-// revoir le mécanisme d'affichage/clic lui-même (renderSuggestedFilters plus
-// bas ne fait aucune hypothèse sur l'origine de la liste).
+// Fixed for now — planned (not done yet, explicitly requested as "in a
+// second phase") for a list of custom filters saved by the user to be added
+// to this one later, without revisiting the display/click mechanism itself
+// (renderSuggestedFilters further down makes no assumption about where the
+// list comes from).
 const DEFAULT_SUGGESTED_FILTERS: SuggestedFilter[] = [
 	{ kind: "chip", label: "Lands", token: "land" },
 	{ kind: "sort", label: "Price up", order: "usd", dir: "asc" },
@@ -79,55 +78,51 @@ const DEFAULT_SUGGESTED_FILTERS: SuggestedFilter[] = [
 /*  "Add all" — seuils (voir performAddAll/runAddAll plus bas)                */
 /* -------------------------------------------------------------------------- */
 
-// Au-delà de ce total, AddAllConfirmModal affiche un paragraphe
-// d'avertissement en plus de la simple confirmation habituelle (temps
-// d'attente réel, Obsidian qui peut sembler figé pendant l'opération) —
-// demandé explicitement plutôt qu'une confirmation identique quelle que
-// soit la taille du lot.
+// Above this total, AddAllConfirmModal displays a warning paragraph in
+// addition to the usual simple confirmation (real waiting time, Obsidian
+// possibly appearing frozen during the operation) — explicitly requested
+// rather than an identical confirmation whatever the batch size.
 const ADD_ALL_WARNING_THRESHOLD = 500;
-// Au-delà de ce total ajouté en une seule fois, une tuile d'historique PAR
-// CARTE (renderHistoryTile — un nouveau nœud DOM + une resynchronisation
-// FLIP des tuiles voisines à chaque carte) figerait l'UI sur un lot de
-// plusieurs centaines/milliers de cartes — demandé explicitement. Au-delà,
-// une seule tuile résumée agrégée remplace le suivi individuel (voir
-// addAllBatch/renderAddAllBatchTile) : annuler/réactiver le lot entier reste
-// une opération de données pure (un appel onUndoAdd/onAdd par carte, aucun
-// travail DOM), pas du tout la même échelle de coût.
+// Above this total added in one go, a history tile PER CARD
+// (renderHistoryTile — a new DOM node + a FLIP resynchronization of the
+// neighboring tiles for every card) would freeze the UI on a batch of
+// several hundred/thousand cards — explicitly requested. Above it, a single
+// aggregated summary tile replaces individual tracking (see
+// addAllBatch/renderAddAllBatchTile): undoing/re-enabling the whole batch
+// remains a pure data operation (one onUndoAdd/onAdd call per card, no DOM
+// work), not at all the same cost scale.
 const HISTORY_AGGREGATE_THRESHOLD = 50;
-// Plafond dur : au-delà, "Add all" refuse plutôt que de tenter l'opération.
-// addCardToCollection/undoAddToCollection (plugin.ts) retrouvent leur ligne
-// par un .find()/.filter() qui parcourt TOUTE la collection à chaque carte
-// ajoutée/annulée — O(N) par carte, donc O(N²) sur l'ensemble du lot, et
-// rien de tout ça n'est découpé en tâches asynchrones (une seule boucle
-// synchrone par page récupérée). Sans plafond, ajouter la totalité du
-// catalogue Magic (~96 000 impressions, "unique=prints") sur une collection
-// réelle de quelques milliers de cartes représenterait plusieurs MILLIARDS
-// de comparutions .find() — de l'ordre de la minute (voire plus) d'un seul
-// tenant, JavaScript étant mono-thread : Obsidian resterait entièrement
-// figé (aucune frame, aucun clic possible) pendant tout ce temps, pas
-// seulement "lent". 5000 reste un lot confortablement gérable (quelques
-// secondes maximum, même sur une grosse collection existante) tout en
-// couvrant tout filtre de recherche réaliste — un utilisateur qui veut
-// littéralement TOUT le catalogue doit affiner sa recherche (un filtre de
-// set/couleur/rareté, etc.) plutôt que de pouvoir geler Obsidian en un
-// clic.
+// Hard cap: above it, "Add all" refuses rather than attempt the operation.
+// addCardToCollection/undoAddToCollection (plugin.ts) find their row
+// through a .find()/.filter() that scans the WHOLE collection for every
+// card added/undone — O(N) per card, so O(N²) over the whole batch, and
+// none of it is split into asynchronous tasks (a single synchronous loop
+// per fetched page). Without a cap, adding the entire Magic catalog
+// (~96,000 printings, "unique=prints") to a real collection of a few
+// thousand cards would mean several BILLION .find() comparisons — on the
+// order of a minute (or more) in one go, JavaScript being single-threaded:
+// Obsidian would stay entirely frozen (no frame, no click possible) the
+// whole time, not merely "slow". 5000 remains a comfortably manageable
+// batch (a few seconds at most, even on a large existing collection) while
+// covering any realistic search filter — a user who literally wants the
+// ENTIRE catalog must narrow their search (a set/color/rarity filter, etc.)
+// rather than be able to freeze Obsidian in one click.
 const ADD_ALL_HARD_CAP = 5000;
 
 /* -------------------------------------------------------------------------- */
 /*  Panneau "Add history" (voir onUndoAdd, shared-search-ui.ts)               */
 /* -------------------------------------------------------------------------- */
 
-// Un lot d'ajouts partageant les mêmes options (finish/language/condition) —
-// une HistoryEntry (voir plus bas) peut en théorie porter plusieurs
-// contributions si le même printing a été ajouté à la même destination avec
-// des options DIFFÉRENTES, mais computeAddOptions renvoie toujours la même
-// valeur constante depuis le retrait de tout sélecteur Finish/Language/
-// Condition dans cette modale — un 2e groupe distinct n'a donc plus de
-// chemin réaliste pour se produire aujourd'hui. `count` est le nombre de
-// fois où onAdd a effectivement été appelé avec CES options précises,
-// jamais un delta signé (une entrée désactivée n'a plus de contributions
-// "négatives", elle repart de zéro au prochain ajout — voir
-// recordHistoryAdd).
+// A batch of additions sharing the same options (finish/language/condition)
+// — a HistoryEntry (see below) can in theory carry several contributions if
+// the same printing was added to the same destination with DIFFERENT
+// options, but computeAddOptions always returns the same constant value
+// since the removal of every Finish/Language/Condition selector in this
+// modal — a 2nd distinct group therefore no longer has a realistic path to
+// occur today. `count` is the number of times onAdd was actually called with
+// THESE precise options, never a signed delta (a disabled entry no longer
+// has "negative" contributions, it starts again from zero at the next
+// addition — see recordHistoryAdd).
 interface HistoryContribution {
 	options: AddCardOptions;
 	count: number;
@@ -139,48 +134,47 @@ interface HistoryEntry {
 	destinationName: string;
 	contributions: HistoryContribution[];
 	enabled: boolean;
-	// Construits par renderHistoryTile, absents avant son tout premier appel
-	// pour cette entrée — recordHistoryAdd s'en sert justement comme
-	// signal ("pas encore de tuile" -> construire, sinon -> mettre à jour).
+	// Built by renderHistoryTile, absent before its very first call for this
+	// entry — recordHistoryAdd uses it precisely as a signal ("no tile yet" ->
+	// build, otherwise -> update).
 	tileEl?: HTMLElement;
 	quantityEl?: HTMLElement;
 	toggleBtn?: HTMLInputElement;
-	// Ligne 2 (icône + set/numéro + destination) — gardée pour pouvoir la
-	// reconstruire en place après un changement d'impression/un déplacement
-	// réussi (voir openChangePrintingForEntry/openMoveCardForEntry), sans
-	// devoir retrouver tile.querySelector à chaque fois.
+	// Line 2 (icon + set/number + destination) — kept so it can be rebuilt in
+	// place after a successful printing change/move (see
+	// openChangePrintingForEntry/openMoveCardForEntry), without having to find
+	// tile.querySelector each time.
 	line2El?: HTMLElement;
-	// true une fois que cette carte a été déplacée HORS du périmètre que
-	// this.sourceKind (fixe pour toute la durée de vie de la modale)
-	// représente — vers un deck, ou vers l'AUTRE côté Collection/Wantlist
-	// (bug rapporté : déplacer une carte vers un deck/une wantlist depuis
-	// "All Cards" cassait silencieusement les 2 liens ensuite, exactement
-	// comme le bug déjà corrigé pour un déplacement RESTANT dans le même
-	// périmètre — voir openMoveCardForEntry/locateMovedCardAnywhere). Ni
-	// ChangePrintingModal ni CopyCardModal ne peuvent plus opérer
-	// correctement sur cette ligne depuis CETTE modale une fois ce cas
-	// atteint (this.sourceKind ne peut pas suivre le changement par
-	// entrée) — les 2 liens deviennent alors définitivement non
-	// interactifs pour cette tuile, même traitement que le flux Deck, qui
-	// n'a jamais eu ces liens du tout.
+	// true once this card has been moved OUTSIDE the scope that
+	// this.sourceKind (fixed for the whole lifetime of the modal) represents —
+	// to a deck, or to the OTHER side of Collection/Wantlist (reported bug:
+	// moving a card to a deck/a wantlist from "All Cards" silently broke the 2
+	// links afterwards, exactly like the bug already fixed for a move that
+	// STAYED within the same scope — see
+	// openMoveCardForEntry/locateMovedCardAnywhere). Neither
+	// ChangePrintingModal nor CopyCardModal can operate correctly on this row
+	// from THIS modal any more once this case is reached (this.sourceKind
+	// cannot follow the change per entry) — the 2 links then become
+	// permanently non-interactive for this tile, same treatment as the Deck
+	// flow, which never had these links at all.
 	linksDisabled?: boolean;
-	// Où la carte a réellement atterri une fois linksDisabled devenu vrai —
-	// pilote le badge de contexte non cliquable ("In Collection"/"In
-	// Decks"/"In Wantlists", voir buildHistoryTileTrailing) qui remplace
-	// alors la corbeille. undefined tant que linksDisabled est faux.
+	// Where the card actually landed once linksDisabled became true — drives
+	// the non-clickable context badge ("In Collection"/"In Decks"/"In
+	// Wantlists", see buildHistoryTileTrailing) that then replaces the trash
+	// can. undefined as long as linksDisabled is false.
 	frozenKind?: "collection" | "wantlist" | "deck";
-	// Élément actuellement affiché après le 2ᵉ séparateur — soit la
-	// corbeille, soit le badge de contexte — gardé pour pouvoir le
-	// remplacer en place (buildHistoryTileTrailing) au lieu de devoir
-	// reconstruire toute la tuile quand linksDisabled change.
+	// Element currently displayed after the 2nd separator — either the trash
+	// can or the context badge — kept so it can be replaced in place
+	// (buildHistoryTileTrailing) instead of rebuilding the whole tile when
+	// linksDisabled changes.
 	trailingEl?: HTMLElement;
-	// Resynchronise la tuile carrousel d'origine après un toggle — voir
-	// recordHistoryAdd/toggleHistoryEntry/deleteHistoryEntry. Absent tant
-	// qu'aucun ajout n'a encore réussi pour cette entrée (ne devrait pas
-	// arriver en pratique : une HistoryEntry n'existe qu'après un ajout
-	// réussi), ou si la tuile carrousel d'origine a depuis été détruite
-	// sans qu'un nouvel ajout ne l'ait remplacé (recherche différente) —
-	// dans les deux cas, l'absence est un no-op silencieux.
+	// Resynchronizes the original carousel tile after a toggle — see
+	// recordHistoryAdd/toggleHistoryEntry/deleteHistoryEntry. Absent as long
+	// as no addition has succeeded yet for this entry (should not happen in
+	// practice: a HistoryEntry only exists after a successful addition), or if
+	// the original carousel tile has since been destroyed without a new
+	// addition having replaced it (different search) — in both cases, the
+	// absence is a silent no-op.
 	syncCallback?: (row: { id: string; count: number } | undefined) => void;
 }
 
@@ -201,27 +195,26 @@ export class AddCardsModal extends Modal {
 	private onOpenDetail?: AddCardsModalOptions["onOpenDetail"];
 	private onUndoAdd?: AddCardsModalOptions["onUndoAdd"];
 	private destinationName?: string;
-	// Voir sourceKind, shared-search-ui.ts — pilote uniquement les 2 liens
-	// "Change printing"/"Move card" du panneau "Add history" (renderHistoryTile).
+	// See sourceKind, shared-search-ui.ts — only drives the 2 links "Change
+	// printing"/"Move card" of the "Add history" panel (renderHistoryTile).
 	private sourceKind?: AddCardsModalOptions["sourceKind"];
-	// Panneau "Add history" (2ᵉ colonne de bottomSection, voir onOpen) —
-	// historyListEl/historyEmptyEl ne sont construits que si onUndoAdd est
-	// fourni (voir leur propre construction, onOpen) ; historyEntries est un
-	// Map même sans le panneau, jamais lu/écrit dans ce cas (this.onUndoAdd
-	// garde tous les points d'entrée). Clé = historyKey(scryfallId, listId)
-	// — voir cette méthode pour le raisonnement.
+	// "Add history" panel (2nd column of bottomSection, see onOpen) —
+	// historyListEl/historyEmptyEl are only built if onUndoAdd is supplied
+	// (see their own construction, onOpen); historyEntries is a Map even
+	// without the panel, never read/written in that case (this.onUndoAdd
+	// guards all entry points). Key = historyKey(scryfallId, listId) — see
+	// that method for the reasoning.
 	private historyListEl!: HTMLElement;
 	private historyEmptyEl!: HTMLElement;
 	private historyEntries: Map<string, HistoryEntry> = new Map();
-	// Tiroir "Add history" — masquable/affichable, demandé explicitement
-	// ("comme un tiroir"). historyPanelEl porte la classe is-collapsed
-	// togglée par toggleHistoryDrawer, qui pilote tout le reste en CSS pur
-	// (largeur/contenu visible — voir styles.css). historyCollapsed vit sur
-	// l'instance (pas persisté) — repart toujours FERMÉ (valeur initiale
-	// `true`, demandé explicitement) à chaque nouvelle ouverture de la
-	// modale ; la classe is-collapsed correspondante est posée directement
-	// à la construction du panneau (onOpen), pas via toggleHistoryDrawer
-	// (qui ne s'exécute que sur un clic).
+	// "Add history" drawer — hideable/showable, explicitly requested ("like a
+	// drawer"). historyPanelEl carries the is-collapsed class toggled by
+	// toggleHistoryDrawer, which drives everything else in pure CSS
+	// (width/visible content — see styles.css). historyCollapsed lives on the
+	// instance (not persisted) — always starts CLOSED (initial value `true`,
+	// explicitly requested) on each new opening of the modal; the matching
+	// is-collapsed class is set directly when the panel is built (onOpen), not
+	// through toggleHistoryDrawer (which only runs on a click).
 	private historyPanelEl?: HTMLElement;
 	private historyCollapsed = true;
 	private titleText: string;
@@ -230,86 +223,81 @@ export class AddCardsModal extends Modal {
 	private chipDraft = "";
 	private chipSuggestionHighlightIndex = -1;
 	private chipBarContainerEl!: HTMLElement;
-	// Un ajout par carte actuellement affichée dans le carrousel, exposé par
-	// renderAddControl — permet à "Add all" de rejouer exactement le même
-	// chemin de code que le bouton "Add" individuel de chaque tuile (mêmes
-	// options, même conversion en stepper une fois ajoutée), plutôt qu'un
-	// second mécanisme d'ajout à maintenir en parallèle. Réinitialisé à
-	// chaque fois que resultsEl est vidé (nouvelle recherche) — voir
-	// resetResultControls.
+	// One add function per card currently displayed in the carousel, exposed
+	// by renderAddControl — lets "Add all" replay exactly the same code path
+	// as each tile's individual "Add" button (same options, same conversion
+	// into a stepper once added), rather than a second adding mechanism to
+	// maintain in parallel. Reset every time resultsEl is emptied (new search)
+	// — see resetResultControls.
 	private currentResultControls: { card: ScryfallCard; addOne: (listId?: string, silent?: boolean) => void }[] = [];
 	private addAllBtn!: HTMLButtonElement;
-	// Pagination Scryfall (voir ScryfallPagedResult, scryfall.ts) — une seule
-	// page Scryfall plafonne à 175 résultats ; au-delà, un bouton "Load more"
-	// en fin de piste charge la suite. Un clic explicite plutôt qu'un
-	// défilement infini auto-déclenché : un fetch réseau de plus reste
-	// volontaire, cohérent avec la prudence déjà établie dans ce fichier
-	// autour du volume de requêtes Scryfall (voir "Real rate-limit incident"
-	// dans CLAUDE.md). currentPage/hasMorePages/totalCardsFound sont tous
-	// réinitialisés par resetResults() (nouvelle recherche) ; loadMoreQuery
-	// capture les paramètres de LA recherche pour laquelle hasMorePages est
-	// devenu vrai (null = recherche par défaut, fetchLatestPaperPrintings)
-	// pour que "Load more" recharge exactement la bonne recherche.
+	// Scryfall pagination (see ScryfallPagedResult, scryfall.ts) — a single
+	// Scryfall page caps at 175 results; beyond that, a "Load more" button at
+	// the end of the track loads the rest. An explicit click rather than an
+	// auto-triggered infinite scroll: one more network fetch stays deliberate,
+	// consistent with the caution already established in this file around the
+	// volume of Scryfall requests (see "Real rate-limit incident" in
+	// CLAUDE.md). currentPage/hasMorePages/totalCardsFound are all reset by
+	// resetResults() (new search); loadMoreQuery captures the parameters of
+	// THE search for which hasMorePages became true (null = default search,
+	// fetchLatestPaperPrintings) so that "Load more" reloads exactly the right
+	// search.
 	private currentPage = 1;
 	private hasMorePages = false;
 	private loadingMorePage = false;
 	private totalCardsFound = 0;
 	private loadMoreEl: HTMLElement | null = null;
 	private loadMoreQuery: { setCode: string; collectorNumber: string; chipQuery: string } | null = null;
-	// Incrémenté à chaque resetResults() (nouvelle recherche) — voir
-	// runAddAll : un "Add all" auto-paginé (hasMorePages) tourne sur
-	// plusieurs allers-retours réseau, pendant lesquels l'utilisateur reste
-	// libre de lancer une AUTRE recherche (currentPage/hasMorePages/
-	// totalCardsFound/loadMoreQuery seraient alors remis à zéro sous ses
-	// pieds). runAddAll capture ce compteur au démarrage et le revérifie
-	// après chaque page récupérée — un écart signifie qu'une recherche plus
-	// récente a pris le relais, auquel cas la boucle s'arrête proprement
-	// sans plus jamais toucher ces champs partagés (déjà repartis à zéro
-	// pour la nouvelle recherche).
+	// Incremented on every resetResults() (new search) — see runAddAll: an
+	// auto-paginated "Add all" (hasMorePages) runs over several network round
+	// trips, during which the user remains free to launch ANOTHER search
+	// (currentPage/hasMorePages/totalCardsFound/loadMoreQuery would then be
+	// reset under its feet). runAddAll captures this counter at start and
+	// re-checks it after each fetched page — a mismatch means a more recent
+	// search has taken over, in which case the loop stops cleanly without ever
+	// touching these shared fields again (already reset for the new search).
 	private addAllGeneration = 0;
-	// non-null UNIQUEMENT pendant un "Add all" dont le total dépasse
-	// HISTORY_AGGREGATE_THRESHOLD — recordHistoryAdd y accumule chaque ajout
-	// au lieu de construire/mettre à jour une tuile d'historique individuelle
-	// (voir son propre commentaire). Un seul lot actif à la fois.
+	// non-null ONLY during an "Add all" whose total exceeds
+	// HISTORY_AGGREGATE_THRESHOLD — recordHistoryAdd accumulates each addition
+	// there instead of building/updating an individual history tile (see its
+	// own comment). Only one active batch at a time.
 	private addAllBatch: { card: ScryfallCard; options: AddCardOptions; listId: string }[] | null = null;
-	// Désactive le bouton "Add all" pendant qu'un lot est en cours (surtout
-	// utile pour la variante auto-paginée, qui peut prendre plusieurs
-	// secondes) — évite un second clic qui lancerait un 2ᵉ lot en parallèle
-	// du premier.
+	// Disables the "Add all" button while a batch is in progress (mostly
+	// useful for the auto-paginated variant, which can take several seconds) —
+	// avoids a second click that would launch a 2nd batch in parallel with the
+	// first.
 	private addAllInProgress = false;
-	// null = tri par défaut (par date de sortie, ou par édition si un filtre
-	// "set:" est actif — voir searchScryfall). Fixé par un clic sur une
-	// suggestion "sort" (voir DEFAULT_SUGGESTED_FILTERS/renderSuggestedFilters),
-	// re-cliquer sur la même remet à null (bascule, pas seulement "applique").
+	// null = default sort (by release date, or by set if a "set:" filter is
+	// active — see searchScryfall). Set by a click on a "sort" suggestion (see
+	// DEFAULT_SUGGESTED_FILTERS/renderSuggestedFilters), clicking the same one
+	// again resets it to null (toggle, not just "apply").
 	private sortOverride: { order: string; dir: "asc" | "desc" } | null = null;
 	private suggestedFiltersEl!: HTMLElement;
-	// Prompt inline "Save filter" (nom + Save/Cancel) — construit une fois,
-	// masqué par défaut (is-visible bascule l'affichage), plutôt qu'une
-	// nouvelle Modal pour une simple saisie de nom. Contrairement à la
-	// confirmation "Add all" (voir AddAllConfirmModal plus bas dans ce
-	// fichier, une vraie fenêtre séparée demandée explicitement), cette
-	// confirmation-ci reste inline : un simple champ de nom n'a jamais été
-	// concerné par cette demande.
+	// Inline "Save filter" prompt (name + Save/Cancel) — built once, hidden by
+	// default (is-visible toggles the display), rather than a new Modal for a
+	// simple name entry. Unlike the "Add all" confirmation (see
+	// AddAllConfirmModal further down in this file, a real separate window
+	// explicitly requested), this confirmation stays inline: a simple name
+	// field was never concerned by that request.
 	private saveFilterPromptEl!: HTMLElement;
 	private saveFilterInputEl!: HTMLInputElement;
-	// Bouton carré icône seule, à droite de la barre de puces elle-même (pas
-	// dans suggestedFiltersEl) — reconstruit à chaque renderSearchChipBar
-	// (chip ajoutée/retirée…), mais son état activé/désactivé doit AUSSI
-	// suivre chipDraft (le mot-clé en cours de frappe, pas encore validé en
-	// puce — demandé explicitement : activable "dès le premier mot-clé"),
-	// qui change à chaque frappe SANS reconstruire toute la barre (perte de
-	// focus sinon, voir le handler "input" plus bas) — d'où
-	// updateSaveFilterButtonState, appelée séparément dans les deux cas.
+	// Square icon-only button, to the right of the chip bar itself (not in
+	// suggestedFiltersEl) — rebuilt on every renderSearchChipBar (chip
+	// added/removed…), but its enabled/disabled state must ALSO follow
+	// chipDraft (the keyword being typed, not yet validated into a chip —
+	// explicitly requested: enabled "from the first keyword"), which changes
+	// on every keystroke WITHOUT rebuilding the whole bar (focus loss
+	// otherwise, see the "input" handler further down) — hence
+	// updateSaveFilterButtonState, called separately in both cases.
 	private saveFilterBtn!: HTMLButtonElement;
 	private resultsCountEl!: HTMLElement;
-	// Bloc "Search oracle" (renommé depuis "Filter oracle") — titre fixe +
-	// phrase en anglais décrivant la barre de puces actuelle (voir
-	// describeSearchFilters, card-search.ts, et updateFilterDescription).
-	// filterDescriptionEl est le bloc entier (is-visible bascule son
-	// affichage) ; filterDescriptionTextEl n'est que la phrase elle-même,
-	// seule partie réécrite à chaque appel de updateFilterDescription — le
-	// titre "Search oracle" est construit une fois et n'a jamais besoin
-	// d'être retouché.
+	// "Search oracle" block (renamed from "Filter oracle") — fixed title + an
+	// English sentence describing the current chip bar (see
+	// describeSearchFilters, card-search.ts, and updateFilterDescription).
+	// filterDescriptionEl is the whole block (is-visible toggles its display);
+	// filterDescriptionTextEl is just the sentence itself, the only part
+	// rewritten on each updateFilterDescription call — the "Search oracle"
+	// title is built once and never needs to be touched again.
 	private filterDescriptionEl!: HTMLElement;
 	private filterDescriptionTextEl!: HTMLElement;
 
@@ -326,14 +314,14 @@ export class AddCardsModal extends Modal {
 		this.listGallery = options.listGallery;
 	}
 
-	// Autocomplétion du champ Set : filtre la liste complète des éditions par
-	// nom au fur et à mesure de la frappe, affiche le symbole officiel de
-	// chacune. Le code réel (utilisé pour la requête) n'est renseigné que
-	// lorsqu'une suggestion est cliquée ; sinon, le texte tapé est utilisé tel
-	// quel comme repli (pour qui préfère encore taper un code directement).
-	// Barre à puces réutilisant le même système que le filtre de collection
-	// (couleur, rareté, type, capacité, cmc/prix, foil, langue…), traduit vers
-	// la syntaxe de requête Scryfall — voir buildScryfallQueryFromChips.
+	// Autocompletion of the Set field: filters the complete list of sets by
+	// name as you type, shows each one's official symbol. The actual code
+	// (used for the query) is only filled in when a suggestion is clicked;
+	// otherwise, the typed text is used as is as a fallback (for those who
+	// still prefer typing a code directly).
+	// Chip bar reusing the same system as the collection filter (color,
+	// rarity, type, ability, cmc/price, foil, language…), translated to the
+	// Scryfall query syntax — see buildScryfallQueryFromChips.
 	private renderSearchChipBar() {
 		const container = this.chipBarContainerEl;
 		container.empty();
@@ -362,8 +350,8 @@ export class AddCardsModal extends Modal {
 				this.triggerSearch();
 			});
 
-			// Même bascule "identité de couleur exacte" que renderChipFilter
-			// (view.ts) — voir son commentaire pour le raisonnement complet.
+			// Same "exact color identity" toggle as renderChipFilter (view.ts) — see
+			// its comment for the full reasoning.
 			const recognizedForExact = recognizeKeywordToken(baseToken);
 			if (recognizedForExact?.kind === "color") {
 				const toggleExactBtn = chip.createSpan({ cls: "mtg-filter-chip-exact-btn" });
@@ -415,8 +403,8 @@ export class AddCardsModal extends Modal {
 					});
 				} else if (recognized?.kind === "language") {
 					chip.addClass("mtg-filter-chip-recognized");
-					// recognized.flag est toujours un vrai code pays ici : "None"
-					// n'est plus une entrée de LANGUAGES (voir types.ts).
+					// recognized.flag is always a real country code here: "None" is no longer
+					// an entry of LANGUAGES (see types.ts).
 					createFlagImg(chip, recognized.flag, "mtg-flag-img mtg-flag-img-inline");
 					chip.createSpan({ text: recognized.label });
 				} else if (recognized && "label" in recognized) {
@@ -470,14 +458,13 @@ export class AddCardsModal extends Modal {
 				return;
 			}
 
-			// Espace = valide la suggestion actuellement surlignée au clavier
-			// (flèches ↑/↓), comme Entrée — demandé explicitement. Distinct de
-			// la branche Entrée juste plus bas : ne se déclenche QUE s'il y a
-			// vraiment un surlignage actif (chipSuggestionHighlightIndex ≥ 0),
-			// pas dès que la liste est ouverte — sans navigation préalable au
-			// clavier, un espace reste un espace ordinaire (valide le mot en
-			// cours de frappe tel quel, voir le handler "input" plus bas),
-			// exactement le comportement attendu quand on n'a pas parcouru les
+			// Space = validates the suggestion currently highlighted via the keyboard
+			// (↑/↓ arrows), like Enter — explicitly requested. Distinct from the Enter
+			// branch just below: fires ONLY if there is really an active highlight
+			// (chipSuggestionHighlightIndex ≥ 0), not as soon as the list is open —
+			// without prior keyboard navigation, a space stays an ordinary space
+			// (validates the word being typed as is, see the "input" handler further
+			// down), exactly the expected behavior when one hasn't browsed the
 			// suggestions.
 			if (
 				evt.key === " " &&
@@ -520,9 +507,9 @@ export class AddCardsModal extends Modal {
 
 		input.addEventListener("input", () => {
 			const val = input.value;
-			// !hasUnclosedQuote : voir la même garde dans renderChipFilter
-			// (view.ts) — une phrase entre guillemets encore ouverte (ex.
-			// après "oracle:") ne doit pas être coupée au premier espace.
+			// !hasUnclosedQuote: see the same guard in renderChipFilter (view.ts) — a
+			// quoted phrase still open (e.g. after "oracle:") must not be cut at the
+			// first space.
 			if (val.endsWith(" ") && !hasUnclosedQuote(val)) {
 				const token = val.trim();
 				this.chipDraft = "";
@@ -532,28 +519,27 @@ export class AddCardsModal extends Modal {
 				}
 			}
 			this.chipDraft = val;
-			// Pas de triggerSearch() ici — demandé explicitement : les cartes
-			// proposées ne doivent pas bouger tant que le mot-clé en cours de
-			// frappe n'est pas "validé" (espace/Entrée, ou une suggestion
-			// cliquée — voir commitToken, qui appelle triggerSearch() lui-même).
-			// Avant ce changement, buildScryfallQueryFromChips incluait déjà
-			// chipDraft brut dans la recherche EN COURS, donc chaque frappe
-			// relançait une recherche Scryfall avec un mot-clé encore partiel
-			// ("r", "re", "red"…) — signalé comme un va-et-vient perturbant du
-			// carrousel. La suggestion de complétion (renderChipSuggestions,
-			// juste en dessous) reste instantanée à chaque frappe : c'est un
-			// calcul local (SUGGESTABLE_KEYWORDS/éditions déjà en cache), pas un
-			// aller-retour réseau, donc rien à gagner à la retarder elle aussi.
+			// No triggerSearch() here — explicitly requested: the proposed cards must
+			// not move as long as the keyword being typed isn't "validated"
+			// (space/Enter, or a clicked suggestion — see commitToken, which calls
+			// triggerSearch() itself). Before this change, buildScryfallQueryFromChips
+			// already included the raw chipDraft in the search IN PROGRESS, so every
+			// keystroke relaunched a Scryfall search with a still-partial keyword
+			// ("r", "re", "red"…) — reported as a disturbing back-and-forth of the
+			// carousel. The completion suggestion (renderChipSuggestions, just below)
+			// stays instant on every keystroke: it's a local computation
+			// (SUGGESTABLE_KEYWORDS/sets already cached), not a network round trip, so
+			// nothing to gain by delaying it too.
 			void this.renderChipSuggestions(commitToken);
-			// Pas de renderSearchChipBar() ici (perte de focus, voir plus haut) —
-			// juste l'état activé/désactivé du bouton "Save filter", pour qu'il
-			// devienne cliquable dès le premier mot-clé tapé, pas seulement une
-			// fois une puce validée.
+			// No renderSearchChipBar() here (focus loss, see above) — just the
+			// enabled/disabled state of the "Save filter" button, so that it becomes
+			// clickable from the first typed keyword, not only once a chip has been
+			// validated.
 			this.updateSaveFilterButtonState();
-			// Contrairement à triggerSearch() (résultats), la description en
-			// anglais suit le mot-clé en cours de frappe EN DIRECT — un simple
-			// changement de texte, pas de recherche réseau/saut visuel à éviter,
-			// donc rien à gagner à la retarder jusqu'à validation.
+			// Unlike triggerSearch() (results), the English description follows the
+			// keyword being typed LIVE — a simple text change, no network
+			// search/visual jump to avoid, so nothing to gain by delaying it until
+			// validation.
 			this.updateFilterDescription();
 		});
 
@@ -579,11 +565,11 @@ export class AddCardsModal extends Modal {
 			new AddCardSearchSyntaxModal(this.app).open();
 		});
 
-		// Bouton carré icône seule, à droite de la barre — demandé
-		// explicitement à la place de l'ancienne pilule "Save filter" sous la
-		// barre. mousedown + preventDefault (pas "click" nu) : même raison que
-		// syntaxBtn/clearBtn juste au-dessus, évite de voler le focus de
-		// l'<input> au moment du clic.
+		// Square icon-only button, to the right of the bar — explicitly requested
+		// in place of the old "Save filter" pill under the bar. mousedown +
+		// preventDefault (not a bare "click"): same reason as syntaxBtn/clearBtn
+		// just above, avoids stealing the <input>'s focus at the moment of the
+		// click.
 		this.saveFilterBtn = wrap.createEl("button", { cls: "mtg-search-save-filter-square-btn" });
 		setIcon(this.saveFilterBtn, "bookmark-plus");
 		this.saveFilterBtn.setAttribute("title", "Save current filter");
@@ -613,14 +599,14 @@ export class AddCardsModal extends Modal {
 				!this.chipTokens.includes(k.value) &&
 				k.matchTexts.some((m) => m.startsWith(q))
 		);
-		// Même correctif que MTGCollectionView.getKeywordSuggestions (view.ts) :
-		// "legal:" seul matche d'un coup les 10 formats curatés en tête de
-		// LEGALITY_SEARCH_FORMATS (card-search.ts) — un plafond de 5 aurait
-		// coupé "Legal: Commander" (6ᵉ de cette liste), bug rapporté. "legal:"
-		// est un préfixe qu'aucune autre catégorie ne peut matcher (voir
-		// categorizeToken), donc repérer "toutes les correspondances sont de
-		// catégorie legality" identifie ce cas sans ambiguïté. Même chose pour
-		// "border:" seul (9 entrées, voir BORDER_SEARCH_OPTIONS).
+		// Same fix as MTGCollectionView.getKeywordSuggestions (view.ts): "legal:"
+		// alone matches the 10 curated formats at the head of
+		// LEGALITY_SEARCH_FORMATS (card-search.ts) all at once — a cap of 5 would
+		// have cut off "Legal: Commander" (6th of that list), reported bug.
+		// "legal:" is a prefix that no other category can match (see
+		// categorizeToken), so spotting "all matches are of category legality"
+		// identifies this case unambiguously. Same for "border:" alone (9 entries,
+		// see BORDER_SEARCH_OPTIONS).
 		const staticCap =
 			allStaticMatches.length > 0 &&
 			(allStaticMatches.every((k) => k.category === "legality") ||
@@ -630,23 +616,22 @@ export class AddCardsModal extends Modal {
 		const staticMatches = allStaticMatches.slice(0, staticCap);
 
 		const allSets = await this.plugin.getAllScryfallSets();
-		// Garde-fou anti-course : si l'utilisateur a continué à taper pendant
-		// le chargement de la liste des éditions, ce rendu est périmé.
+		// Anti-race safeguard: if the user kept typing while the list of sets was
+		// loading, this render is stale.
 		if (this.chipDraft.trim().toLowerCase() !== q) return;
 
-		// Les éditions dérivées (promos, tokens, art series, minijeux) partagent
-		// souvent le même nom de base que l'édition principale — bug rapporté :
-		// chercher "Battle for Zendikar" (ou juste "Zendikar") ne suggérait pas
-		// l'édition elle-même. Confirmé avec les vraies données Scryfall : sur
-		// les 17 éditions non-digitales contenant "zendikar", "Battle for
-		// Zendikar" (set_type "expansion") arrive en position 12 dans l'ordre
-		// naturel de l'API (date de sortie décroissante) — bien après les
-		// variantes promo/token/minijeu de la plus récente "Zendikar Rising" —
-		// donc jamais dans les 3 premiers résultats. Trier pour faire remonter
-		// les éditions "principales" avant leurs variantes dérivées (tri stable
-		// — ES2019+ garantit Array.prototype.sort stable — donc l'ordre
-		// d'origine par date de sortie est préservé à l'intérieur de chaque
-		// groupe) résout ça sans dépendre uniquement d'un plafond plus élevé.
+		// Derived sets (promos, tokens, art series, minigames) often share the
+		// same base name as the main set — reported bug: searching "Battle for
+		// Zendikar" (or just "Zendikar") did not suggest the set itself. Confirmed
+		// with real Scryfall data: of the 17 non-digital sets containing
+		// "zendikar", "Battle for Zendikar" (set_type "expansion") comes in
+		// position 12 in the API's natural order (decreasing release date) — well
+		// after the promo/token/minigame variants of the most recent "Zendikar
+		// Rising" — so never in the first 3 results. Sorting to bring the "main"
+		// sets ahead of their derived variants (stable sort — ES2019+ guarantees
+		// Array.prototype.sort is stable — so the original release-date order is
+		// preserved within each group) solves this without depending solely on a
+		// higher cap.
 		const AUXILIARY_SET_TYPES = new Set(["promo", "token", "memorabilia", "minigame"]);
 		const setMatches = allSets
 			.filter(
@@ -686,8 +671,8 @@ export class AddCardsModal extends Modal {
 			});
 		});
 
-		// Éditions : même convention "set:code" que le champ Set dédié, pour que
-		// buildScryfallQueryFromChips les traduise de la même façon.
+		// Sets: same "set:code" convention as the dedicated Set field, so that
+		// buildScryfallQueryFromChips translates them the same way.
 		setMatches.forEach((s) => {
 			const item = dropdown.createDiv({ cls: "mtg-filter-suggestion-item" });
 			item.setAttribute("data-token-value", `set:${s.code}`);
@@ -709,106 +694,103 @@ export class AddCardsModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		const { contentEl } = this;
 		contentEl.addClass("mtg-search-modal");
 		this.modalEl.addClass("mtg-search-modal-wide");
-		// Hauteur fixe (pas seulement plafonnée) : demandé pour que cette fenêtre
-		// ait la même hauteur que la fenêtre de détail de carte — voir
-		// .mtg-search-modal-fixed-height (styles.css) pour le raisonnement et le
-		// compromis accepté. Scopée à AddCardsModal seule, pas ChangePrintingModal
-		// (qui partage mtg-search-modal-wide pour la largeur mais pas cette classe).
+		// Fixed height (not just capped): requested so that this window has the same
+		// height as the card detail window — see .mtg-search-modal-fixed-height
+		// (styles.css) for the reasoning and the accepted trade-off. Scoped to
+		// AddCardsModal alone, not ChangePrintingModal (which shares
+		// mtg-search-modal-wide for the width but not this class).
 		this.modalEl.addClass("mtg-search-modal-fixed-height");
 
-		// contentEl (mtg-search-modal) n'a plus son propre padding (voir
-		// styles.css, même technique que .mtg-card-detail-modal) — chacune
-		// des deux sections directes ci-dessous fournit désormais le sien
-		// explicitement. Nécessaire pour que mtg-search-bottom-section (plus
-		// bas) puisse atteindre les bords gauche/droit/bas RÉELS de la
-		// fenêtre avec son propre fond assombri — bug signalé : avec le
-		// padding natif d'Obsidian encore actif sur contentEl, ce fond
-		// restait visiblement en retrait de ces 3 bords (seul le dessous du
-		// carrousel, où il n'y avait rien à "atteindre", donnait l'impression
-		// que ça marchait). mtg-search-top-section regroupe le titre et le
-		// carrousel, qui avaient seulement besoin de retrouver le même inset
-		// qu'avant (padding choisi par nous, plus fiable qu'un padding natif
-		// Obsidian implicite et non documenté qu'on ne pourrait qu'essayer de
-		// deviner pour l'annuler ailleurs).
+		// contentEl (mtg-search-modal) no longer has its own padding (see
+		// styles.css, same technique as .mtg-card-detail-modal) — each of the two
+		// direct sections below now provides its own explicitly. Necessary so that
+		// mtg-search-bottom-section (further down) can reach the REAL
+		// left/right/bottom edges of the window with its own darkened background —
+		// reported bug: with Obsidian's native padding still active on contentEl,
+		// this background stayed visibly inset from these 3 edges (only the area
+		// under the carousel, where there was nothing to "reach", gave the
+		// impression that it worked). mtg-search-top-section groups the title and
+		// the carousel, which only needed to recover the same inset as before
+		// (padding chosen by us, more reliable than an implicit and undocumented
+		// native Obsidian padding that we could only try to guess in order to
+		// cancel it elsewhere).
 		const topSection = contentEl.createDiv({ cls: "mtg-search-top-section" });
 
-		// titleText existait déjà comme option (utilisé par tous les appelants
-		// dans view.ts, ex. "Add cards to \"{listName}\"") mais n'était jamais
-		// affiché — un oubli, corrigé ici plutôt qu'en ajoutant un titre
-		// spécifique au seul flux "All Cards" demandé, pour que les 5 flux qui
-		// construisent cette modale en profitent tous de façon cohérente.
+		// titleText already existed as an option (used by all the callers in
+		// view.ts, e.g. "Add cards to \"{listName}\"") but was never displayed —
+		// an oversight, fixed here rather than by adding a title specific to the
+		// requested "All Cards" flow alone, so that the 5 flows that build this
+		// modal all benefit from it consistently.
 		topSection.createEl("h2", { text: this.titleText, cls: "mtg-search-modal-title" });
 
 		this.resultsEl = setupResultsCarousel(topSection);
 
-		// Rangée à 2 colonnes, chacune avec son PROPRE fond assombri distinct
-		// (bottomMainEl/historyPanelEl plus bas, voir styles.css — demandé
-		// explicitement, "l'historique devrait être dans un bloc foncé
-		// distinct du bloc foncé de la recherche") — bottomSection lui-même
-		// ne porte donc plus ni padding ni fond, juste la mise en page en
-		// rangée (flex: 1; min-height: 0 pour absorber l'espace restant en
-		// bas de la fenêtre, gap entre les 2 colonnes).
+		// 2-column row, each with its OWN distinct darkened background
+		// (bottomMainEl/historyPanelEl further down, see styles.css — explicitly
+		// requested, "the history should be in a dark block distinct from the dark
+		// block of the search") — bottomSection itself therefore no longer carries
+		// any padding nor background, just the row layout (flex: 1; min-height: 0
+		// to absorb the remaining space at the bottom of the window, gap between
+		// the 2 columns).
 		const bottomSection = contentEl.createDiv({ cls: "mtg-search-bottom-section" });
 
-		// bottomMainEl regroupe tout ce que bottomSection contenait seul avant
-		// l'ajout du panneau "Add history" (compte de résultats/formulaire/
-		// Search oracle/filtres), inchangé en soi — porte maintenant son
-		// PROPRE padding/fond assombri/border-radius (voir styles.css), pour
-		// que son fond atteigne bord à bord la moitié gauche de la fenêtre
-		// (même principe que .mtg-card-detail-layout : padding interne, pas
-		// sur contentEl/bottomSection eux-mêmes) tout en restant visuellement
-		// séparé du panneau "Add history" à sa droite.
+		// bottomMainEl groups everything that bottomSection alone contained before
+		// the addition of the "Add history" panel (results count/form/Search
+		// oracle/filters), unchanged in itself — now carries its OWN
+		// padding/darkened background/border-radius (see styles.css), so that its
+		// background reaches edge to edge the left half of the window (same
+		// principle as .mtg-card-detail-layout: inner padding, not on
+		// contentEl/bottomSection themselves) while remaining visually separate
+		// from the "Add history" panel to its right.
 		const bottomMainEl = bottomSection.createDiv({ cls: "mtg-search-bottom-main" });
 
-		// Nombre de cartes trouvées, discret — demandé explicitement. Reste
-		// affiché tel quel pendant le chargement d'une nouvelle recherche (voir
-		// setResultsCount) plutôt que de se vider puis se remplir à chaque
-		// mise à jour — ce blanchiment intermédiaire était le petit saut
-		// visuel signalé.
+		// Number of cards found, discreet — explicitly requested. Stays displayed
+		// as is while a new search is loading (see setResultsCount) rather than
+		// emptying then filling again on each update — this intermediate blanking
+		// was the small visual jump reported.
 		this.resultsCountEl = bottomMainEl.createDiv({ cls: "mtg-search-results-count" });
 
 		const form = bottomMainEl.createDiv({ cls: "mtg-search-form" });
 
 		const nameField = form.createDiv({ cls: "mtg-search-field" });
 		nameField.createEl("label", { text: "Search" });
-		// Piste de puces + "Add all" côte à côte, SOUS le label — align-items:
-		// stretch (styles.css) cale le bouton sur la hauteur RÉELLE de la barre
-		// de puces plutôt qu'une valeur devinée, demandé explicitement ("même
-		// hauteur que la barre de recherche").
+		// Chips track + "Add all" side by side, UNDER the label — align-items:
+		// stretch (styles.css) sets the button to the REAL height of the chip bar
+		// rather than a guessed value, explicitly requested ("same height as the
+		// search bar").
 		const searchBarRow = nameField.createDiv({ cls: "mtg-search-bar-row" });
 		this.chipBarContainerEl = searchBarRow.createDiv({ cls: "mtg-search-chip-bar-container" });
 		this.renderSearchChipBar();
 
-		// Ajoute d'un coup toutes les cartes actuellement affichées dans le
-		// carrousel — demandé explicitement. Désactivé tant qu'il n'y a rien à
-		// ajouter (updateAddAllButtonState), jamais retiré : rester visible en
-		// permanence évite un saut de layout à chaque nouvelle recherche.
+		// Adds all the cards currently displayed in the carousel in one go —
+		// explicitly requested. Disabled as long as there is nothing to add
+		// (updateAddAllButtonState), never removed: staying permanently visible
+		// avoids a layout jump on each new search.
 		this.addAllBtn = searchBarRow.createEl("button", {
 			cls: "mtg-search-add-btn mtg-search-add-all-btn",
 		});
-		// Icône "+" dans un petit cercle avant le texte, demandé explicitement
-		// — même idiome que les boutons Delete/Cancel du mode sélection de My
-		// Collection (icône en <span> séparé, jamais l'option `text:` du
-		// bouton, qui ne laisserait pas de place pour un enfant à côté).
+		// "+" icon in a small circle before the text, explicitly requested — same
+		// idiom as the Delete/Cancel buttons of the My Collection selection mode
+		// (icon in a separate <span>, never the `text:` option of the button,
+		// which would leave no room for a child next to it).
 		setIcon(this.addAllBtn.createSpan({ cls: "mtg-search-add-all-icon" }), "plus");
 		this.addAllBtn.createSpan({ text: "Add all" });
 		this.addAllBtn.addEventListener("click", () => this.showAddAllConfirm());
 
-		// Prompt "Save filter" — nom + Save/Cancel, révélé par le bouton carré
-		// "Save filter" de la barre de puces (voir plus haut) au lieu d'une
-		// nouvelle Modal pour une simple saisie de nom, même raisonnement que
-		// le prompt "Add all" plus bas. Reste ici, près de la barre de
-		// recherche (pas dans mtg-search-filters-panel plus bas) — c'est là
-		// que vit le bouton qui le déclenche.
+		// "Save filter" prompt — name + Save/Cancel, revealed by the square "Save
+		// filter" button of the chip bar (see higher up) instead of a new Modal
+		// for a simple name entry, same reasoning as the "Add all" prompt further
+		// down. Stays here, near the search bar (not in mtg-search-filters-panel
+		// further down) — that is where the button that triggers it lives.
 		this.saveFilterPromptEl = nameField.createDiv({ cls: "mtg-search-save-filter-prompt" });
 		this.saveFilterInputEl = this.saveFilterPromptEl.createEl("input", {
 			cls: "mtg-search-save-filter-input",
@@ -835,22 +817,20 @@ export class AddCardsModal extends Modal {
 		const saveFilterCancelBtn = saveFilterActions.createEl("button", { text: "Cancel" });
 		saveFilterCancelBtn.addEventListener("click", () => this.hideSaveFilterPrompt());
 
-		// Le trio Finish/Language/Condition du flux Collection avait déjà été
-		// retiré ; la ligne Finish restante, propre au flux Wantlist, a été
-		// retirée à son tour (demandé explicitement) — une carte ajoutée
-		// depuis cette modale prend maintenant toujours finish "regular"/
-		// langue ""/condition "" par défaut (voir computeAddOptions), à
-		// affiner ensuite depuis le panneau de détail de la carte comme
-		// n'importe quelle autre carte de la wantlist/collection.
+		// The Finish/Language/Condition trio of the Collection flow had already
+		// been removed; the remaining Finish row, specific to the Wantlist flow,
+		// was removed in turn (explicitly requested) — a card added from this
+		// modal now always takes finish "regular"/language ""/condition "" by
+		// default (see computeAddOptions), to be refined afterwards from the
+		// card's detail panel like any other wantlist/collection card.
 
-		// Bloc "Search oracle" (renommé depuis "Filter oracle" — demandé
-		// explicitement ; les noms de classe CSS/champs restent
-		// "filter-description", pas renommés pour un simple changement de
-		// texte affiché) — titre fixe + description en anglais, best-effort,
-		// de la barre de puces actuelle (voir describeSearchFilters,
-		// card-search.ts). Hauteur naturelle (contrairement à
-		// mtg-search-filters-panel juste en dessous) ; vide (bloc entier
-		// masqué, voir updateFilterDescription) quand il n'y a rien à décrire.
+		// "Search oracle" block (renamed from "Filter oracle" — explicitly
+		// requested; the CSS class/field names stay "filter-description", not
+		// renamed for a simple change of displayed text) — fixed title + English
+		// description, best-effort, of the current chip bar (see
+		// describeSearchFilters, card-search.ts). Natural height (unlike
+		// mtg-search-filters-panel just below); empty (whole block hidden, see
+		// updateFilterDescription) when there is nothing to describe.
 		this.filterDescriptionEl = bottomMainEl.createDiv({ cls: "mtg-search-filter-description" });
 		this.filterDescriptionEl.createDiv({
 			cls: "mtg-search-filter-description-title",
@@ -861,78 +841,70 @@ export class AddCardsModal extends Modal {
 		});
 		this.updateFilterDescription();
 
-		// Petit titre "Filters" au-dessus du bloc (pas dedans, contrairement
-		// au titre "Search oracle" ci-dessus) — demandé explicitement.
+		// Small "Filters" title above the block (not inside it, unlike the "Search
+		// oracle" title above) — explicitly requested.
 		bottomMainEl.createDiv({ cls: "mtg-search-filters-title", text: "Filters" });
 
-		// Bloc filtres (suggestions fixes + filtres enregistrés) — dernier
-		// enfant de bottomMainEl (colonne flex imbriquée, voir styles.css),
-		// pour absorber tout l'espace restant en bas de la fenêtre — demandé
-		// explicitement, remplace l'ancienne rangée à hauteur naturelle sous
-		// le formulaire.
+		// Filters block (fixed suggestions + saved filters) — last child of
+		// bottomMainEl (nested flex column, see styles.css), to absorb all the
+		// remaining space at the bottom of the window — explicitly requested,
+		// replaces the old row at natural height under the form.
 		this.suggestedFiltersEl = bottomMainEl.createDiv({ cls: "mtg-search-suggested-filters" });
 		this.renderSuggestedFilters();
 
-		// Panneau "Add history" — 2ᵉ colonne de bottomSection, à droite de
-		// bottomMainEl — demandé explicitement, avec un petit schéma à
-		// l'appui. Uniquement pour les flux qui peuvent réellement annuler un
-		// ajout (onUndoAdd fourni — Collection/Wantlist ; jamais le flux Deck,
-		// qui n'a ni id par carte ni changeCollectionCardCount/removeCollectionCard équivalent, voir
-		// le commentaire de historyEntries plus haut) : sans lui, cette
-		// colonne resterait vide sans rien pouvoir y faire, donc pas construite
-		// du tout plutôt que construite-mais-inerte — bottomSection garde sa
-		// seule colonne d'avant dans ce cas.
+		// "Add history" panel — 2nd column of bottomSection, to the right of bottomMainEl —
+		// explicitly requested, with a small diagram in support. Only for the flows that can really
+		// undo an addition (onUndoAdd provided — Collection/Wantlist; never the Deck flow, which has
+		// neither an id per card nor an equivalent changeCollectionCardCount/removeCollectionCard,
+		// see the comment of historyEntries higher up): without it, this column would stay empty
+		// with nothing to put in it, so not built at all rather than built-but-inert — bottomSection
+		// keeps its single column from before in this case.
 		if (this.onUndoAdd) {
 			const historyPanelEl = bottomSection.createDiv({ cls: "mtg-search-history-panel" });
 			this.historyPanelEl = historyPanelEl;
-			// Fermé par défaut — demandé explicitement (this.historyCollapsed
-			// vaut déjà `true` par défaut, voir sa propre déclaration ; posé ici
-			// directement plutôt que via toggleHistoryDrawer(), qui ne
-			// s'exécute que sur un clic).
+			// Closed by default — explicitly requested (this.historyCollapsed is
+			// already `true` by default, see its own declaration; set here directly
+			// rather than via toggleHistoryDrawer(), which only runs on a click).
 			historyPanelEl.addClass("is-collapsed");
 
-			// En-tête cliquable (chevron + "Add history") — c'est LUI qui
-			// replie/déploie le tiroir (demandé explicitement, avec un schéma
-			// montrant le chevron collé au texte du titre) : pas de bouton
-			// séparé flottant par-dessus les 2 colonnes (une version
-			// précédente en avait un, retiré ici).
+			// Clickable header (chevron + "Add history") — it is IT that
+			// collapses/expands the drawer (explicitly requested, with a diagram
+			// showing the chevron stuck to the title text): no separate button
+			// floating over the 2 columns (a previous version had one, removed here).
 			const header = historyPanelEl.createDiv({ cls: "mtg-search-history-header" });
 			header.addEventListener("click", () => this.toggleHistoryDrawer());
-			// chevron-right, comme sur le schéma fourni ("▶ Add history") — pas
-			// de bascule d'icône ici : l'en-tête entier disparaît à l'état
-			// replié (remplacé par le bloc collapsed ci-dessous), donc ce
-			// chevron n'a jamais besoin de représenter l'état "replié" lui-même.
+			// chevron-right, as on the supplied diagram ("▶ Add history") — no icon
+			// toggle here: the whole header disappears in the collapsed state
+			// (replaced by the collapsed block below), so this chevron never needs to
+			// represent the "collapsed" state itself.
 			setIcon(header.createSpan({ cls: "mtg-search-history-toggle-icon" }), "chevron-right");
 			header.createSpan({ cls: "mtg-search-history-title-text", text: "History" });
 
-			// Contenu affiché UNIQUEMENT à l'état replié (voir
-			// .mtg-search-history-panel.is-collapsed, styles.css) — demandé
-			// explicitement : le tiroir replié garde sa hauteur et une largeur
-			// minimale plutôt que de disparaître entièrement, avec un
-			// pictogramme dans sa partie haute pour rester identifiable et
-			// cliquable (même toggle que l'en-tête ci-dessus), suivi du texte
-			// "History" affiché verticalement (en capitales — voir
-			// text-transform sur mtg-search-history-collapsed-label,
-			// styles.css — uniquement à cet état replié, demandé
-			// explicitement ; l'en-tête déployé garde sa casse normale) —
-			// inutile une fois déployé (le même texte est déjà lisible à
-			// l'horizontale dans l'en-tête ci-dessus), donc ce bloc entier
-			// disparaît dès l'ouverture. flex: 1 en CSS (voir styles.css) le
-			// fait remplir toute la hauteur du panneau replié plutôt que de
-			// ne garder que la taille de son propre contenu — demandé
-			// explicitement, "quand le bloc est fermé, tout le bloc doit
-			// être cliquable pour l'ouvrir" : ce même addEventListener
-			// couvre désormais toute la zone visible, pas seulement
-			// l'icône+le texte.
+			// Content displayed ONLY in the collapsed state (see
+			// .mtg-search-history-panel.is-collapsed, styles.css) — explicitly
+			// requested: the collapsed drawer keeps its height and a minimum width
+			// rather than disappearing entirely, with a pictogram in its upper part to
+			// stay identifiable and clickable (same toggle as the header above),
+			// followed by the text "History" displayed vertically (in capitals — see
+			// text-transform on mtg-search-history-collapsed-label, styles.css — only
+			// in this collapsed state, explicitly requested; the expanded header keeps
+			// its normal case) — useless once expanded (the same text is already
+			// legible horizontally in the header above), so this whole block
+			// disappears as soon as it opens. flex: 1 in CSS (see styles.css) makes it
+			// fill the whole height of the collapsed panel rather than keeping only
+			// the size of its own content — explicitly requested, "when the History
+			// block is closed, the whole block must be clickable to open it": this
+			// same addEventListener now covers the whole visible area, not just the
+			// icon+text.
 			const collapsedContent = historyPanelEl.createDiv({ cls: "mtg-search-history-collapsed" });
 			collapsedContent.setAttribute("title", "Show history");
 			collapsedContent.addEventListener("click", () => this.toggleHistoryDrawer());
 			setIcon(collapsedContent.createDiv({ cls: "mtg-search-history-collapsed-icon" }), "history");
 			collapsedContent.createDiv({ cls: "mtg-search-history-collapsed-label", text: "History" });
 
-			// Plus de boîte propre (bordure/fond) autour de la liste — demandé
-			// explicitement, "ne garder que le bloc sombre" (celui
-			// d'historyPanelEl lui-même) — voir styles.css.
+			// No more box of its own (border/background) around the list — explicitly
+			// requested, "keep only the dark block" (that of historyPanelEl itself) —
+			// see styles.css.
 			this.historyListEl = historyPanelEl.createDiv({ cls: "mtg-search-history-list" });
 			this.historyEmptyEl = this.historyListEl.createDiv({
 				cls: "mtg-search-history-empty",
@@ -944,18 +916,17 @@ export class AddCardsModal extends Modal {
 		void this.loadDefaultResults();
 	}
 
-	// Vide resultsEl ET l'état qui en dépend (contrôles "Add" par carte pour
-	// "Add all") — les deux points d'appel de this.resultsEl.empty()
-	// (loadDefaultResults, runSearch) passent systématiquement par ici
-	// plutôt que d'appeler empty() nu, pour ne jamais laisser
-	// currentResultControls référencer des tuiles qui viennent d'être
-	// détruites (Add all ajouterait alors des cartes qui ne sont même plus
-	// affichées). La confirmation "Add all" elle-même vit maintenant dans
-	// sa propre fenêtre (AddAllConfirmModal) — rien à masquer/réinitialiser
-	// ici la concernant. Réinitialise aussi tout l'état de pagination
-	// (currentPage/hasMorePages/loadMoreQuery/totalCardsFound) — resultsEl
-	// vient d'être vidé, donc loadMoreEl (qui pointait potentiellement vers
-	// un enfant de resultsEl) ne référence plus rien de valide non plus.
+	// Empties resultsEl AND the state that depends on it (per-card "Add"
+	// controls for "Add all") — the two call points of this.resultsEl.empty()
+	// (loadDefaultResults, runSearch) systematically go through here rather
+	// than calling a bare empty(), so as never to leave currentResultControls
+	// referencing tiles that have just been destroyed (Add all would then add
+	// cards that are no longer even displayed). The "Add all" confirmation
+	// itself now lives in its own window (AddAllConfirmModal) — nothing to
+	// hide/reset here concerning it. Also resets all the pagination state
+	// (currentPage/hasMorePages/loadMoreQuery/totalCardsFound) — resultsEl has
+	// just been emptied, so loadMoreEl (which potentially pointed to a child
+	// of resultsEl) no longer references anything valid either.
 	private resetResults() {
 		this.resultsEl.empty();
 		this.currentResultControls = [];
@@ -965,9 +936,9 @@ export class AddCardsModal extends Modal {
 		this.loadMoreQuery = null;
 		this.totalCardsFound = 0;
 		this.loadMoreEl = null;
-		// Voir addAllGeneration : signale à un éventuel runAddAll() encore en
-		// vol (auto-pagination d'un "Add all" précédent) qu'une recherche plus
-		// récente a repris la main sur currentPage/hasMorePages/etc.
+		// See addAllGeneration: signals to a possible runAddAll() still in flight
+		// (auto-pagination of a previous "Add all") that a more recent search has
+		// taken over currentPage/hasMorePages/etc.
 		this.addAllGeneration++;
 	}
 
@@ -975,30 +946,29 @@ export class AddCardsModal extends Modal {
 		this.addAllBtn.disabled = this.addAllInProgress || this.currentResultControls.length === 0;
 	}
 
-	// Total RÉEL que "Add all" ajouterait — au-delà de la page actuellement
-	// chargée quand hasMorePages est vrai (voir totalCardsFound, le
-	// total_cards brut de Scryfall pour cette recherche), pas seulement ce
-	// qui est déjà rendu dans le carrousel. Utilisé à la fois pour le
-	// libellé de confirmation et pour le plafond dur (voir showAddAllConfirm).
+	// REAL total that "Add all" would add — beyond the page currently loaded
+	// when hasMorePages is true (see totalCardsFound, the raw total_cards of
+	// Scryfall for this search), not just what is already rendered in the
+	// carousel. Used both for the confirmation label and for the hard cap (see
+	// showAddAllConfirm).
 	private addAllEffectiveTotal(): number {
 		return this.hasMorePages ? this.totalCardsFound : this.currentResultControls.length;
 	}
 
-	// Fenêtre séparée (voir AddAllConfirmModal plus bas) plutôt qu'un
-	// message inline sous la barre de recherche — demandé explicitement.
-	// count reflète maintenant le total RÉEL de la recherche (voir
-	// addAllEffectiveTotal), plus seulement ce qui est déjà chargé dans le
-	// carrousel — "Add all" auto-pagine désormais le reste lui-même (voir
-	// runAddAll) plutôt que de se limiter à la page affichée.
+	// Separate window (see AddAllConfirmModal further down) rather than an
+	// inline message under the search bar — explicitly requested. count now
+	// reflects the REAL total of the search (see addAllEffectiveTotal), no
+	// longer only what is already loaded in the carousel — "Add all" now
+	// auto-paginates the rest itself (see runAddAll) rather than limiting
+	// itself to the displayed page.
 	private showAddAllConfirm() {
 		if (this.addAllInProgress) return;
 		const count = this.addAllEffectiveTotal();
 		if (count === 0) return;
-		// Plafond dur — voir ADD_ALL_HARD_CAP pour le calcul qui le justifie.
-		// Un Notice plutôt qu'une modale à part : ce n'est pas une décision à
-		// prendre ("Yes"/"Cancel"), juste une limite qui empêche l'opération
-		// de démarrer, avec de quoi comprendre pourquoi et quoi faire à la
-		// place.
+		// Hard cap — see ADD_ALL_HARD_CAP for the computation that justifies it. A
+		// Notice rather than a separate modal: it is not a decision to make
+		// ("Yes"/"Cancel"), just a limit that prevents the operation from
+		// starting, with enough to understand why and what to do instead.
 		if (count > ADD_ALL_HARD_CAP) {
 			new Notice(
 				`This search found ${count} cards — "Add all" is limited to ${ADD_ALL_HARD_CAP} at a time to avoid freezing Obsidian. Narrow your search (e.g. a set: or color filter) and try again.`,
@@ -1011,30 +981,30 @@ export class AddCardsModal extends Modal {
 
 	private performAddAll() {
 		if (this.addAllInProgress) return;
-		// Copié plutôt que lu à travers this. : purement défensif, pour que ce
-		// lot précis reste cohérent même si l'utilisateur rouvre une nouvelle
-		// recherche entre le moment où AddAllConfirmModal s'est ouverte et
-		// celui où son bouton "Yes, add all" est effectivement cliqué (voir
-		// aussi addAllGeneration, qui protège la partie auto-paginée de
-		// runAddAll contre ce même scénario une fois l'opération lancée).
+		// Copied rather than read through this.: purely defensive, so that this
+		// precise batch stays consistent even if the user reopens a new search
+		// between the moment AddAllConfirmModal opened and the one where its "Yes,
+		// add all" button is actually clicked (see also addAllGeneration, which
+		// protects the auto-paginated part of runAddAll against this same scenario
+		// once the operation has started).
 		const controls = this.currentResultControls;
 		const paginating = this.hasMorePages;
 		const total = paginating ? this.totalCardsFound : controls.length;
 		if (total === 0) return;
 
-		// defaultListId (Inbox) : "Add all" ajoute directement, sans ouvrir de
-		// picker — même raisonnement que le clic "Add" individuel ci-dessus,
-		// voir AddCardsModalOptions.listGallery.defaultListId.
+		// defaultListId (Inbox): "Add all" adds directly, without opening a picker
+		// — same reasoning as the individual "Add" click above, see
+		// AddCardsModalOptions.listGallery.defaultListId.
 		if (this.listGallery?.defaultListId) {
 			void this.runAddAll(controls, paginating, this.listGallery.defaultListId);
 			return;
 		}
 
 		if (this.listGallery) {
-			// Un seul picker pour tout le lot (pas un par carte, qui ferait
-			// s'enchaîner des dizaines de fenêtres modales) — la destination
-			// choisie une fois s'applique à chaque carte du lot, y compris
-			// celles pas encore chargées (auto-paginées par runAddAll).
+			// A single picker for the whole batch (not one per card, which would chain
+			// dozens of modal windows) — the destination chosen once applies to each
+			// card of the batch, including those not yet loaded (auto-paginated by
+			// runAddAll).
 			new SelectListModal(
 				this.app,
 				this.plugin,
@@ -1050,19 +1020,18 @@ export class AddCardsModal extends Modal {
 		void this.runAddAll(controls, paginating, undefined);
 	}
 
-	// Cœur de "Add all" — ajoute d'abord ce qui est déjà chargé dans le
-	// carrousel (même chemin que le clic "Add" individuel de chaque tuile,
-	// via addOne : coût DOM déjà payé, ces tuiles deviennent des steppers
-	// comme d'habitude), PUIS, si hasMorePages était vrai au moment du clic,
-	// récupère et ajoute le reste page par page — sans jamais construire de
-	// tuile carrousel pour ces cartes-là (un lot de plusieurs centaines/
-	// milliers de résultats hors champ n'a aucune raison d'alourdir le DOM
-	// du carrousel), juste un appel direct à onAddCard par carte. La
-	// pagination réutilise le même mécanisme que "Load more"
-	// (searchScryfall/fetchLatestPaperPrintings avec page croissant) — donc
-	// le même verrou de cadence global (requestScryfall, scryfall.ts) que
-	// tout le reste du plugin, aucun traitement spécial nécessaire ici pour
-	// rester dans les règles de l'API.
+	// Core of "Add all" — first adds what is already loaded in the carousel
+	// (same path as the individual "Add" click of each tile, via addOne: DOM
+	// cost already paid, these tiles become steppers as usual), THEN, if
+	// hasMorePages was true at the time of the click, fetches and adds the
+	// rest page by page — without ever building a carousel tile for those
+	// cards (a batch of several hundred/thousand off-screen results has no
+	// reason to weigh down the carousel's DOM), just a direct call to
+	// onAddCard per card. The pagination reuses the same mechanism as "Load
+	// more" (searchScryfall/fetchLatestPaperPrintings with an increasing page)
+	// — hence the same global pacing lock (requestScryfall, scryfall.ts) as
+	// everything else in the plugin, no special handling needed here to stay
+	// within the API's rules.
 	private async runAddAll(
 		controls: { card: ScryfallCard; addOne: (listId?: string, silent?: boolean) => void }[],
 		paginating: boolean,
@@ -1074,15 +1043,15 @@ export class AddCardsModal extends Modal {
 		const options = this.computeAddOptions();
 		const destinationName = this.resolveDestinationName(listId ?? "");
 
-		// Snapshot de la recherche à paginer — jamais relu depuis this.
-		// pendant la boucle ci-dessous (this.loadMoreQuery pourrait avoir
-		// changé entre-temps si une nouvelle recherche démarre ; le contrôle
-		// de génération plus bas s'arrête alors avant de s'en resservir).
+		// Snapshot of the search to paginate — never re-read from this. during the
+		// loop below (this.loadMoreQuery could have changed in the meantime if a
+		// new search starts; the generation check further down then stops before
+		// using it again).
 		const query = this.loadMoreQuery;
 
-		// Au-delà de HISTORY_AGGREGATE_THRESHOLD, chaque ajout (rendu ou non)
-		// s'accumule dans addAllBatch au lieu de construire une tuile
-		// d'historique individuelle — voir recordHistoryAdd.
+		// Beyond HISTORY_AGGREGATE_THRESHOLD, each addition (rendered or not)
+		// accumulates in addAllBatch instead of building an individual history
+		// tile — see recordHistoryAdd.
 		const total = paginating ? this.totalCardsFound : controls.length;
 		this.addAllBatch = this.onUndoAdd && total > HISTORY_AGGREGATE_THRESHOLD ? [] : null;
 
@@ -1090,14 +1059,13 @@ export class AddCardsModal extends Modal {
 
 		let addedBeyondPage = 0;
 		if (paginating) {
-			// Même verrou que "Load more" lui-même (loadingMorePage — voir son
-			// propre garde en tête de loadMoreResults) : bloque tout clic manuel
-			// sur la tuile "Load more" pendant que cette boucle avance déjà sur
-			// la même recherche, plutôt que de risquer deux fetchs concurrents
-			// se marchant dessus sur currentPage/hasMorePages. is-disabled
-			// (styles.css) donne un retour visuel à ce blocage — sans lui, la
-			// tuile resterait visuellement cliquable pour un clic qui ne ferait
-			// plus rien.
+			// Same lock as "Load more" itself (loadingMorePage — see its own guard at
+			// the head of loadMoreResults): blocks any manual click on the "Load more"
+			// tile while this loop is already advancing on the same search, rather
+			// than risking two concurrent fetches stepping on each other on
+			// currentPage/hasMorePages. is-disabled (styles.css) gives visual feedback
+			// of this blocking — without it, the tile would remain visually clickable
+			// for a click that would no longer do anything.
 			this.loadingMorePage = true;
 			this.loadMoreEl?.addClass("is-disabled");
 			let erroredOut = false;
@@ -1126,14 +1094,12 @@ export class AddCardsModal extends Modal {
 					erroredOut = true;
 					break;
 				}
-				// Une nouvelle recherche a repris la main pendant cet aller-
-				// retour réseau (voir addAllGeneration) — currentPage/
-				// hasMorePages/totalCardsFound/loadMoreEl appartiennent déjà à
-				// CETTE nouvelle recherche, plus question d'y toucher ; les
-				// cartes déjà récupérées dans cette itération sont quand même
-				// ajoutées (l'opération de données reste valide même si son
-				// propre affichage de progression ne l'est plus), puis on
-				// s'arrête.
+				// A new search has taken over during this network round trip (see
+				// addAllGeneration) — currentPage/hasMorePages/totalCardsFound/loadMoreEl
+				// already belong to THIS new search, no question of touching them anymore;
+				// the cards already fetched in this iteration are nonetheless added (the
+				// data operation remains valid even if its own progress display no longer
+				// is), then we stop.
 				const stillCurrent = this.addAllGeneration === generation;
 				cards.forEach((card) => {
 					const result = this.onAddCard(card, options, listId);
@@ -1151,9 +1117,8 @@ export class AddCardsModal extends Modal {
 			this.loadingMorePage = false;
 			if (this.addAllGeneration === generation) {
 				if (erroredOut) {
-					// Laisse "Load more" cliquable pour un nouvel essai manuel sur
-					// ce qui reste — même repli que loadMoreResults() lui-même sur
-					// un échec réseau.
+					// Leaves "Load more" clickable for a new manual attempt on what remains —
+					// same fallback as loadMoreResults() itself on a network failure.
 					this.loadMoreEl?.removeClass("is-disabled");
 					if (this.loadMoreEl) {
 						this.loadMoreEl.empty();
@@ -1181,16 +1146,15 @@ export class AddCardsModal extends Modal {
 		new Notice(`Added ${totalAdded} card${totalAdded === 1 ? "" : "s"}.`);
 	}
 
-	// Tuile résumée d'un lot "Add all" agrégé (voir HISTORY_AGGREGATE_
-	// THRESHOLD) — même habillage que renderHistoryTile (checkbox/
-	// séparateurs/corbeille, mêmes classes CSS) pour rester cohérente avec
-	// le reste du panneau, mais un contenu et une logique propres : pas de
-	// nom de carte unique à afficher, pas de lien "Change printing"/"Move
-	// card" (le lot couvre potentiellement des centaines de cartes
-	// différentes, aucun lien unique n'aurait de sens), et une annulation/
-	// réactivation en bloc plutôt que par contribution — un appel
-	// onUndoAdd/onAdd par carte du lot, jamais de travail DOM par carte,
-	// donc un lot de plusieurs milliers de cartes reste rapide à annuler.
+	// Summary tile of an aggregated "Add all" batch (see
+	// HISTORY_AGGREGATE_THRESHOLD) — same dressing as renderHistoryTile
+	// (checkbox/separators/trash can, same CSS classes) to stay consistent
+	// with the rest of the panel, but content and logic of its own: no single
+	// card name to display, no "Change printing"/"Move card" link (the batch
+	// potentially covers hundreds of different cards, no single link would
+	// make sense), and a bulk undo/re-enable rather than per contribution —
+	// one onUndoAdd/onAdd call per card of the batch, never DOM work per card,
+	// so a batch of several thousand cards stays fast to undo.
 	private renderAddAllBatchTile(
 		batch: { card: ScryfallCard; options: AddCardOptions; listId: string }[],
 		destinationName: string
@@ -1204,8 +1168,8 @@ export class AddCardsModal extends Modal {
 			this.historyListEl.prepend(tile);
 			tile.addClass("mtg-search-history-tile-enter");
 		});
-		// Même technique double rAF que renderHistoryTile — voir son propre
-		// commentaire pour le raisonnement complet.
+		// Same double rAF technique as renderHistoryTile — see its own comment for
+		// the full reasoning.
 		window.requestAnimationFrame(() => {
 			window.requestAnimationFrame(() => tile.addClass("mtg-search-history-tile-visible"));
 		});
@@ -1224,10 +1188,9 @@ export class AddCardsModal extends Modal {
 		line1.createSpan({ cls: "mtg-search-history-name", text: "Add all" });
 		line1.createSpan({ cls: "mtg-search-history-qty", text: `×${batch.length}` });
 		const line2 = info.createDiv({ cls: "mtg-search-history-line2" });
-		// Réutilise la classe destination (flex:1 + ellipsis) plutôt qu'une
-		// nouvelle règle CSS — cette ligne n'a qu'un seul segment de texte,
-		// potentiellement long (nom de destination inclus), exactement ce
-		// que cette classe gère déjà.
+		// Reuses the destination class (flex:1 + ellipsis) rather than a new CSS
+		// rule — this line has only a single text segment, potentially long
+		// (destination name included), exactly what this class already handles.
 		line2.createSpan({
 			cls: "mtg-search-history-destination-link",
 			text: `${batch.length} distinct card${batch.length === 1 ? "" : "s"} → ${destinationName}`,
@@ -1259,20 +1222,20 @@ export class AddCardsModal extends Modal {
 		deleteBtn.addEventListener("click", () => {
 			setEnabled(false);
 			tile.remove();
-			// Cette tuile n'est jamais suivie dans historyEntries (voir plus
-			// haut) — deleteHistoryEntry ne peut donc pas la voir pour décider
-			// de réafficher historyEmptyEl ; revérifie directement le DOM du
-			// panneau plutôt que de dupliquer un second compteur.
+			// This tile is never tracked in historyEntries (see higher up) —
+			// deleteHistoryEntry therefore cannot see it to decide whether to display
+			// historyEmptyEl again; re-checks the DOM of the panel directly rather
+			// than duplicating a second counter.
 			if (!this.historyListEl.querySelector(".mtg-search-history-tile")) {
 				this.historyEmptyEl?.toggleClass("is-hidden", false);
 			}
 		});
 	}
 
-	// Reconstruite (pas juste masquée/affichée) à chaque clic, pour que
-	// is-active reflète l'état réel (chip ajoutée/retirée, tri
-	// appliqué/annulé) — même raisonnement que renderSearchChipBar, appelée
-	// pour la même raison juste après une mutation de chipTokens.
+	// Rebuilt (not just hidden/shown) on each click, so that is-active
+	// reflects the real state (chip added/removed, sort applied/canceled) —
+	// same reasoning as renderSearchChipBar, called for the same reason right
+	// after a mutation of chipTokens.
 	private renderSuggestedFilters() {
 		const container = this.suggestedFiltersEl;
 		container.empty();
@@ -1288,37 +1251,35 @@ export class AddCardsModal extends Modal {
 			btn.toggleClass("is-active", isActive);
 			btn.addEventListener("click", () => {
 				if (filter.kind === "chip") {
-					// Bascule : un second clic retire la puce plutôt que d'en
-					// ajouter une deuxième identique.
+					// Toggle: a second click removes the chip rather than adding a second
+					// identical one.
 					const idx = this.chipTokens.indexOf(filter.token);
 					if (idx >= 0) this.chipTokens.splice(idx, 1);
 					else this.chipTokens.push(filter.token);
 					this.renderSearchChipBar();
 				} else {
-					// Même bascule côté tri : re-cliquer la suggestion déjà active
-					// revient au tri par défaut plutôt que de rester bloqué dessus.
+					// Same toggle on the sort side: re-clicking the already active suggestion
+					// goes back to the default sort rather than staying stuck on it.
 					this.sortOverride = isActive ? null : { order: filter.order, dir: filter.dir };
 				}
 				this.renderSuggestedFilters();
-				// triggerSearch (debounce 400ms), pas runSearch direct : même
-				// chemin que toute autre mutation de puce dans ce fichier (retrait,
-				// bascule négation/exact…) — cohérent avec l'existant, et ça évite
-				// qu'un clic rapide sur plusieurs suggestions d'affilée déclenche
-				// une requête Scryfall par clic au lieu d'une seule une fois
-				// retombé.
+				// triggerSearch (debounce 400ms), not runSearch directly: same path as any
+				// other chip mutation in this file (removal, negation/exact toggle…) —
+				// consistent with what exists, and it avoids a quick click on several
+				// suggestions in a row triggering one Scryfall request per click instead
+				// of a single one once it settles.
 				this.triggerSearch();
 			});
 		});
 
-		// Filtres personnalisés enregistrés par l'utilisateur (bouton carré
-		// "Save filter" à droite de la barre de puces, voir
-		// showSaveFilterPrompt/confirmSaveFilter) — même langage visuel/
-		// bascule que les suggestions fixes ci-dessus,
-		// mais un filtre enregistré est un instantané de PLUSIEURS jetons (+
-		// un tri) à la fois, donc l'appliquer REMPLACE tout l'état courant de
-		// la barre plutôt que d'ajouter/retirer un seul jeton. Un petit "x"
-		// à l'intérieur du bouton supprime le filtre enregistré lui-même
-		// (settings, persisté), pas seulement son application courante.
+		// Custom filters saved by the user (square "Save filter" button to the
+		// right of the chip bar, see showSaveFilterPrompt/confirmSaveFilter) —
+		// same visual language/toggle as the fixed suggestions above, but a saved
+		// filter is a snapshot of SEVERAL tokens (+ a sort) at once, so applying
+		// it REPLACES the whole current state of the bar rather than
+		// adding/removing a single token. A small "x" inside the button deletes
+		// the saved filter itself (settings, persisted), not just its current
+		// application.
 		this.plugin.settings.savedSearchFilters.forEach((filter) => {
 			const isActive = this.savedFilterIsActive(filter);
 			const btn = container.createEl("button", {
@@ -1330,10 +1291,9 @@ export class AddCardsModal extends Modal {
 			setIcon(removeBtn, "x");
 			removeBtn.setAttribute("title", "Delete saved filter");
 			removeBtn.addEventListener("click", (evt) => {
-				// stopPropagation : ce span vit à l'intérieur du <button>, un
-				// clic dessus déclencherait sinon AUSSI le handler du bouton
-				// (bulle jusqu'à lui) — appliquerait/basculerait le filtre au
-				// lieu de le supprimer.
+				// stopPropagation: this span lives inside the <button>, a click on it
+				// would otherwise ALSO trigger the button's handler (bubbling up to it) —
+				// it would apply/toggle the filter instead of deleting it.
 				evt.stopPropagation();
 				this.plugin.deleteSearchFilter(filter.id);
 				this.renderSuggestedFilters();
@@ -1353,57 +1313,55 @@ export class AddCardsModal extends Modal {
 		});
 	}
 
-	// true dès qu'il y a QUOI QUE CE SOIT à enregistrer — une puce déjà
-	// validée, un tri actif, OU un mot-clé encore en cours de frappe
-	// (chipDraft, pas encore une puce) : demandé explicitement, "dès le
-	// premier mot-clé dans la barre de recherche", pas seulement une fois
-	// une suggestion cliquée. buildScryfallQueryFromChips (card-search.ts)
-	// traite déjà chipDraft comme faisant partie de la recherche EN COURS —
-	// ce bouton suit donc exactement ce que l'utilisateur voit déjà chercher,
-	// pas seulement ce qui est formellement validé en puce.
+	// true as soon as there is ANYTHING to save — a chip already validated, an
+	// active sort, OR a keyword still being typed (chipDraft, not yet a chip):
+	// explicitly requested, "from the first keyword in the search bar", not
+	// only once a suggestion has been clicked. buildScryfallQueryFromChips
+	// (card-search.ts) already treats chipDraft as part of the search IN
+	// PROGRESS — this button therefore follows exactly what the user already
+	// sees being searched, not only what is formally validated as a chip.
 	private hasSomethingToSaveFilter(): boolean {
 		return this.chipTokens.length > 0 || this.chipDraft.trim().length > 0 || !!this.sortOverride;
 	}
 
-	// Séparée de renderSearchChipBar : chipDraft change à chaque frappe SANS
-	// reconstruire toute la barre (perte de focus sinon, voir le handler
-	// "input" plus haut) — cette méthode-ci ne touche qu'un seul attribut sur
-	// un bouton déjà construit, appelable à chaque frappe sans ce risque.
+	// Separate from renderSearchChipBar: chipDraft changes on every keystroke
+	// WITHOUT rebuilding the whole bar (loss of focus otherwise, see the
+	// "input" handler higher up) — this method only touches a single attribute
+	// on an already built button, callable on every keystroke without this
+	// risk.
 	private updateSaveFilterButtonState() {
 		this.saveFilterBtn.disabled = !this.hasSomethingToSaveFilter();
 	}
 
-	// Phrase en anglais décrivant la barre de puces (voir describeSearchFilters,
-	// card-search.ts) — inclut le mot-clé en cours de frappe (chipDraft), pas
-	// seulement les puces déjà validées : contrairement à la recherche
-	// elle-même (qui attend maintenant une validation explicite, voir
-	// triggerSearch), cette phrase est un simple aperçu textuel de ce qui est
-	// en train d'être construit, pas d'aller-retour réseau ni de saut visuel
-	// à éviter en la retardant. Garde défensive sur filterDescriptionEl : le
-	// tout premier appel de renderSearchChipBar (onOpen, avant que ce bloc ne
-	// soit construit plus bas dans la fenêtre) tomberait sinon sur un élément
-	// encore undefined.
-	// Toujours visible (demandé explicitement — plus de is-visible/masquage
-	// conditionnel) : quand il n'y a rien à décrire, affiche un repli neutre
-	// plutôt qu'une phrase vide ou un bloc qui disparaît/réapparaît.
+	// English sentence describing the chip bar (see describeSearchFilters,
+	// card-search.ts) — includes the keyword being typed (chipDraft), not only
+	// the already validated chips: unlike the search itself (which now waits for
+	// an explicit validation, see triggerSearch), this sentence is a simple
+	// textual preview of what is being built, no network round trip or visual
+	// jump to avoid by delaying it. Defensive guard on filterDescriptionEl: the
+	// very first call of renderSearchChipBar (onOpen, before this block is built
+	// further down in the window) would otherwise hit a still-undefined element.
+	// Always visible (explicitly requested — no more is-visible/conditional
+	// hiding): when there is nothing to describe, it shows a neutral fallback
+	// rather than an empty sentence or a block that disappears/reappears.
 	private updateFilterDescription() {
 		if (!this.filterDescriptionEl) return;
 		const allTokens = this.chipDraft.trim()
 			? [...this.chipTokens, this.chipDraft.trim()]
 			: this.chipTokens;
-		// Nom complet d'édition plutôt que le code court (ex. "Innistrad
-		// Remastered", pas "INR") — demandé explicitement. getCachedSetSummary
-		// est une lecture SYNCHRONE d'un cache déjà chaud (même source déjà
-		// utilisée pour l'icône/le nom de la puce "set:" elle-même un peu plus
-		// haut dans ce fichier) — describeSearchFilters retombe elle-même sur
-		// le code en majuscules si ce cache n'est pas encore chaud.
+		// Full set name rather than the short code (e.g. "Innistrad Remastered",
+		// not "INR") — explicitly requested. getCachedSetSummary is a SYNCHRONOUS
+		// read of an already warm cache (same source already used for the
+		// icon/name of the "set:" chip itself a little higher in this file) —
+		// describeSearchFilters itself falls back to the uppercase code if this
+		// cache isn't warm yet.
 		const description = describeSearchFilters(allTokens, (code) => this.plugin.getCachedSetSummary(code)?.name);
 		this.filterDescriptionTextEl.setText(description || "No filter applied — showing every card.");
 	}
 
-	// Un filtre enregistré est "actif" quand la barre reflète EXACTEMENT son
-	// instantané — mêmes jetons (peu importe l'ordre : un Set, pas une
-	// comparaison position par position) et même tri, ni plus ni moins.
+	// A saved filter is "active" when the bar reflects EXACTLY its snapshot —
+	// same tokens (order doesn't matter: a Set, not a position-by-position
+	// comparison) and same sort, no more, no less.
 	private savedFilterIsActive(filter: SavedSearchFilter): boolean {
 		if (filter.tokens.length !== this.chipTokens.length) return false;
 		const current = new Set(this.chipTokens);
@@ -1430,18 +1388,17 @@ export class AddCardsModal extends Modal {
 	private confirmSaveFilter() {
 		const label = this.saveFilterInputEl.value.trim();
 		if (!label) {
-			// Pas de Notice pour un champ vide — re-focus suffit, cohérent
-			// avec le reste de ce fichier qui n'alerte que sur un vrai échec
-			// réseau/résultat, pas sur une saisie manquante.
+			// No Notice for an empty field — re-focusing is enough, consistent with
+			// the rest of this file which only alerts on a real network
+			// failure/result, not on missing input.
 			this.saveFilterInputEl.focus();
 			return;
 		}
-		// Un mot-clé encore en cours de frappe (chipDraft) compte déjà dans la
-		// recherche affichée (voir hasSomethingToSaveFilter) — on le promeut
-		// en puce réelle au moment d'enregistrer, exactement comme le ferait
-		// Entrée/espace, pour que le filtre sauvegardé corresponde
-		// précisément à ce qui est visible/recherché au moment du clic plutôt
-		// que de perdre silencieusement ce mot-clé.
+		// A keyword still being typed (chipDraft) already counts in the displayed
+		// search (see hasSomethingToSaveFilter) — we promote it to a real chip at
+		// the moment of saving, exactly as Enter/space would, so that the saved
+		// filter matches precisely what is visible/searched at the time of the
+		// click rather than silently losing this keyword.
 		if (this.chipDraft.trim()) {
 			this.chipTokens.push(stripQuotesFromCommittedToken(this.chipDraft.trim()));
 			this.chipDraft = "";
@@ -1453,52 +1410,50 @@ export class AddCardsModal extends Modal {
 		new Notice(`Saved filter "${label}".`);
 	}
 
-	// Options appliquées à une carte ajoutée depuis cette modale — aucun des
-	// 3 flux (Collection/Wantlist/Deck) n'expose plus de sélecteur Finish/
-	// Language/Condition ici, toujours les valeurs par défaut ; à affiner
-	// ensuite depuis le panneau de détail de la carte.
+	// Options applied to a card added from this modal — none of the 3 flows
+	// (Collection/Wantlist/Deck) exposes a Finish/Language/Condition selector
+	// here any more, always the default values; to be refined afterwards from
+	// the card's detail panel.
 	private computeAddOptions(): AddCardOptions {
 		return { finish: "regular", language: "", condition: "" };
 	}
 
-	// Résolue par défaut (rien à attendre au tout premier appel, avant
-	// qu'aucun commit n'ait jamais déclenché triggerSearch) — voir
-	// triggerSearch/loadDefaultResults/runSearch ci-dessous.
+	// Resolved by default (nothing to wait for on the very first call, before
+	// any commit has ever triggered triggerSearch) — see
+	// triggerSearch/loadDefaultResults/runSearch below.
 	private resultsExitPromise: Promise<void> = Promise.resolve();
 
 	private triggerSearch() {
-		// Amorce tout de suite la sortie animée des tuiles actuellement
-		// affichées (voir animateResultTilesOut, shared-search-ui.ts) — dès
-		// le commit, pas seulement une fois le délai de 400ms écoulé, pour
-		// un retour visuel immédiat plutôt qu'un silence de 400ms suivi d'un
-		// fondu d'un coup. runSearch()/loadDefaultResults() attendent cette
-		// même Promise avant de vider resultsEl (resetResults) — nécessaire
-		// depuis que la transition est devenue plus lente que le délai de
-		// 400ms lui-même (voir animateResultTilesOut) : sans cette attente,
-		// runSearch() couperait l'animation en plein milieu.
+		// Starts the animated exit of the currently displayed tiles right away
+		// (see animateResultTilesOut, shared-search-ui.ts) — from the commit, not
+		// only once the 400ms delay has elapsed, for immediate visual feedback
+		// rather than a 400ms silence followed by a sudden fade.
+		// runSearch()/loadDefaultResults() await this same Promise before emptying
+		// resultsEl (resetResults) — necessary since the transition became slower
+		// than the 400ms delay itself (see animateResultTilesOut): without this
+		// wait, runSearch() would cut the animation off in the middle.
 		this.resultsExitPromise = animateResultTilesOut(this.resultsEl);
 		if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
 		this.debounceTimer = window.setTimeout(() => void this.runSearch(), 400);
 	}
 
-	// "N cards found", discret — demandé explicitement.
+	// "N cards found", discreet — explicitly requested.
 	//
-	// count === null est maintenant un no-op délibéré (PAS un blanchiment
-	// vers "") — bug signalé : le texte disparaissait puis réapparaissait à
-	// chaque mise à jour du carrousel, ce qui se lisait comme un petit saut
-	// visuel. Le compte précédent reste affiché pendant tout le chargement
-	// (le squelette du carrousel, voir renderResultSkeletons, est déjà le
-	// signal "chargement en cours" — ce texte n'a pas besoin d'en porter un
-	// second) jusqu'à ce que setResultsCount(N) le remplace directement par
-	// la vraie valeur, en une seule mise à jour de texte au lieu de deux.
-	// clearResultsCount() ci-dessous reste le seul moyen d'effacer
-	// explicitement (erreur réseau, résultats entièrement invalidés) —
-	// distinct de "ne pas toucher" pour ne jamais laisser un compte obsolète
-	// visible à côté d'un message d'erreur. `total` (Scryfall total_cards,
-	// voir ScryfallPagedResult) affiche "X of Y cards found" tant qu'il reste
-	// des pages à charger (Y > X) — sinon le simple "N cards found" habituel,
-	// y compris quand `total` est fourni mais égal à `count` (tout est déjà
-	// affiché, rien à distinguer).
+	// count === null is now a deliberate no-op (NOT a blanking to "") —
+	// reported bug: the text disappeared then reappeared on every carousel
+	// update, which read as a small visual jump. The previous count stays
+	// displayed throughout loading (the carousel skeleton, see
+	// renderResultSkeletons, is already the "loading in progress" signal —
+	// this text needn't carry a second one) until setResultsCount(N) replaces
+	// it directly with the real value, in a single text update instead of two.
+	// clearResultsCount() below remains the only way to clear explicitly
+	// (network error, results entirely invalidated) — distinct from "don't
+	// touch" so as never to leave a stale count visible next to an error
+	// message. `total` (Scryfall total_cards, see ScryfallPagedResult)
+	// displays "X of Y cards found" as long as there are pages left to load (Y
+	// > X) — otherwise the usual plain "N cards found", including when `total`
+	// is supplied but equal to `count` (everything is already displayed,
+	// nothing to distinguish).
 	private setResultsCount(count: number | null, total?: number) {
 		if (count === null) return;
 		this.resultsCountEl.setText(
@@ -1512,30 +1467,27 @@ export class AddCardsModal extends Modal {
 		this.resultsCountEl.setText("");
 	}
 
-	// Contenu affiché avant toute frappe : les cartes papier les plus
-	// récemment sorties, pour éviter une fenêtre de résultats vide au premier
-	// affichage (et donc un saut de taille de la fenêtre au premier caractère
-	// tapé).
+	// Content displayed before any keystroke: the most recently released paper
+	// cards, to avoid an empty results window on first display (and hence a
+	// window size jump at the first typed character).
 	async loadDefaultResults() {
-		// Attend la fin de la sortie animée des tuiles actuellement affichées
-		// (déjà amorcée par triggerSearch, voir resultsExitPromise) avant de
-		// les vider réellement — un no-op immédiat au tout premier appel
-		// (resultsEl est déjà vide, aucune tuile à faire sortir).
+		// Waits for the animated exit of the currently displayed tiles to finish
+		// (already started by triggerSearch, see resultsExitPromise) before
+		// actually emptying them — an immediate no-op on the very first call
+		// (resultsEl is already empty, no tile to make exit).
 		await this.resultsExitPromise;
 		this.resetResults();
-		// Pas de setResultsCount(null) ici — voir le commentaire de
-		// setResultsCount : le compte précédent reste affiché tel quel
-		// pendant le chargement, le squelette ci-dessous est déjà le signal
-		// visuel de chargement.
-		// Tuiles squelettes (pas un simple texte "Loading…") : voir
-		// renderResultSkeletons pour le raisonnement complet — élimine le
-		// saut de hauteur signalé entre l'état "en chargement" et l'arrivée
-		// des vraies tuiles.
+		// No setResultsCount(null) here — see the comment of setResultsCount: the
+		// previous count stays displayed as is during loading, the skeleton below
+		// is already the visual loading signal.
+		// Skeleton tiles (not a simple "Loading…" text): see renderResultSkeletons
+		// for the full reasoning — eliminates the reported height jump between the
+		// "loading" state and the arrival of the real tiles.
 		renderResultSkeletons(this.resultsEl);
 		try {
 			const { cards, hasMore, totalCards } = await fetchLatestPaperPrintings(this.sortOverride ?? undefined);
-			// Si l'utilisateur a déjà commencé à taper pendant le chargement, on
-			// n'écrase pas ce qu'il est en train de chercher.
+			// If the user has already started typing during loading, we don't
+			// overwrite what they are in the middle of searching for.
 			if (this.chipTokens.length > 0 || this.chipDraft.trim()) {
 				return;
 			}
@@ -1545,14 +1497,14 @@ export class AddCardsModal extends Modal {
 				return;
 			}
 			this.setResultsCount(cards.length, totalCards);
-			// Pas de cap arbitraire ici : cards.length est déjà borné à 175 par
-			// Scryfall (une seule page) — au-delà, hasMore/le bouton "Load more"
-			// ci-dessous prennent le relais plutôt qu'un slice(0, 40) local, qui
-			// raccourcissait artificiellement le carrousel avant même d'atteindre
-			// cette limite (signalé : "le carrousel affiche assez peu de cartes").
+			// No arbitrary cap here: cards.length is already bounded to 175 by
+			// Scryfall (a single page) — beyond that, hasMore/the "Load more" button
+			// below take over rather than a local slice(0, 40), which artificially
+			// shortened the carousel before even reaching that limit (reported: "the
+			// carousel shows rather few cards").
 			cards.forEach((card, i) => this.renderResult(card, i));
 			this.updateAddAllButtonState();
-			this.loadMoreQuery = null; // recherche par défaut, pas de puces
+			this.loadMoreQuery = null; // default search, no chips
 			this.totalCardsFound = totalCards;
 			this.hasMorePages = hasMore;
 			if (hasMore) this.renderLoadMoreTile();
@@ -1564,26 +1516,25 @@ export class AddCardsModal extends Modal {
 
 	async runSearch() {
 		const chipQuery = buildScryfallQueryFromChips(this.chipTokens, this.chipDraft);
-		// Si les puces "set:xyz" et "#numéro" sont toutes les deux présentes
-		// (non exclues), on peut encore profiter du lookup exact rapide de
-		// searchScryfall plutôt que de repasser par la recherche générale.
+		// If both the "set:xyz" and "#number" chips are present (not excluded), we
+		// can still take advantage of searchScryfall's fast exact lookup rather
+		// than going back through the general search.
 		const { setCode, collectorNumber } = extractExactLookupHints(this.chipTokens, this.chipDraft);
 
 		if (!chipQuery) {
-			// loadDefaultResults() gère elle-même l'attente de la sortie
-			// animée + resetResults() — pas de double vidage ici.
+			// loadDefaultResults() handles waiting for the animated exit +
+			// resetResults() itself — no double emptying here.
 			void this.loadDefaultResults();
 			return;
 		}
 
 		await this.resultsExitPromise;
 		this.resetResults();
-		// Pas de setResultsCount(null) ici — même raisonnement que
-		// loadDefaultResults ci-dessus, voir le commentaire de
-		// setResultsCount.
-		// Même raisonnement que loadDefaultResults : squelette plutôt qu'un
-		// texte "Searching…" nu, pour ne jamais faire varier la hauteur de la
-		// piste entre le début et la fin du chargement.
+		// No setResultsCount(null) here — same reasoning as loadDefaultResults
+		// above, see the comment of setResultsCount.
+		// Same reasoning as loadDefaultResults: skeleton rather than a bare
+		// "Searching…" text, so as never to vary the track's height between the
+		// start and the end of loading.
 		renderResultSkeletons(this.resultsEl);
 
 		let cards: ScryfallCard[] = [];
@@ -1623,8 +1574,8 @@ export class AddCardsModal extends Modal {
 		}
 
 		this.setResultsCount(cards.length, totalCards);
-		// Même raisonnement que loadDefaultResults ci-dessus : pas de cap local,
-		// hasMore/"Load more" prennent le relais au-delà de la 1ère page.
+		// Same reasoning as loadDefaultResults above: no local cap, hasMore/"Load
+		// more" take over beyond the 1st page.
 		cards.forEach((card, i) => this.renderResult(card, i));
 		this.updateAddAllButtonState();
 		this.loadMoreQuery = { setCode, collectorNumber, chipQuery };
@@ -1633,22 +1584,21 @@ export class AddCardsModal extends Modal {
 		if (hasMore) this.renderLoadMoreTile();
 	}
 
-	// Contenu "au repos" (icône + libellé) de la tuile "Load more" — factorisé
-	// pour être appelé à la fois à la construction initiale et pour remettre
-	// la tuile dans cet état après un échec de chargement (voir
-	// loadMoreResults), plutôt que deux copies de ces 3 lignes à maintenir
-	// en parallèle.
+	// "Idle" content (icon + label) of the "Load more" tile — factored out to
+	// be called both at the initial construction and to put the tile back in
+	// that state after a loading failure (see loadMoreResults), rather than
+	// two copies of these 3 lines to maintain in parallel.
 	private renderLoadMoreIdleContent(tile: HTMLElement) {
 		const iconEl = tile.createDiv({ cls: "mtg-search-load-more-icon" });
 		setIcon(iconEl, "chevron-right");
 		tile.createSpan({ text: "Load more" });
 	}
 
-	// Tuile de fin de piste (voir .mtg-search-load-more-tile, styles.css,
-	// pour son propre gabarit) affichée quand hasMorePages est vrai — clic
-	// explicite plutôt qu'un IntersectionObserver auto-déclenché en fin de
-	// défilement, voir le commentaire de hasMorePages/currentPage plus haut
-	// pour le raisonnement.
+	// End-of-track tile (see .mtg-search-load-more-tile, styles.css, for its
+	// own template) displayed when hasMorePages is true — explicit click
+	// rather than an IntersectionObserver auto-triggered at the end of
+	// scrolling, see the comment of hasMorePages/currentPage above for the
+	// reasoning.
 	private renderLoadMoreTile() {
 		const tile = this.resultsEl.createDiv({ cls: "mtg-search-load-more-tile" });
 		this.renderLoadMoreIdleContent(tile);
@@ -1656,17 +1606,15 @@ export class AddCardsModal extends Modal {
 		this.loadMoreEl = tile;
 	}
 
-	// Charge la page suivante de LA MÊME recherche (loadMoreQuery, capturé au
-	// moment où hasMorePages est devenu vrai — voir runSearch/
-	// loadDefaultResults) et ajoute les nouvelles tuiles À LA SUITE de celles
-	// déjà affichées, sans les toucher — contrairement à runSearch/
-	// loadDefaultResults, qui repartent toujours de resetResults(). L'index
-	// passé à renderResult continue la numérotation existante
-	// (currentResultControls.length, avant l'ajout) : au-delà de
-	// RESULT_TILE_STAGGER_MAX (4), applyResultTileStaggerEntrance est de
-	// toute façon un no-op, donc les tuiles d'une page suivante n'ont jamais
-	// leur propre vague d'entrée — cohérent, elles arrivent hors du champ
-	// visible initial du carrousel.
+	// Loads the next page of THE SAME search (loadMoreQuery, captured when
+	// hasMorePages became true — see runSearch/loadDefaultResults) and adds
+	// the new tiles AFTER those already displayed, without touching them —
+	// unlike runSearch/loadDefaultResults, which always start over from
+	// resetResults(). The index passed to renderResult continues the existing
+	// numbering (currentResultControls.length, before the addition): beyond
+	// RESULT_TILE_STAGGER_MAX (4), applyResultTileStaggerEntrance is a no-op
+	// anyway, so the tiles of a later page never get their own entrance wave —
+	// consistent, they arrive outside the carousel's initial visible area.
 	private async loadMoreResults() {
 		if (this.loadingMorePage || !this.hasMorePages) return;
 		this.loadingMorePage = true;
@@ -1689,9 +1637,9 @@ export class AddCardsModal extends Modal {
 			this.currentPage = nextPage;
 			this.hasMorePages = hasMore;
 			this.totalCardsFound = totalCards;
-			// Retire la tuile "Load more" avant d'insérer les nouvelles cartes —
-			// sinon elles s'ajouteraient après elle (toujours en toute fin de
-			// piste, via createDiv), pas avant.
+			// Removes the "Load more" tile before inserting the new cards — otherwise
+			// they would be added after it (always at the very end of the track, via
+			// createDiv), not before.
 			this.loadMoreEl?.remove();
 			this.loadMoreEl = null;
 			const startIndex = this.currentResultControls.length;
@@ -1701,9 +1649,9 @@ export class AddCardsModal extends Modal {
 			if (hasMore) this.renderLoadMoreTile();
 		} catch {
 			new Notice("Failed to load more cards from Scryfall.");
-			// Remet la tuile dans son état cliquable initial (retire les points
-			// de chargement) — currentPage n'a volontairement pas avancé, un
-			// nouveau clic réessaiera la même page suivante.
+			// Puts the tile back in its initial clickable state (removes the loading
+			// dots) — currentPage deliberately did not advance, a new click will retry
+			// the same next page.
 			if (this.loadMoreEl) {
 				this.loadMoreEl.empty();
 				this.renderLoadMoreIdleContent(this.loadMoreEl);
@@ -1717,57 +1665,56 @@ export class AddCardsModal extends Modal {
 		return `${scryfallId}:${listId}`;
 	}
 
-	// listGallery : chaque tuile peut être ajoutée à une destination
-	// différente, résolue par id depuis les résumés déjà en main (pas de
-	// fetch supplémentaire). Destination fixe (les 2 flux à titre fixe,
-	// openAddCollectionCardsModal/openAddWantlistCardsModal) : destinationName est
-	// fourni directement par le call site (voir AddCardsModalOptions).
+	// listGallery: each tile can be added to a different destination, resolved by
+	// id from the summaries already in hand (no extra fetch). Fixed destination
+	// (the 2 fixed-target flows,
+	// openAddCollectionCardsModal/openAddWantlistCardsModal): destinationName is
+	// supplied directly by the call site (see AddCardsModalOptions).
 	private resolveDestinationName(listId: string): string {
 		if (this.listGallery) {
 			const fromGallery = this.listGallery.summaries.find((s) => s.id === listId)?.name;
 			if (fromGallery) return fromGallery;
-			// Bug rapporté : ajouter une carte dans une liste/wantlist tout
-			// juste créée (bouton "+ New list"/"+ New wantlist" DANS le
-			// sélecteur par carte) affichait "This destination" au lieu de
-			// son vrai nom. Root cause : listGallery.summaries est un
-			// INSTANTANÉ pris à l'ouverture de la modale (voir onOpen/
-			// openAddCollectionCardsModalWithListPicker), une liste créée PENDANT cette
-			// même session n'y figure donc jamais. resolveDestinationNameById
-			// lit directement plugin.settings.lists/.wantlists (toujours à
-			// jour) plutôt que de retomber sur "this destination" — même
-			// méthode déjà utilisée pour résoudre la destination réelle après
-			// un déplacement (voir openMoveCardForEntry, qui a le même besoin
-			// "identifiant connu, nom pas forcément dans l'instantané").
+			// Reported bug: adding a card to a just-created list/wantlist ("+ New
+			// list"/"+ New wantlist" button INSIDE the per-card selector) displayed
+			// "This destination" instead of its real name. Root cause:
+			// listGallery.summaries is a SNAPSHOT taken when the modal opens (see
+			// onOpen/openAddCollectionCardsModalWithListPicker), so a list created
+			// DURING this same session never appears in it. resolveDestinationNameById
+			// reads plugin.settings.lists/.wantlists directly (always up to date)
+			// rather than falling back to "this destination" — the same method already
+			// used to resolve the real destination after a move (see
+			// openMoveCardForEntry, which has the same need "id known, name not
+			// necessarily in the snapshot").
 			return this.resolveDestinationNameById(listId);
 		}
 		return this.destinationName ?? "this destination";
 	}
 
-	// Enregistre une contribution dans le panneau "Add history" — appelé une
-	// fois par addOne() réussi (clic "Add" individuel ou "Add all"), JAMAIS
-	// pour les ajustements +/- du stepper d'une tuile déjà ajoutée (choix
-	// confirmé avant de construire cette fonctionnalité : l'historique ne
-	// suit que les clics "Add" explicites). Agrégée par (scryfallId, listId)
-	// — même carte + même destination réutilisent la même tuile, sa quantité
-	// augmente au lieu d'en créer une nouvelle (choix confirmé, "agrégée par
-	// carte"). `syncCallback` est stocké tel quel (pas dans un Map séparé) :
-	// il est directement lié au cycle de vie de CETTE HistoryEntry, pas à
-	// celui de resultsEl — une entrée d'historique doit survivre à une
-	// nouvelle recherche (resetResults()) même si son callback de sync,
-	// lui, devient inerte une fois sa tuile carrousel d'origine détruite
-	// (voir syncFromHistory dans renderAddControl : appeler ce callback sur
-	// une tuile détachée du DOM ne fait rien de visible, ni ne plante).
+	// Records a contribution in the "Add history" panel — called once per
+	// successful addOne() (individual "Add" click or "Add all"), NEVER for the
+	// stepper's +/- adjustments of an already added tile (choice confirmed
+	// before building this feature: the history only tracks explicit "Add"
+	// clicks). Aggregated by (scryfallId, listId) — same card + same
+	// destination reuse the same tile, its quantity increases instead of
+	// creating a new one (confirmed choice, "aggregated by card").
+	// `syncCallback` is stored as is (not in a separate Map): it is directly
+	// tied to the lifecycle of THIS HistoryEntry, not to that of resultsEl — a
+	// history entry must survive a new search (resetResults()) even if its
+	// sync callback becomes inert once its original carousel tile is destroyed
+	// (see syncFromHistory in renderAddControl: calling this callback on a
+	// tile detached from the DOM does nothing visible, nor crashes).
 	private recordHistoryAdd(
 		card: ScryfallCard,
 		options: AddCardOptions,
 		listId: string,
 		syncCallback: (row: { id: string; count: number } | undefined) => void
 	) {
-		// Pendant un "Add all" agrégé (voir addAllBatch/HISTORY_AGGREGATE_
-		// THRESHOLD), chaque ajout — rendu ou non, individuel ou auto-paginé —
-		// s'accumule ici au lieu de construire/mettre à jour une tuile
-		// d'historique par carte ; renderAddAllBatchTile construit UNE tuile
-		// résumée une fois le lot entier ajouté (voir runAddAll).
+		// During an aggregated "Add all" (see
+		// addAllBatch/HISTORY_AGGREGATE_THRESHOLD), every addition — rendered or
+		// not, individual or auto-paginated — accumulates here instead of
+		// building/updating a tile of history per card; renderAddAllBatchTile
+		// builds ONE summary tile once the whole batch has been added (see
+		// runAddAll).
 		if (this.addAllBatch) {
 			this.addAllBatch.push({ card, options, listId });
 			return;
@@ -1775,10 +1722,10 @@ export class AddCardsModal extends Modal {
 		if (!this.onUndoAdd) return;
 		const key = this.historyKey(card.id, listId);
 		let hEntry = this.historyEntries.get(key);
-		// Une entrée désactivée (déjà annulée) repart de zéro plutôt que de
-		// fusionner avec des contributions devenues obsolètes — plus simple
-		// et sans ambiguïté que de "réactiver implicitement" une entrée que
-		// l'utilisateur a explicitement choisi d'annuler.
+		// A disabled entry (already undone) starts again from zero rather than
+		// merging with contributions that have become obsolete — simpler and
+		// unambiguous compared with "implicitly re-enabling" an entry that the
+		// user explicitly chose to undo.
 		if (!hEntry || !hEntry.enabled) {
 			hEntry?.tileEl?.remove();
 			hEntry = {
@@ -1793,23 +1740,22 @@ export class AddCardsModal extends Modal {
 		const existing = hEntry.contributions.find((c) => addOptionsEqual(c.options, options));
 		if (existing) existing.count += 1;
 		else hEntry.contributions.push({ options: { ...options }, count: 1 });
-		// Le callback le plus récent gagne — c'est toujours la tuile
-		// carrousel ACTUELLEMENT affichée qui doit être resynchronisée si
-		// cette entrée est togglée ensuite, pas une tuile d'une recherche
-		// précédente déjà remplacée.
+		// The most recent callback wins — it is always the CURRENTLY displayed
+		// carousel tile that must be resynchronized if this entry is toggled
+		// afterwards, not a tile from a previous search that has already been
+		// replaced.
 		hEntry.syncCallback = syncCallback;
 		if (!hEntry.tileEl) {
 			this.renderHistoryTile(hEntry);
 		} else {
 			this.updateHistoryTileQuantity(hEntry);
-			// La dernière action s'affiche toujours en premier — demandé
-			// explicitement. flipHistoryListChange anime le déplacement (voir
-			// son propre commentaire) — prepend() sur un nœud déjà attaché le
-			// DÉPLACE (ne le duplique pas) : une carte déjà présente plus bas
-			// dans la liste, re-cliquée "Add"/"+", remonte donc en tête plutôt
-			// que de rester à sa position d'origine. renderHistoryTile
-			// ci-dessus gère déjà le cas "nouvelle entrée" (voir son propre
-			// commentaire).
+			// The latest action always displays first — explicitly requested.
+			// flipHistoryListChange animates the move (see its own comment) —
+			// prepend() on an already attached node MOVES it (doesn't duplicate it): a
+			// card already present lower down in the list, re-clicked "Add"/"+",
+			// therefore moves up to the top rather than staying at its original
+			// position. renderHistoryTile above already handles the "new entry" case
+			// (see its own comment).
 			const tileEl = hEntry.tileEl;
 			this.flipHistoryListChange(() => {
 				this.historyListEl.prepend(tileEl);
@@ -1817,25 +1763,24 @@ export class AddCardsModal extends Modal {
 		}
 	}
 
-	// Technique FLIP (First-Last-Invert-Play) identique à flipListChange
-	// (view.ts, qui anime déjà les groupes voisins lors d'un pliage/dépliage
-	// de la même façon) : mesure la position de chaque tuile DÉJÀ présente
-	// AVANT la mutation, applique la mutation réelle instantanément, puis
-	// compense visuellement l'écart avec un transform (immédiat, invisible),
-	// avant de le relâcher en douceur — demandé explicitement, "une petite
-	// animation quand une nouvelle tuile apparait, qu'elle pousse les tuiles
-	// du bas". Comme seul "transform" anime, aucun recalcul de mise en page
-	// n'a lieu pendant l'animation elle-même. Un seul et même helper sert
-	// aux deux cas d'usage ci-dessus/plus bas (renderHistoryTile,
-	// recordHistoryAdd) : une tuile pas encore créée à l'instant de la
-	// mesure n'est jamais dans `movables` (elle n'existe pas encore dans le
-	// DOM) — c'est exactement ce qui fait que SEULES les tuiles déjà
-	// présentes sont repoussées/animées, jamais la nouvelle tuile
-	// elle-même (qui a sa propre animation d'entrée séparée, voir
-	// mtg-search-history-tile-enter/-visible dans renderHistoryTile) ; une
-	// tuile déjà présente qu'on déplace en tête (2ᵉ cas d'usage) fait, elle,
-	// partie de `movables` et glisse donc normalement vers sa nouvelle
-	// position.
+	// FLIP technique (First-Last-Invert-Play) identical to flipListChange
+	// (view.ts, which already animates neighboring groups when
+	// folding/unfolding in the same way): measures the position of each tile
+	// ALREADY present BEFORE the mutation, applies the real mutation
+	// instantly, then visually compensates for the gap with a transform
+	// (immediate, invisible), before releasing it smoothly — explicitly
+	// requested, "a small animation when a new tile appears, that it pushes
+	// the tiles below". Since only "transform" animates, no layout
+	// recalculation takes place during the animation itself. One and the same
+	// helper serves both use cases above/below (renderHistoryTile,
+	// recordHistoryAdd): a tile not yet created at the moment of measurement
+	// is never in `movables` (it doesn't exist yet in the DOM) — this is
+	// exactly what makes ONLY the tiles already present get pushed/animated,
+	// never the new tile itself (which has its own separate entrance
+	// animation, see mtg-search-history-tile-enter/-visible in
+	// renderHistoryTile); an already present tile that is moved to the top
+	// (2nd use case) is itself part of `movables` and therefore slides
+	// normally to its new position.
 	private flipHistoryListChange(mutate: () => void) {
 		const movables = Array.from(
 			this.historyListEl.querySelectorAll<HTMLElement>(".mtg-search-history-tile")
@@ -1854,22 +1799,22 @@ export class AddCardsModal extends Modal {
 		});
 
 		if (toAnimate.length === 0) return;
-		// Force le navigateur à "voir" la position décalée avant de relâcher,
-		// sinon les deux changements risquent d'être fusionnés et l'animation
-		// sautée — même précaution que flipListChange (view.ts).
+		// Forces the browser to "see" the offset position before releasing,
+		// otherwise the two changes risk being merged and the animation skipped —
+		// same precaution as flipListChange (view.ts).
 		this.historyListEl.getBoundingClientRect();
 		window.requestAnimationFrame(() => {
 			toAnimate.forEach((el) => releaseOffset(el));
 		});
 	}
 
-	// Symétrique de recordHistoryAdd, pour le "-" du stepper d'une tuile déjà
-	// ajoutée (voir applyDelta) — jamais appelée pour un "disable"/"delete"
-	// d'historique (qui passent par onUndoAdd, une vraie annulation de
-	// données ; ceci ne fait QUE suivre un ajustement de quantité déjà
-	// appliqué ailleurs par onChangeQuantity). Ne recrée jamais une entrée
-	// manquante — décrémenter quelque chose qui n'existe pas/plus n'a pas de
-	// sens, contrairement à un ajout.
+	// Symmetric to recordHistoryAdd, for the "-" of the stepper on an already
+	// added tile (see applyDelta) — never called for a history
+	// "disable"/"delete" (which go through onUndoAdd, a real data undo; this
+	// ONLY tracks a quantity adjustment already applied elsewhere by
+	// onChangeQuantity). Never recreates a missing entry — decrementing
+	// something that doesn't/no longer exist makes no sense, unlike an
+	// addition.
 	private decrementHistoryQuantity(card: ScryfallCard, options: AddCardOptions, listId: string) {
 		const key = this.historyKey(card.id, listId);
 		const hEntry = this.historyEntries.get(key);
@@ -1880,10 +1825,10 @@ export class AddCardsModal extends Modal {
 		if (contribution.count <= 0) {
 			hEntry.contributions = hEntry.contributions.filter((c) => c !== contribution);
 		}
-		// Plus aucune contribution : rien à afficher/annuler pour cette
-		// session, la tuile disparaît (même chemin que deleteHistoryEntry,
-		// mais sans ré-appeler onUndoAdd — la donnée a déjà été décrémentée
-		// via onChangeQuantity juste avant, dans applyDelta).
+		// No contribution left: nothing to display/undo for this session, the tile
+		// disappears (same path as deleteHistoryEntry, but without calling
+		// onUndoAdd again — the data has already been decremented via
+		// onChangeQuantity just before, in applyDelta).
 		if (hEntry.contributions.length === 0) {
 			hEntry.tileEl?.remove();
 			this.historyEntries.delete(key);
@@ -1902,30 +1847,29 @@ export class AddCardsModal extends Modal {
 			tile.addClass("mtg-search-history-tile-enter");
 		});
 		hEntry.tileEl = tile;
-		// Double requestAnimationFrame imbriqué pour -visible (inchangé —
-		// toujours la technique la plus robuste pour garantir un vrai paint
-		// intermédiaire de -enter avant de la remplacer, indépendante de tout
-		// arbitrage macrotask/frame contrairement à setTimeout(0)) : le rAF
-		// EXTÉRIEUR s'exécute à la frame N (ne fait que planifier le rAF
-		// intérieur, ne change aucune classe) — la frame N est donc peinte
-		// avec -enter déjà posée (maintenant le premier état JAMAIS observé,
-		// voir ci-dessus) et rien d'autre à recalculer ; le rAF INTÉRIEUR ne
-		// s'exécute qu'à la frame N+1, ajoute alors -visible.
+		// Nested double requestAnimationFrame for -visible (unchanged — still the
+		// most robust technique to guarantee a real intermediate paint of -enter
+		// before replacing it, independent of any macrotask/frame arbitration
+		// unlike setTimeout(0)): the OUTER rAF runs at frame N (only schedules the
+		// inner rAF, changes no class) — frame N is therefore painted with -enter
+		// already set (now the first state EVER observed, see above) and nothing
+		// else to recompute; the INNER rAF only runs at frame N+1, then adds
+		// -visible.
 		window.requestAnimationFrame(() => {
 			window.requestAnimationFrame(() => tile.addClass("mtg-search-history-tile-visible"));
 		});
 
-		// Checkbox native (pas une icône œil) — demandé explicitement.
-		// accent-color plutôt qu'un widget entièrement personnalisé : recolore
-		// une checkbox native dans l'accent du plugin sans avoir à reproduire
-		// sa forme/ses états (coché/survolé/focus) à la main.
+		// Native checkbox (not an eye icon) — explicitly requested. accent-color
+		// rather than a fully custom widget: recolors a native checkbox in the
+		// plugin's accent without having to reproduce its shape/states
+		// (checked/hovered/focus) by hand.
 		hEntry.toggleBtn = tile.createEl("input", { cls: "mtg-search-history-toggle-checkbox" });
 		hEntry.toggleBtn.type = "checkbox";
 		hEntry.toggleBtn.addEventListener("change", () => this.toggleHistoryEntry(hEntry));
 
-		// Séparateur vertical — align-self: stretch (styles.css) l'étire sur
-		// toute la hauteur de la tuile pour bien scinder visuellement la
-		// checkbox du texte, demandé explicitement.
+		// Vertical separator — align-self: stretch (styles.css) stretches it over
+		// the tile's whole height to clearly split the checkbox from the text,
+		// explicitly requested.
 		tile.createDiv({ cls: "mtg-search-history-divider" });
 
 		const info = tile.createDiv({ cls: "mtg-search-history-info" });
@@ -1942,9 +1886,9 @@ export class AddCardsModal extends Modal {
 			hEntry.destinationName
 		);
 
-		// Séparateur vertical avant la suppression/le badge de contexte —
-		// demandé explicitement, même classe/même recette que celui déjà
-		// posé entre la checkbox et le texte plus haut (align-self: stretch,
+		// Vertical separator before the delete button/the context badge —
+		// explicitly requested, same class/same recipe as the one already placed
+		// between the checkbox and the text above (align-self: stretch,
 		// styles.css).
 		tile.createDiv({ cls: "mtg-search-history-divider" });
 
@@ -1954,23 +1898,21 @@ export class AddCardsModal extends Modal {
 		this.updateHistoryTileState(hEntry);
 	}
 
-	// Construit (ou reconstruit intégralement — voir openChangePrintingFor-
-	// Entry/openMoveCardForEntry, qui l'appellent à nouveau après un succès)
-	// le contenu de la ligne 2 : icône + code de set/numéro (lien "Change
-	// printing"), puis destination (lien "Move card") — deux zones
-	// CLIQUABLES SÉPARÉES, demandées explicitement l'une après l'autre dans
-	// le même message. Le lien "Change printing" est maintenant aussi
-	// cliquable pour le flux Deck (ChangePrintingModal accepte "deck" comme
-	// source depuis son extension, voir changeDeckCardPrinting/plugin.ts) —
-	// demandé explicitement après coup, une fois la même fonctionnalité déjà
-	// activée ailleurs dans My Decks (fiche détail, ligne/tuile). Le lien
-	// "Move card" RESTE Collection/Wantlist seulement : CopyCardModal
-	// n'accepte toujours pas "deck" comme source (DeckCard n'a pas de
-	// concept de déplacement — une carte peut légitimement appartenir à
-	// plusieurs decks à la fois, contrairement à une liste/wantlist unique —
-	// voir "Data model notes" dans CLAUDE.md), donc les deux liens n'ont plus
-	// exactement la même condition d'activation, gérées séparément
-	// ci-dessous.
+	// Builds (or fully rebuilds — see
+	// openChangePrintingForEntry/openMoveCardForEntry, which call it again
+	// after a success) the content of line 2: icon + set code/number ("Change
+	// printing" link), then destination ("Move card" link) — two SEPARATE
+	// CLICKABLE areas, requested explicitly one after the other in the same
+	// message. The "Change printing" link is now also clickable for the Deck
+	// flow (ChangePrintingModal accepts "deck" as a source since its
+	// extension, see changeDeckCardPrinting/plugin.ts) — explicitly requested
+	// after the fact, once the same feature was already enabled elsewhere in
+	// My Decks (detail panel, row/tile). The "Move card" link REMAINS
+	// Collection/Wantlist only: CopyCardModal still doesn't accept "deck" as a
+	// source (DeckCard has no concept of moving — a card can legitimately
+	// belong to several decks at once, unlike a single list/wantlist — see
+	// "Data model notes" in CLAUDE.md), so the two links no longer have
+	// exactly the same activation condition, handled separately below.
 	private buildHistoryLine2(
 		hEntry: HistoryEntry,
 		setCode: string,
@@ -1981,30 +1923,27 @@ export class AddCardsModal extends Modal {
 		const line2 = hEntry.line2El;
 		if (!line2) return;
 		line2.empty();
-		// !hEntry.linksDisabled — voir sa propre déclaration : une fois cette
-		// carte déplacée hors du périmètre de this.sourceKind (vers un deck,
-		// ou vers l'autre côté Collection/Wantlist), aucun des deux liens ne
-		// peut plus opérer correctement depuis cette modale — les deux
-		// deviennent définitivement non interactifs pour cette tuile,
-		// indépendamment de this.sourceKind lui-même. Deck n'a jamais de lien
-		// "Move" (voir canMove ci-dessous), donc linksDisabled n'est en
-		// pratique jamais posé pour une tuile Deck — gardé quand même pour ce
-		// lien-ci par cohérence/à l'épreuve du futur.
+		// !hEntry.linksDisabled — see its own declaration: once this card has been
+		// moved outside the scope of this.sourceKind (to a deck, or to the other
+		// side of Collection/Wantlist), neither link can operate correctly from
+		// this modal any more — both become permanently non-interactive for this
+		// tile, regardless of this.sourceKind itself. Deck never has a "Move" link
+		// (see canMove below), so linksDisabled is in practice never set for a
+		// Deck tile — kept anyway for this link, for consistency/future-proofing.
 		const linksActive = !hEntry.linksDisabled;
 		const canChangePrinting =
 			linksActive &&
 			(this.sourceKind === "collection" || this.sourceKind === "wantlist" || this.sourceKind === "deck");
 		const canMove = linksActive && (this.sourceKind === "collection" || this.sourceKind === "wantlist");
 
-		// Symbole d'édition + code/numéro — demandé explicitement. Même
-		// recette que .mtg-card-tile-set-icon (view.ts, "Card view") : icône
-		// teintée selon la rareté via getSetIconSvg + applySvgColor, pas de
-		// garde IntersectionObserver ici contrairement au carrousel de
-		// résultats (renderScryfallResultTile) — ce panneau ne contient
-		// jamais qu'une poignée de tuiles par session, aucune raison d'en
-		// retarder le chargement ; getSetIconSvg sérialise de toute façon
-		// déjà ses propres requêtes (setIconFetchQueue, plugin.ts), qui
-		// protège cet appel comme tous les autres.
+		// Set symbol + code/number — explicitly requested. Same recipe as
+		// .mtg-card-tile-set-icon (view.ts, "Card view"): icon tinted by rarity
+		// via getSetIconSvg + applySvgColor, no IntersectionObserver guard here
+		// unlike the results carousel (renderScryfallResultTile) — this panel only
+		// ever holds a handful of tiles per session, no reason to delay their
+		// loading; getSetIconSvg already serializes its own requests anyway
+		// (setIconFetchQueue, plugin.ts), which protects this call like all the
+		// others.
 		const printingLink = line2.createSpan({ cls: "mtg-search-history-printing-link" });
 		const setIconEl = printingLink.createSpan({ cls: "mtg-search-history-set-icon" });
 		void this.plugin.getSetIconSvg(setCode).then((svg) => {
@@ -2021,36 +1960,34 @@ export class AddCardsModal extends Modal {
 			cls: "mtg-search-history-printing-text",
 			text: `${setCode.toUpperCase()} #${collectorNumber}`,
 		});
-		// Cliquable en Collection/Wantlist/Deck, quel que soit le mode (fixe ou
-		// listGallery) — "Change printing" ne concerne jamais la
-		// destination, seulement l'impression elle-même, donc pas concerné
-		// par la restriction listGallery ci-dessous (propre au lien "Move").
+		// Clickable in Collection/Wantlist/Deck, whatever the mode (fixed or
+		// listGallery) — "Change printing" never concerns the destination, only
+		// the printing itself, so not affected by the listGallery restriction
+		// below (specific to the "Move" link).
 		if (canChangePrinting) {
 			printingLink.addClass("is-clickable");
 			printingLink.setAttribute("title", "Change printing of this card");
 			printingLink.addEventListener("click", () => this.openChangePrintingForEntry(hEntry));
 		}
 
-		// Séparateur "→" — texte simple, jamais cliquable lui-même, entre les
-		// deux liens.
+		// "→" separator — plain text, never clickable itself, between the two
+		// links.
 		line2.createSpan({ cls: "mtg-search-history-line2-arrow", text: " → " });
 
 		const destLink = line2.createSpan({
 			cls: "mtg-search-history-destination-link",
 			text: destinationName,
 		});
-		// Cliquable UNIQUEMENT en mode listGallery (this.listGallery défini —
-		// "All Cards"/l'équivalent Wantlist, où la destination d'un ajout
-		// varie tuile par tuile et vaut donc la peine d'être révisée après
-		// coup) — demandé explicitement, revenu en arrière depuis la version
-		// précédente qui l'affichait toujours pour Collection/Wantlist : dans
-		// une liste précise déjà ouverte (openAddCollectionCardsModal/
-		// openAddWantlistCardsModal, destination fixe), la carte n'a qu'une
-		// seule destination possible et déjà évidente — un lien "déplacer"
-		// là-dessus n'apporte rien et prêtait à confusion. Pas de nouvelle
-		// option ajoutée pour ça : this.listGallery existe déjà, posé
-		// exactement sur cette même distinction (voir son propre champ dans
-		// AddCardsModalOptions).
+		// Clickable ONLY in listGallery mode (this.listGallery defined — "All
+		// Cards"/the Wantlist equivalent, where the destination of an addition
+		// varies tile by tile and is therefore worth revising afterwards) —
+		// explicitly requested, reverted from the previous version that always
+		// showed it for Collection/Wantlist: inside a specific list that is
+		// already open (openAddCollectionCardsModal/openAddWantlistCardsModal,
+		// fixed destination), the card has only one possible, already obvious
+		// destination — a "move" link there adds nothing and was confusing. No new
+		// option added for this: this.listGallery already exists, set on exactly
+		// this same distinction (see its own field in AddCardsModalOptions).
 		if (canMove && this.listGallery) {
 			destLink.addClass("is-clickable");
 			destLink.setAttribute("title", "Move card to another destination");
@@ -2058,20 +1995,18 @@ export class AddCardsModal extends Modal {
 		}
 	}
 
-	// Retrouve la ligne Collection/Wantlist réellement représentée par cette
-	// tuile — utilisée par les 2 liens ci-dessus (Move reste Collection/
-	// Wantlist uniquement, voir canMove/buildHistoryLine2 ; Change printing,
-	// lui, a aussi besoin de résoudre une ligne Deck — voir
-	// resolveDeckHistoryRow juste en dessous, un type de retour différent
-	// donc une fonction séparée plutôt qu'un 3ᵉ cas ajouté ici). undefined
-	// pour le flux Deck, ou si la ligne a depuis disparu autrement (carte
-	// supprimée entre-temps par un autre chemin). Utilise la DERNIÈRE
-	// contribution de l'entrée — même approximation, déjà établie ailleurs
-	// dans ce panneau (voir toggleHistoryEntry/deleteHistoryEntry), pour une
-	// tuile qui agrégerait plusieurs groupes d'options distincts (voir
-	// HistoryContribution plus haut — plus aucun chemin réaliste pour
-	// produire ce cas aujourd'hui, mais un seul lien ne pourrait de toute
-	// façon désigner qu'UNE ligne à la fois).
+	// Finds the Collection/Wantlist row actually represented by this tile —
+	// used by the 2 links above (Move stays Collection/Wantlist only, see
+	// canMove/buildHistoryLine2; Change printing, for its part, also needs to
+	// resolve a Deck row — see resolveDeckHistoryRow just below, a different
+	// return type hence a separate function rather than a 3rd case added
+	// here). undefined for the Deck flow, or if the row has since disappeared
+	// by another path (card deleted in the meantime). Uses the entry's LAST
+	// contribution — the same approximation, already established elsewhere in
+	// this panel (see toggleHistoryEntry/deleteHistoryEntry), for a tile that
+	// would aggregate several distinct option groups (see HistoryContribution
+	// above — no realistic path to produce this case today, but a single link
+	// could only designate ONE row at a time anyway).
 	private resolveHistoryRow(hEntry: HistoryEntry): CollectionCard | WantlistCard | undefined {
 		const lastContribution = hEntry.contributions[hEntry.contributions.length - 1];
 		if (!lastContribution) return undefined;
@@ -2094,17 +2029,17 @@ export class AddCardsModal extends Modal {
 		return undefined;
 	}
 
-	// Équivalent de resolveHistoryRow ci-dessus, pour le flux Deck — utilisé
-	// uniquement par openChangePrintingForEntry (le lien "Move" n'existe pas
-	// pour Deck, voir canMove/buildHistoryLine2). Pour ce flux, hEntry.listId
-	// est l'id du DECK (voir onAdd, view.ts : la carte ajoutée y est
-	// reshapée en { id: row.scryfallId, count, listId: deck.id } faute de
-	// champ id propre sur DeckCard) et hEntry.card.id son scryfallId. Une
-	// carte ajoutée via "Add cards" n'a jamais de catégorie autre que
-	// mainboard (seul importDecklistToDeck en produit d'autres, voir "Data
-	// model notes" dans CLAUDE.md) — la ligne est donc résolue par
-	// scryfallId + catégorie mainboard, cohérent avec ce que
-	// changeDeckCardPrinting (plugin.ts) attend en clé.
+	// Equivalent of resolveHistoryRow above, for the Deck flow — used only by
+	// openChangePrintingForEntry (the "Move" link doesn't exist for Deck, see
+	// canMove/buildHistoryLine2). For this flow, hEntry.listId is the DECK's
+	// id (see onAdd, view.ts: the added card is reshaped there into { id:
+	// row.scryfallId, count, listId: deck.id } for lack of an id field of its
+	// own on DeckCard) and hEntry.card.id its scryfallId. A card added via
+	// "Add cards" never has a category other than mainboard (only
+	// importDecklistToDeck produces others, see "Data model notes" in
+	// CLAUDE.md) — the row is therefore resolved by scryfallId + mainboard
+	// category, consistent with what changeDeckCardPrinting (plugin.ts)
+	// expects as a key.
 	private resolveDeckHistoryRow(hEntry: HistoryEntry): DeckCard | undefined {
 		const deck = this.plugin.settings.decks.find((d) => d.id === hEntry.listId);
 		return deck?.cards.find(
@@ -2112,28 +2047,24 @@ export class AddCardsModal extends Modal {
 		);
 	}
 
-	// Retrouve la ligne réelle APRÈS un déplacement réussi — bug rapporté,
-	// root-caused : `copyToList`/`moveCollectionCardToList` etc. (copy-card-modal.ts/
-	// plugin.ts) implémentent TOUJOURS "move" comme "copie vers la
-	// destination, PUIS retire l'original" (this.plugin.removeCard(cardId)
-	// après coup) — jamais une mutation en place de `row.listId`. La
-	// référence `row` capturée AVANT d'ouvrir CopyCardModal (voir
-	// openMoveCardForEntry) devient donc une référence PENDANTE une fois le
-	// déplacement effectué : elle n'a jamais été retirée de
-	// settings.collection/.wantlist, son .listId n'a jamais changé — lire
-	// row.listId après coup renvoie encore et toujours l'ANCIENNE
-	// destination, jamais la nouvelle. CopyCardModal.onDone n'a d'ailleurs
-	// aucun moyen de renvoyer la destination choisie (`() => void`, sans
-	// argument), donc il n'y a de toute façon rien à lire côté modale.
-	// Cette méthode retrouve la ligne à sa VRAIE position actuelle en
-	// cherchant par identité de carte (scryfallId + finish/language/
-	// condition) SANS contrainte de listId — contrairement à
-	// resolveHistoryRow ci-dessus, qui a justement besoin de cette
-	// contrainte pour désigner une ligne précise en usage normal.
-	// Approximation acceptée si jamais 2 copies identiques (même
-	// printing/finish/langue/état) existaient déjà dans 2 listes
-	// différentes avant le déplacement : la première trouvée gagne — même
-	// esprit que "dernière contribution gagne" ailleurs dans ce panneau.
+	// Finds the real row AFTER a successful move — reported bug, root-caused:
+	// `copyToList`/`moveCollectionCardToList` etc. (copy-card-modal.ts/plugin.ts)
+	// ALWAYS implement "move" as "copy to the destination, THEN remove the original"
+	// (this.plugin.removeCard(cardId) afterwards) — never an in-place mutation of
+	// `row.listId`. The `row` reference captured BEFORE opening CopyCardModal (see
+	// openMoveCardForEntry) therefore becomes a DANGLING reference once the move is
+	// done: it was never removed from settings.collection/.wantlist, its .listId
+	// never changed — reading row.listId afterwards still returns the OLD
+	// destination, always, never the new one. CopyCardModal.onDone moreover has no
+	// way to return the chosen destination (`() => void`, no argument), so there is
+	// nothing to read on the modal side anyway. This method finds the row at its REAL
+	// current position by searching by card identity (scryfallId +
+	// finish/language/condition) WITHOUT a listId constraint — unlike
+	// resolveHistoryRow above, which precisely needs that constraint to designate a
+	// specific row in normal use. Accepted approximation if 2 identical copies (same
+	// printing/finish/language/condition) ever existed in 2 different lists before
+	// the move: the first one found wins — same spirit as "last contribution wins"
+	// elsewhere in this panel.
 	private resolveMovedRow(hEntry: HistoryEntry): CollectionCard | WantlistCard | undefined {
 		const lastContribution = hEntry.contributions[hEntry.contributions.length - 1];
 		if (!lastContribution) return undefined;
@@ -2153,36 +2084,34 @@ export class AddCardsModal extends Modal {
 		return undefined;
 	}
 
-	// Bug rapporté : déplacer une carte vers un DECK, ou vers l'AUTRE côté
-	// Collection/Wantlist (ex. sourceKind === "collection" mais la carte
-	// déplacée vers une wantlist), reproduisait EXACTEMENT le même bug déjà
-	// corrigé pour un déplacement RESTANT dans le périmètre de
-	// this.sourceKind — parce que resolveMovedRow (ci-dessus) ne cherche
-	// QUE dans le tableau correspondant à this.sourceKind, il ne trouve
-	// rien du tout dans ce cas et le callback de succès ne mettait alors
-	// rien à jour, laissant la tuile affichant l'ANCIENNE destination avec
-	// des liens qui ne faisaient plus jamais rien silencieusement — même
-	// symptôme, cause différente. this.sourceKind est fixe pour toute la
-	// durée de vie de la modale (ce n'est pas une propriété par entrée) :
-	// ni ChangePrintingModal ni CopyCardModal ne peuvent de toute façon
-	// plus opérer sur cette ligne depuis CETTE modale une fois sortie de ce
-	// périmètre (DeckCard n'a ni impression alternative ni concept de
-	// déplacement — voir "Data model notes" — et rebasculer sourceKind
-	// à la volée pour une seule entrée casserait le reste de la modale).
-	// Cette méthode cherche donc la carte PARTOUT (collection, wantlist,
-	// chaque deck), uniquement pour l'AFFICHAGE — set/numéro/rareté/nom de
-	// destination réels, quel que soit où elle a atterri — jamais pour
-	// réactiver les liens, qui restent désactivés dans ce cas (voir
-	// hEntry.linksDisabled). Même approximation "première trouvée gagne"
-	// que resolveMovedRow si une carte identique existait déjà ailleurs.
+	// Reported bug: moving a card to a DECK, or to the OTHER side of
+	// Collection/Wantlist (e.g. sourceKind === "collection" but the card moved
+	// to a wantlist), reproduced EXACTLY the same bug already fixed for a move
+	// that STAYED within the scope of this.sourceKind — because
+	// resolveMovedRow (above) ONLY searches the array matching
+	// this.sourceKind, it finds nothing at all in that case and the success
+	// callback then updated nothing, leaving the tile showing the OLD
+	// destination with links that silently never did anything again — same
+	// symptom, different cause. this.sourceKind is fixed for the whole
+	// lifetime of the modal (it isn't a per-entry property): neither
+	// ChangePrintingModal nor CopyCardModal can operate on this row from THIS
+	// modal any more once it has left that scope (DeckCard has neither an
+	// alternative printing nor a concept of moving — see "Data model notes" —
+	// and switching sourceKind on the fly for a single entry would break the
+	// rest of the modal). This method therefore searches for the card
+	// EVERYWHERE (collection, wantlist, every deck), only for DISPLAY — real
+	// set/number/rarity/destination name, wherever it landed — never to
+	// re-enable the links, which stay disabled in this case (see
+	// hEntry.linksDisabled). Same "first found wins" approximation as
+	// resolveMovedRow if an identical card already existed elsewhere.
 	private locateMovedCardAnywhere(hEntry: HistoryEntry): {
 		setCode: string;
 		collectorNumber: string;
 		rarity: string;
 		destinationName: string;
-		// Section où la carte a réellement atterri — sert à composer
-		// l'infobulle "Edit in My X" (voir openMoveCardForEntry) une fois
-		// linksDisabled posé, demandé explicitement.
+		// Section where the card actually landed — serves to compose the "Edit in
+		// My X" tooltip (see openMoveCardForEntry) once linksDisabled is set,
+		// explicitly requested.
 		kind: "collection" | "wantlist" | "deck";
 	} | undefined {
 		const lastContribution = hEntry.contributions[hEntry.contributions.length - 1];
@@ -2235,29 +2164,27 @@ export class AddCardsModal extends Modal {
 		return undefined;
 	}
 
-	// "Edit in My X" — demandé explicitement, l'infobulle posée sur une
-	// tuile figée (linksDisabled) pour expliquer où retrouver la carte
-	// maintenant que ses 2 liens ne font plus rien ici — même esprit que
-	// les autres infobulles "nuance plutôt que silence" déjà établies dans
-	// ce fichier (Mana Pool/TCGplayer/Cardmarket dans le panneau Store
-	// Prices).
+	// "Edit in My X" — explicitly requested, the tooltip placed on a frozen
+	// tile (linksDisabled) to explain where to find the card now that its 2
+	// links no longer do anything here — same spirit as the other "nuance
+	// rather than silence" tooltips already established in this file (Mana
+	// Pool/TCGplayer/Cardmarket in the Store Prices panel).
 	private editElsewhereTitle(kind: "collection" | "wantlist" | "deck"): string {
 		const section = kind === "collection" ? "Collection" : kind === "wantlist" ? "Wantlists" : "Decks";
 		return `This card has moved to ${section} — open it there to make further changes.`;
 	}
 
-	// Corrige hEntry.card/hEntry.listId (la clé de dédoublonnage — voir
-	// historyKey/resolveHistoryRow) APRÈS un changement d'impression ou un
-	// déplacement réussi, et déplace l'entrée dans historyEntries vers sa
-	// nouvelle clé — bug rapporté, corrigé : sans ça, un 2ᵉ changement
-	// d'impression (ou un clic sur la destination, ou un disable/delete)
-	// sur la MÊME tuile cherchait la ligne sous son ANCIEN scryfallId/
-	// listId, ne la trouvait plus (resolveHistoryRow renvoyait undefined),
-	// et silencieusement n'ouvrait/ne faisait plus rien du tout — lisait
-	// alors comme "plus rien n'est cliquable" sur cette tuile en
-	// particulier. `oldKey` doit être capturé par l'appelant AVANT de
-	// muter hEntry.card/hEntry.listId (sinon il ne représenterait déjà
-	// plus l'ancienne clé au moment de le calculer ici).
+	// Fixes hEntry.card/hEntry.listId (the deduplication key — see
+	// historyKey/resolveHistoryRow) AFTER a successful printing change or
+	// move, and moves the entry in historyEntries to its new key — reported
+	// bug, fixed: without this, a 2nd printing change (or a click on the
+	// destination, or a disable/delete) on the SAME tile looked for the row
+	// under its OLD scryfallId/listId, no longer found it (resolveHistoryRow
+	// returned undefined), and silently no longer opened/did anything at all —
+	// which read as "nothing is clickable any more" on that particular tile.
+	// `oldKey` must be captured by the caller BEFORE mutating
+	// hEntry.card/hEntry.listId (otherwise it would no longer represent the
+	// old key at the time of computing it here).
 	private reKeyHistoryEntry(hEntry: HistoryEntry, oldKey: string) {
 		const newKey = this.historyKey(hEntry.card.id, hEntry.listId);
 		if (newKey === oldKey) return;
@@ -2265,8 +2192,8 @@ export class AddCardsModal extends Modal {
 		this.historyEntries.set(newKey, hEntry);
 	}
 
-	// Lien "icône + set + numéro" de la ligne 2 — demandé explicitement,
-	// ouvre ChangePrintingModal sur la ligne réellement ajoutée (voir
+	// "icon + set + number" link of line 2 — explicitly requested, opens
+	// ChangePrintingModal on the row actually added (see
 	// resolveHistoryRow/resolveDeckHistoryRow).
 	private openChangePrintingForEntry(hEntry: HistoryEntry) {
 		if (this.sourceKind === "deck") {
@@ -2281,14 +2208,14 @@ export class AddCardsModal extends Modal {
 			this.plugin,
 			{ id: row.id, name: row.name, scryfallId: row.scryfallId },
 			() => {
-				// changeCollectionCardPrinting/changeWantlistCardPrinting mutent `row` en
-				// place (même référence) — ses champs setCode/collectorNumber/
-				// rarity/scryfallId/name sont donc déjà à jour ici, pas besoin
-				// de re-chercher la ligne. hEntry.card est reconstruit (spread +
-				// champs changés) plutôt que muté en place — il reste typé
-				// ScryfallCard, seuls les champs que resolveHistoryRow/
-				// buildHistoryLine2 lisent réellement changent, voir
-				// reKeyHistoryEntry ci-dessus pour pourquoi c'est nécessaire.
+				// changeCollectionCardPrinting/changeWantlistCardPrinting mutate `row` in
+				// place (same reference) — its
+				// setCode/collectorNumber/rarity/scryfallId/name fields are therefore
+				// already up to date here, no need to look the row up again. hEntry.card
+				// is rebuilt (spread + changed fields) rather than mutated in place — it
+				// stays typed ScryfallCard, only the fields that
+				// resolveHistoryRow/buildHistoryLine2 actually read change, see
+				// reKeyHistoryEntry above for why this is necessary.
 				hEntry.card = {
 					...hEntry.card,
 					id: row.scryfallId,
@@ -2304,18 +2231,17 @@ export class AddCardsModal extends Modal {
 		).open();
 	}
 
-	// Variante Deck de la méthode ci-dessus — séparée plutôt qu'un 3ᵉ
-	// branchement dans la même fonction, parce qu'elle a une vraie différence
-	// structurelle : contrairement à changeCollectionCardPrinting/
-	// changeWantlistCardPrinting (jamais de fusion, la référence `row`
-	// capturée avant ouverture reste valide après coup), changeDeckCardPrinting
-	// (plugin.ts) peut FUSIONNER avec une ligne déjà présente pour la même
-	// impression dans ce deck — la ligne d'origine (deckRow ci-dessous) peut
-	// donc avoir été retirée de deck.cards entre-temps. Le callback onChanged
-	// reçoit maintenant le ScryfallCard réellement choisi (voir son propre
-	// commentaire, ChangePrintingModal) précisément pour pouvoir retrouver la
-	// ligne réelle après coup PAR CE NOUVEAU scryfallId, plutôt que de risquer
-	// de lire une ligne fantôme.
+	// Deck variant of the method above — separate rather than a 3rd branch in
+	// the same function, because it has a real structural difference: unlike
+	// changeCollectionCardPrinting/changeWantlistCardPrinting (never merge, the
+	// `row` reference captured before opening stays valid afterwards),
+	// changeDeckCardPrinting (plugin.ts) can MERGE with a row already present
+	// for the same printing in this deck — the original row (deckRow below) may
+	// therefore have been removed from deck.cards in the meantime. The
+	// onChanged callback now receives the ScryfallCard actually chosen (see its
+	// own comment, ChangePrintingModal) precisely so as to find the real row
+	// afterwards BY THIS NEW scryfallId, rather than risk reading a phantom
+	// row.
 	private openChangePrintingForDeckEntry(hEntry: HistoryEntry) {
 		const deckRow = this.resolveDeckHistoryRow(hEntry);
 		if (!deckRow) return;
@@ -2355,8 +2281,8 @@ export class AddCardsModal extends Modal {
 		).open();
 	}
 
-	// Lien "destination" de la ligne 2 — demandé explicitement, ouvre
-	// CopyCardModal en mode "move" sur la ligne réellement ajoutée.
+	// "destination" link of line 2 — explicitly requested, opens CopyCardModal
+	// in "move" mode on the row actually added.
 	private openMoveCardForEntry(hEntry: HistoryEntry) {
 		const row = this.resolveHistoryRow(hEntry);
 		if (!row || (this.sourceKind !== "collection" && this.sourceKind !== "wantlist")) return;
@@ -2368,20 +2294,17 @@ export class AddCardsModal extends Modal {
 			this.sourceKind,
 			() => {
 				hEntry.syncCallback?.(undefined);
-				// `row` est maintenant une référence PENDANTE (voir
-				// resolveMovedRow ci-dessus pour le pourquoi) — jamais utilisée
-				// ici pour retrouver la destination réelle. resolveMovedRow
-				// retrouve la ligne à sa vraie position actuelle SI elle est
-				// restée dans le tableau correspondant à this.sourceKind
-				// (cherche par identité de carte, sans contrainte de listId).
+				// `row` is now a DANGLING reference (see resolveMovedRow above for why) —
+				// never used here to find the real destination. resolveMovedRow finds the
+				// row at its real current position IF it stayed in the array matching
+				// this.sourceKind (searches by card identity, with no listId constraint).
 				const movedRow = this.resolveMovedRow(hEntry);
 				if (movedRow) {
-					// resolveDestinationNameById (pas resolveDestinationName) :
-					// cette dernière ignore son paramètre listId hors mode
-					// listGallery, elle renvoie toujours le nom de destination
-					// FIXE de la modale (this.destinationName) — ce qui aurait
-					// silencieusement affiché l'ANCIENNE destination après un
-					// déplacement vers une liste/wantlist totalement différente.
+					// resolveDestinationNameById (not resolveDestinationName): the latter
+					// ignores its listId parameter outside listGallery mode, it always returns
+					// the modal's FIXED destination name (this.destinationName) — which would
+					// have silently displayed the OLD destination after a move to a totally
+					// different list/wantlist.
 					const newName = this.resolveDestinationNameById(movedRow.listId);
 					hEntry.listId = movedRow.listId;
 					hEntry.destinationName = newName;
@@ -2395,27 +2318,23 @@ export class AddCardsModal extends Modal {
 					);
 					return;
 				}
-				// resolveMovedRow n'a rien trouvé : la carte a quitté le
-				// périmètre de this.sourceKind (déplacée vers un deck, ou vers
-				// l'AUTRE côté Collection/Wantlist) — bug rapporté, root-caused
-				// : sans ce cas, la tuile restait bloquée sur son ancienne
-				// destination avec des liens qui ne faisaient plus jamais rien.
-				// locateMovedCardAnywhere cherche la carte PARTOUT juste pour
-				// l'affichage ; hEntry.linksDisabled rend les 2 liens
-				// définitivement non interactifs pour cette tuile — ni
-				// ChangePrintingModal ni CopyCardModal ne peuvent de toute
-				// façon plus opérer dessus depuis cette modale une fois sortie
-				// de ce périmètre.
+				// resolveMovedRow found nothing: the card left the scope of
+				// this.sourceKind (moved to a deck, or to the OTHER side of
+				// Collection/Wantlist) — reported bug, root-caused: without this case, the
+				// tile stayed stuck on its old destination with links that silently never
+				// did anything again. locateMovedCardAnywhere searches for the card
+				// EVERYWHERE just for display; hEntry.linksDisabled makes the 2 links
+				// permanently non-interactive for this tile — neither ChangePrintingModal
+				// nor CopyCardModal can operate on it from this modal any more once it has
+				// left that scope.
 				const located = this.locateMovedCardAnywhere(hEntry);
 				hEntry.linksDisabled = true;
-				// Grise la tuile + infobulle "Edit in My X" — demandé
-				// explicitement, "comprendre visuellement que cette tuile est
-				// figée" : même traitement visuel que is-disabled (case à
-				// cocher décochée), sous une classe distincte (is-frozen) —
-				// les deux états sont sémantiquement différents (une carte
-				// figée est toujours "enabled", elle a juste quitté le
-				// périmètre de cette modale) mais partagent le même langage
-				// visuel. Voir updateHistoryTileState pour la classe elle-même.
+				// Greys out the tile + "Edit in My X" tooltip — explicitly requested, "to
+				// understand visually that this tile is frozen": same visual treatment as
+				// is-disabled (unchecked checkbox), under a distinct class (is-frozen) —
+				// the two states are semantically different (a frozen card is still
+				// "enabled", it has just left the scope of this modal) but share the same
+				// visual language. See updateHistoryTileState for the class itself.
 				this.updateHistoryTileState(hEntry);
 				if (located) {
 					hEntry.destinationName = located.destinationName;
@@ -2429,30 +2348,26 @@ export class AddCardsModal extends Modal {
 						located.destinationName
 					);
 				} else {
-					// Ne devrait pas arriver (la carte a bien été déplacée
-					// quelque part) — filet de sécurité seulement, ne casse
-					// rien si un jour elle ne l'est pas.
+					// Should not happen (the card was indeed moved somewhere) — safety net
+					// only, breaks nothing if one day it isn't.
 					this.buildHistoryLine2(hEntry, hEntry.card.set, hEntry.card.collector_number, hEntry.card.rarity, hEntry.destinationName);
 				}
-				// Remplace la corbeille par le badge de contexte non cliquable
-				// ("In Collection"/"In Decks"/"In Wantlists") — voir
-				// buildHistoryTileTrailing pour le pourquoi. Après buildHistory-
-				// Line2 ci-dessus (l'ordre entre les deux n'a pas d'importance
-				// en soi, ce sont deux zones distinctes de la tuile), pour
-				// rester groupé avec la mise à jour de tile plutôt que dispersé.
+				// Replaces the trash can with the non-clickable context badge ("In
+				// Collection"/"In Decks"/"In Wantlists") — see buildHistoryTileTrailing
+				// for why. After buildHistoryLine2 above (the order between the two
+				// doesn't matter in itself, they are two distinct areas of the tile), to
+				// stay grouped with the tile update rather than scattered.
 				if (hEntry.tileEl) this.buildHistoryTileTrailing(hEntry, hEntry.tileEl);
 			},
 			"move"
 		).open();
 	}
 
-	// Résout le nom réel d'une liste/wantlist par id, indépendamment du mode
-	// de cette modale (fixe ou listGallery) — contrairement à
-	// resolveDestinationName ci-dessus (pensée pour "quelle destination
-	// portait CET ajout", pas "quel est le nom actuel de N'IMPORTE QUEL
-	// listId"), nécessaire ici puisqu'un déplacement peut envoyer la carte
-	// vers une destination sans aucun rapport avec celle d'origine de cette
-	// modale.
+	// Resolves the real name of a list/wantlist by id, regardless of this
+	// modal's mode (fixed or listGallery) — unlike resolveDestinationName
+	// above (designed for "which destination did THIS addition carry", not
+	// "what is the current name of ANY listId"), needed here since a move can
+	// send the card to a destination unrelated to this modal's original one.
 	private resolveDestinationNameById(listId: string): string {
 		if (this.sourceKind === "collection") {
 			return this.plugin.settings.lists.find((l) => l.id === listId)?.name ?? "this destination";
@@ -2481,9 +2396,9 @@ export class AddCardsModal extends Modal {
 			return;
 		}
 		const deleteBtn = tile.createDiv({ cls: "mtg-search-history-delete-btn" });
-		// "trash-2" (pas "x") — demandé explicitement, même icône que les
-		// autres actions de suppression de ce plugin (bouton "Delete" de la
-		// barre d'actions groupées, "Remove from list" du panneau de détail).
+		// "trash-2" (not "x") — explicitly requested, same icon as the plugin's
+		// other delete actions (the "Delete" button of the bulk-actions bar,
+		// "Remove from list" of the detail panel).
 		setIcon(deleteBtn, "trash-2");
 		deleteBtn.setAttribute("title", "Remove from history");
 		deleteBtn.addEventListener("click", () => this.deleteHistoryEntry(hEntry));
@@ -2496,28 +2411,27 @@ export class AddCardsModal extends Modal {
 
 	private updateHistoryTileState(hEntry: HistoryEntry) {
 		hEntry.tileEl?.toggleClass("is-disabled", !hEntry.enabled);
-		// is-frozen — demandé explicitement, distincte de is-disabled (voir
-		// le commentaire de HistoryEntry.linksDisabled) : posée une fois pour
-		// toutes par openMoveCardForEntry dès que la carte quitte le
-		// périmètre de cette modale, jamais retirée ensuite (rien ne peut la
-		// ramener dans ce périmètre depuis cette même tuile).
+		// is-frozen — explicitly requested, distinct from is-disabled (see the
+		// comment of HistoryEntry.linksDisabled): set once and for all by
+		// openMoveCardForEntry as soon as the card leaves the scope of this modal,
+		// never removed afterwards (nothing can bring it back into that scope from
+		// this same tile).
 		hEntry.tileEl?.toggleClass("is-frozen", !!hEntry.linksDisabled);
 		if (!hEntry.toggleBtn) return;
 		hEntry.toggleBtn.checked = hEntry.enabled;
-		// disabled une fois figée — demandé explicitement, même raisonnement
-		// que le remplacement de la corbeille par le badge de contexte
-		// (buildHistoryTileTrailing) : toggleHistoryEntry appellerait
-		// onUndoAdd/onAdd avec hEntry.listId, resté volontairement obsolète
-		// une fois linksDisabled posé (voir son commentaire) — la case
-		// resterait donc cliquable sans plus rien faire de réel derrière,
-		// exactement le même piège que la corbeille avant son propre
-		// correctif. `disabled` (l'attribut natif, pas juste retirer un
-		// listener) empêche tout clic ET toute navigation clavier d'un coup,
-		// et le titre est retiré plutôt que mis à "" — un title="" explicite
-		// masquerait l'infobulle "Edit in My X" déjà posée sur la tuile
-		// elle-même (voir openMoveCardForEntry) au survol précis de la
-		// case, alors que retirer l'attribut laisse cette infobulle
-		// ancêtre remonter normalement.
+		// disabled once frozen — explicitly requested, same reasoning as the
+		// replacement of the trash can by the context badge
+		// (buildHistoryTileTrailing): toggleHistoryEntry would call
+		// onUndoAdd/onAdd with hEntry.listId, deliberately left stale once
+		// linksDisabled is set (see its comment) — the checkbox would therefore
+		// stay clickable with nothing real behind it any more, exactly the same
+		// trap as the trash can before its own fix. `disabled` (the native
+		// attribute, not just removing a listener) blocks every click AND all
+		// keyboard navigation at once, and the title is removed rather than set to
+		// "" — an explicit title="" would mask the "Edit in My X" tooltip already
+		// set on the tile itself (see openMoveCardForEntry) when hovering the
+		// checkbox precisely, whereas removing the attribute lets that ancestor
+		// tooltip bubble up normally.
 		hEntry.toggleBtn.disabled = !!hEntry.linksDisabled;
 		if (hEntry.linksDisabled) {
 			hEntry.toggleBtn.removeAttribute("title");
@@ -2529,16 +2443,15 @@ export class AddCardsModal extends Modal {
 		}
 	}
 
-	// Bascule enabled ↔ disabled — dans les deux sens, la carte réelle est
-	// réellement mutée (jamais un simple état visuel), voir onUndoAdd
-	// (annulation) ci-dessous et onAdd (réactivation, qui rejoue chaque
-	// contribution exactement `count` fois avec ses propres options). Le
-	// dernier résultat (ligne réelle résultante, ou undefined si supprimée)
-	// resynchronise la tuile carrousel d'origine via syncCallback — une
-	// approximation raisonnable, pas garantie exacte, quand une même entrée
-	// porte PLUSIEURS groupes de contributions à options différentes (voir
-	// le commentaire de HistoryContribution) : la tuile carrousel actuelle
-	// ne peut de toute façon représenter qu'UNE seule ligne à la fois.
+	// Toggles enabled ↔ disabled — in both directions, the real card is
+	// actually mutated (never a mere visual state), see onUndoAdd (undo) below
+	// and onAdd (re-enabling, which replays each contribution exactly `count`
+	// times with its own options). The last result (the resulting real row, or
+	// undefined if deleted) resynchronizes the original carousel tile via
+	// syncCallback — a reasonable approximation, not guaranteed exact, when a
+	// single entry carries SEVERAL groups of contributions with different
+	// options (see the comment of HistoryContribution): the current carousel
+	// tile can only represent ONE row at a time anyway.
 	private toggleHistoryEntry(hEntry: HistoryEntry) {
 		if (!this.onUndoAdd) return;
 		if (hEntry.enabled) {
@@ -2562,10 +2475,10 @@ export class AddCardsModal extends Modal {
 		this.updateHistoryTileState(hEntry);
 	}
 
-	// Supprime définitivement la tuile — si l'entrée était encore active,
-	// l'annule d'abord (mêmes appels qu'un "disable", voir toggleHistoryEntry)
-	// ; si elle était déjà désactivée, les données réelles ont déjà été
-	// annulées au moment du disable, rien à refaire ici.
+	// Permanently deletes the tile — if the entry was still active, undoes it
+	// first (same calls as a "disable", see toggleHistoryEntry); if it was
+	// already disabled, the real data was already undone at the time of the
+	// disable, nothing to redo here.
 	private deleteHistoryEntry(hEntry: HistoryEntry) {
 		if (this.onUndoAdd && hEntry.enabled) {
 			let lastRow: { id: string; count: number } | undefined;
@@ -2579,28 +2492,26 @@ export class AddCardsModal extends Modal {
 		if (this.historyEntries.size === 0) this.historyEmptyEl?.toggleClass("is-hidden", false);
 	}
 
-	// Tiroir "Add history" — masque/affiche tout le panneau par un
-	// glissement CSS (largeur/padding/opacity animés, voir
-	// .mtg-search-history-panel.is-collapsed dans styles.css) plutôt qu'un
-	// simple display:none, pour que bottomMainEl (flex: 1) regagne
-	// visiblement l'espace libéré au lieu de sauter instantanément à sa
-	// nouvelle taille — demandé explicitement ("apparait par glissement et
-	// pousse le contenu... comme un tiroir"). is-history-collapsed sur
-	// bottomSection referme aussi le gap entre les 2 colonnes, sinon un
-	// vide résiduel resterait visible à droite une fois le panneau à
-	// largeur 0.
+	// "Add history" drawer — hides/shows the whole panel with a CSS slide
+	// (width/padding/opacity animated, see
+	// .mtg-search-history-panel.is-collapsed in styles.css) rather than a
+	// simple display:none, so that bottomMainEl (flex: 1) visibly regains the
+	// freed space instead of jumping instantly to its new size — explicitly
+	// requested ("appears by sliding and pushes the content... like a
+	// drawer"). is-history-collapsed on bottomSection also closes the gap
+	// between the 2 columns, otherwise a residual void would remain visible on
+	// the right once the panel is at width 0.
 	private toggleHistoryDrawer() {
 		this.historyCollapsed = !this.historyCollapsed;
 		this.historyPanelEl?.toggleClass("is-collapsed", this.historyCollapsed);
 	}
 
-	// `index` (position dans le lot de résultats affiché, pas l'id de la
-	// carte) pilote la vague d'apparition en entrée — voir
-	// applyResultTileStaggerEntrance, qui plafonne d'elle-même aux
-	// premières tuiles réellement visibles dans le carrousel. Optionnel :
-	// un appel sans index (aucun aujourd'hui, gardé pour un futur usage
-	// hors "lot de résultats frais") rend la tuile directement visible,
-	// sans vague.
+	// `index` (position in the displayed batch of results, not the card's id)
+	// drives the entrance wave — see applyResultTileStaggerEntrance, which
+	// caps itself at the first tiles actually visible in the carousel.
+	// Optional: a call without index (none today, kept for future use outside
+	// a "fresh batch of results") renders the tile directly visible, without a
+	// wave.
 	renderResult(card: ScryfallCard, index?: number) {
 		const tile = renderScryfallResultTile(this.plugin, this.resultsEl, card, (tile) => {
 			this.renderAddControl(tile, card);
@@ -2608,54 +2519,52 @@ export class AddCardsModal extends Modal {
 		if (index !== undefined) applyResultTileStaggerEntrance(tile, index);
 	}
 
-	// Zone "Add" d'une tuile de résultat — un simple bouton au départ, qui se
-	// transforme en stepper +/quantité/- une fois la carte effectivement
-	// ajoutée quelque part (onAddCard a renvoyé une entrée ET onChangeQuantity
-	// est fourni — voir AddCardsModalOptions). Le conteneur est reconstruit
-	// en place (empty() + rebuild) plutôt que remplacé par un nouvel élément,
-	// pour ne pas perturber la mise en page de la tuile autour de lui.
+	// "Add" area of a result tile — a simple button at the start, which turns
+	// into a +/quantity/- stepper once the card has actually been added
+	// somewhere (onAddCard returned an entry AND onChangeQuantity is supplied
+	// — see AddCardsModalOptions). The container is rebuilt in place (empty()
+	// + rebuild) rather than replaced by a new element, so as not to disturb
+	// the layout of the tile around it.
 	private renderAddControl(tile: HTMLElement, card: ScryfallCard) {
 		const container = tile.createDiv({ cls: "mtg-result-card-add-control" });
-		// Entrée déjà ajoutée cette session, le cas échéant — l'objet renvoyé
-		// par addCardToCollection/addCardToWantlist est la même référence que
-		// celle mutée en place par changeCollectionCardCount/changeWantlistCardCount, donc son
-		// .count reste à jour tout seul après chaque clic +/-.
+		// Entry already added this session, if any — the object returned by
+		// addCardToCollection/addCardToWantlist is the same reference as the one mutated in
+		// place by changeCollectionCardCount/changeWantlistCardCount, so its .count stays up
+		// to date by itself after every +/- click.
 		let entry: { id: string; count: number } | undefined;
-		// Options/destination du tout premier ajout réussi de cette tuile —
-		// figées une fois pour toutes (bug signalé : l'historique restait
-		// bloqué à "×1" même après plusieurs clics +/-, parce que seul CE tout
-		// premier ajout passait par recordHistoryAdd ; le stepper +/- appelle
-		// onChangeQuantity directement, jamais onAdd). Ne PAS relire
-		// computeAddOptions() au moment d'un clic +/- : ses options sont
-		// constantes aujourd'hui, mais figer celles du tout premier ajout
-		// reste la bonne défense si un futur sélecteur partagé par toute la
-		// modale (comme l'ancien select Finish du flux Wantlist) réapparaissait
-		// — un tel sélecteur pourrait avoir changé entre temps pour une AUTRE
-		// carte, ce qui ne serait alors plus les options réellement utilisées
-		// pour CETTE tuile.
+		// Options/destination of the very first successful addition of this tile —
+		// frozen once and for all (reported bug: the history stayed stuck at "×1"
+		// even after several +/- clicks, because only THAT very first addition
+		// went through recordHistoryAdd; the +/- stepper calls onChangeQuantity
+		// directly, never onAdd). Do NOT re-read computeAddOptions() at the time
+		// of a +/- click: its options are constant today, but freezing those of
+		// the very first addition remains the right defense if a future selector
+		// shared by the whole modal (like the former Finish select of the Wantlist
+		// flow) reappeared — such a selector might have changed in the meantime
+		// for ANOTHER card, which would then no longer be the options actually
+		// used for THIS tile.
 		let historyOptions: AddCardOptions | undefined;
 		let historyListId: string | undefined;
 
-		// Toute la tuile devient cliquable une fois la carte ajoutée — demandé
-		// explicitement — et ouvre sa fenêtre de détail (onOpenDetail, fourni
-		// par le call site qui sait laquelle construire — voir son propre
-		// commentaire dans shared-search-ui.ts). Le handler lui-même est posé
-		// une seule fois ici (pas dans buildStepper, appelée à chaque fois que
-		// la carte est ajoutée depuis cette tuile) ; il lit `entry`/
-		// `this.onOpenDetail` au moment du clic, donc il n'a rien à faire tant
-		// que l'un des deux manque. Les boutons +/- et "Add" eux-mêmes
-		// (enfants de tile) stoppent la propagation de leur propre clic (voir
-		// plus bas) pour ne jamais déclencher aussi ce handler.
-		// syncFromHistory (définie plus bas, référencée ici par closure comme
-		// buildAddButton/applyDelta ailleurs dans cette même fonction) est
-		// passée telle quelle comme callback "la fenêtre de détail vient de se
-		// fermer" — bug corrigé : modifier la quantité ou supprimer la carte
-		// depuis cette fenêtre de détail, puis revenir ici, ne resynchronisait
-		// jamais cette tuile. Le call site (view.ts) doit la rappeler avec la
-		// ligne réelle à jour une fois la fenêtre refermée ; syncFromHistory
-		// sait déjà faire exactement ça (reconstruire le stepper, ou revenir à
-		// "Add" si la ligne a disparu) — même mécanisme que le panneau "Add
-		// history", juste déclenché par un autre événement.
+		// The whole tile becomes clickable once the card is added — explicitly
+		// requested — and opens its detail window (onOpenDetail, supplied by the
+		// call site that knows which one to build — see its own comment in
+		// shared-search-ui.ts). The handler itself is set only once here (not in
+		// buildStepper, called every time the card is added from this tile); it
+		// reads `entry`/`this.onOpenDetail` at click time, so it has nothing to do
+		// as long as either is missing. The +/- and "Add" buttons themselves
+		// (children of tile) stop the propagation of their own click (see below)
+		// so as never to trigger this handler too.
+		// syncFromHistory (defined further down, referenced here by closure like
+		// buildAddButton/applyDelta elsewhere in this same function) is passed as
+		// is as the "the detail window has just closed" callback — fixed bug:
+		// changing the quantity or deleting the card from this detail window, then
+		// coming back here, never resynchronized this tile. The call site
+		// (view.ts) must call it back with the up-to-date real row once the window
+		// has closed; syncFromHistory already knows how to do exactly that
+		// (rebuild the stepper, or go back to "Add" if the row has disappeared) —
+		// same mechanism as the "Add history" panel, just triggered by another
+		// event.
 		tile.addEventListener("click", () => {
 			if (!entry || !this.onOpenDetail) return;
 			this.onOpenDetail(entry.id, syncFromHistory);
@@ -2664,10 +2573,9 @@ export class AddCardsModal extends Modal {
 		const buildStepper = () => {
 			if (!entry) return;
 			container.empty();
-			// mtg-result-card-tile-clickable : curseur + surbrillance au survol
-			// (voir styles.css) — seulement si onOpenDetail est réellement
-			// fourni, sinon la tuile resterait visuellement "cliquable" pour un
-			// clic qui ne fait rien.
+			// mtg-result-card-tile-clickable: cursor + highlight on hover (see
+			// styles.css) — only if onOpenDetail is actually supplied, otherwise the
+			// tile would stay visually "clickable" for a click that does nothing.
 			tile.toggleClass("mtg-result-card-tile-clickable", !!this.onOpenDetail);
 			const stepper = container.createDiv({
 				cls: "mtg-stepper mtg-stepper-horizontal mtg-result-card-stepper",
@@ -2686,12 +2594,11 @@ export class AddCardsModal extends Modal {
 					valueEl.setText(String(entry!.count));
 					downBtn.toggleClass("is-disabled", entry!.count <= 1);
 				});
-				// Le stepper +/- change aussi la quantité réellement ajoutée
-				// cette session — l'historique doit suivre (voir le commentaire
-				// de historyOptions/historyListId plus haut pour le bug que ça
-				// corrige). "+1" réutilise recordHistoryAdd telle quelle (même
-				// logique qu'un nouvel ajout — crée l'entrée si besoin,
-				// incrémente sinon) ; "-1" a sa propre logique symétrique, voir
+				// The +/- stepper also changes the quantity actually added this session —
+				// the history must follow (see the comment of historyOptions/historyListId
+				// above for the bug this fixes). "+1" reuses recordHistoryAdd as is (same
+				// logic as a new addition — creates the entry if needed, increments
+				// otherwise); "-1" has its own symmetric logic, see
 				// decrementHistoryQuantity.
 				if (this.onUndoAdd && historyOptions && historyListId) {
 					if (delta > 0) {
@@ -2701,10 +2608,9 @@ export class AddCardsModal extends Modal {
 					}
 				}
 			};
-			// stopPropagation : ces deux boutons vivent à l'intérieur de tile,
-			// qui écoute maintenant son propre clic (voir plus haut) — sans ça,
-			// ajuster la quantité ouvrirait aussi la fenêtre de détail à chaque
-			// clic +/-.
+			// stopPropagation: these two buttons live inside tile, which now listens
+			// to its own click (see above) — without it, adjusting the quantity would
+			// also open the detail window on every +/- click.
 			downBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
 				applyDelta(-1);
@@ -2715,13 +2621,13 @@ export class AddCardsModal extends Modal {
 			});
 		};
 
-		// Reçoit la ligne résultante d'un toggle d'historique (voir
-		// toggleHistoryEntry/deleteHistoryEntry) pour resynchroniser CETTE
-		// tuile carrousel sur l'état réel — undefined signifie "la ligne
-		// n'existe plus", auquel cas la tuile redevient un simple bouton
-		// "Add" plutôt que de garder un stepper affichant une quantité
-		// périmée. N'a d'effet que si CETTE tuile est bien celle concernée
-		// (voir son appel, plus bas, filtré par card.id + listId).
+		// Receives the resulting row of a history toggle (see
+		// toggleHistoryEntry/deleteHistoryEntry) to resynchronize THIS carousel
+		// tile on the real state — undefined means "the row no longer exists", in
+		// which case the tile goes back to a simple "Add" button rather than
+		// keeping a stepper showing a stale quantity. Only has an effect if THIS
+		// tile is indeed the one concerned (see its call, further down, filtered
+		// by card.id + listId).
 		const syncFromHistory = (row: { id: string; count: number } | undefined) => {
 			if (row) {
 				entry = row;
@@ -2735,11 +2641,10 @@ export class AddCardsModal extends Modal {
 		};
 
 		const handleAdded = (result: { id: string; count: number; listId: string } | void, options: AddCardOptions) => {
-			// Pas d'entrée exploitable (un éventuel futur appelant sans
-			// onChangeQuantity — les 3 flux actuels, Collection/Wantlist/Deck,
-			// le fournissent tous depuis l'uniformisation du flux Deck) : le
-			// bouton "Add" reste tel quel, cliquable à nouveau pour ajouter un
-			// exemplaire de plus, comme avant.
+			// No usable entry (a possible future caller without onChangeQuantity — the
+			// 3 current flows, Collection/Wantlist/Deck, all supply it since the Deck
+			// flow was made uniform): the "Add" button stays as is, clickable again to
+			// add one more copy, as before.
 			if (!result || !this.onChangeQuantity) return;
 			entry = result;
 			buildStepper();
@@ -2750,14 +2655,14 @@ export class AddCardsModal extends Modal {
 			}
 		};
 
-		// Cœur de l'ajout, partagé par le clic individuel sur "Add" ET par
-		// "Add all" (performAddAll, via currentResultControls) — un seul chemin
-		// de code pour les deux, pas deux logiques d'ajout à garder synchronisées.
-		// `listId` vient soit du picker par carte (clic individuel, flux
-		// listGallery), soit du picker unique ouvert une fois pour tout le lot
-		// (Add all, flux listGallery). `silent` coupe le Notice individuel
-		// pendant Add all, qui affiche un seul résumé à la fin plutôt que
-		// d'empiler une notification par carte.
+		// Core of the addition, shared by the individual click on "Add" AND by
+		// "Add all" (performAddAll, via currentResultControls) — a single code
+		// path for both, not two adding logics to keep in sync. `listId` comes
+		// either from the per-card picker (individual click, listGallery flow), or
+		// from the single picker opened once for the whole batch (Add all,
+		// listGallery flow). `silent` turns off the individual Notice during Add
+		// all, which shows a single summary at the end rather than stacking one
+		// notification per card.
 		const addOne = (listId?: string, silent = false) => {
 			const options = this.computeAddOptions();
 			const result = this.onAddCard(card, options, listId);
@@ -2771,27 +2676,26 @@ export class AddCardsModal extends Modal {
 			handleAdded(result, options);
 		};
 
-		// Factorisé (appelé à la construction initiale ET par syncFromHistory,
-		// voir plus haut, quand un "undo" d'historique ramène cette tuile à
-		// zéro) plutôt que deux copies du même bouton à maintenir en
-		// parallèle.
+		// Factored out (called at the initial construction AND by syncFromHistory,
+		// see above, when a history "undo" brings this tile back to zero) rather
+		// than two copies of the same button to maintain in parallel.
 		const buildAddButton = () => {
 			const addBtn = container.createEl("button", {
 				cls: "mtg-result-card-add-btn",
 				text: "Add",
 			});
-			// stopPropagation : voir le commentaire du clic sur tile plus haut —
-			// au moment où cet event remonte jusqu'à tile, handleAdded a déjà pu
-			// fixer `entry` et reconstruire le stepper (tout se passe de façon
-			// synchrone dans ce même handler avant que la remontée ne reprenne),
-			// donc sans stopPropagation, cliquer "Add" ouvrirait aussitôt la
-			// fenêtre de détail à la place d'ajouter simplement la carte.
+			// stopPropagation: see the comment of the click on tile above — by the
+			// time this event bubbles up to tile, handleAdded may already have set
+			// `entry` and rebuilt the stepper (it all happens synchronously in this
+			// same handler before the bubbling resumes), so without stopPropagation,
+			// clicking "Add" would immediately open the detail window instead of
+			// simply adding the card.
 			addBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
-				// defaultListId (Inbox) : ajout direct, sans ouvrir le picker —
-				// voir AddCardsModalOptions.listGallery.defaultListId. Le
-				// picker reste le comportement quand aucun défaut n'est fourni
-				// (flux Wantlist, ou défensivement si Inbox n'existe pas).
+				// defaultListId (Inbox): direct addition, without opening the picker — see
+				// AddCardsModalOptions.listGallery.defaultListId. The picker remains the
+				// behavior when no default is supplied (Wantlist flow, or defensively if
+				// Inbox doesn't exist).
 				if (this.listGallery?.defaultListId) {
 					addOne(this.listGallery.defaultListId);
 					return;
@@ -2825,21 +2729,21 @@ export class AddCardsModal extends Modal {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Add all confirmation (separate window, demandé explicitement — voir      */
-/*  showAddAllConfirm ci-dessus, remplace l'ancien message inline)            */
+/* Add all confirmation (separate window, explicitly requested — see */
+/* showAddAllConfirm above, replaces the former inline message) */
 /* -------------------------------------------------------------------------- */
 
-// Petite fenêtre dédiée, plutôt qu'un message inline sous la barre de
-// recherche (comme avant) — demandé explicitement. Même habillage que les
-// autres petites modales de confirmation de ce plugin (mtg-list-actions-
-// modal, animation d'ouverture/fermeture partagée) plutôt qu'un
-// window.confirm() natif, jamais utilisé nulle part dans ce plugin.
+// Small dedicated window, rather than an inline message under the search
+// bar (as before) — explicitly requested. Same styling as the plugin's
+// other small confirmation modals (mtg-list-actions-modal, shared
+// open/close animation) rather than a native window.confirm(), never used
+// anywhere in this plugin.
 class AddAllConfirmModal extends Modal {
-	// showWarning : au-delà de ADD_ALL_WARNING_THRESHOLD (voir
-	// showAddAllConfirm) — un paragraphe supplémentaire prévient que
-	// l'opération peut prendre du temps (auto-pagination Scryfall, un aller-
-	// retour réseau paisé par page) et qu'Obsidian peut sembler figé pendant
-	// ce temps, plutôt que la simple confirmation habituelle.
+	// showWarning: above ADD_ALL_WARNING_THRESHOLD (see showAddAllConfirm) —
+	// an extra paragraph warns that the operation may take a while (Scryfall
+	// auto-pagination, one paced network round trip per page) and that
+	// Obsidian may seem frozen during that time, rather than the usual simple
+	// confirmation.
 	constructor(app: App, private count: number, private showWarning: boolean, private onConfirm: () => void) {
 		super(app);
 	}
@@ -2867,8 +2771,8 @@ class AddAllConfirmModal extends Modal {
 			this.onConfirm();
 			this.close();
 		});
-		// Bouton neutre, sans classe particulière — même style par défaut que le
-		// "Cancel" de ChangePrintingModal (.mtg-card-detail-actions button).
+		// Neutral button, with no particular class — same default style as the
+		// "Cancel" of ChangePrintingModal (.mtg-card-detail-actions button).
 		const cancelBtn = actions.createEl("button", { text: "Cancel" });
 		cancelBtn.addEventListener("click", () => this.close());
 	}
@@ -2887,16 +2791,16 @@ class AddAllConfirmModal extends Modal {
 /*  which list to put it in, with nothing pre-selected)                      */
 /* -------------------------------------------------------------------------- */
 
-// Reprend l'habillage visuel de CopyCardModal ("Move card") à l'identique —
-// mêmes classes CSS de galerie/tuile (zoom au survol, overlay, apparition en
-// vague), même barre de recherche, même tuile "+ New X", même clic-direct-
-// ajoute (pas de bouton "Add" séparé à cliquer après sélection) — demandé
-// explicitement pour que les deux modales se ressemblent en tout point, seul
-// le titre diffère. Pas d'onglets Collection/Decks/Wantlists comme
-// CopyCardModal : cette modale n'intervient qu'une fois la destination déjà
-// fixée par l'appelant (ajout à une liste ou à une wantlist, jamais les
-// deux à la fois), donc une galerie unique suffit — `kind` ne sert qu'à
-// choisir le bon libellé/la bonne modale de création, pas un onglet.
+// Takes over the visual styling of CopyCardModal ("Move card") identically —
+// same gallery/tile CSS classes (zoom on hover, overlay, wave entrance),
+// same search bar, same "+ New X" tile, same click-directly-adds (no
+// separate "Add" button to click after selecting) — explicitly requested so
+// that the two modals look alike in every respect, only the title differs.
+// No Collection/Decks/Wantlists tabs like CopyCardModal: this modal only
+// intervenes once the destination is already fixed by the caller (adding to
+// a list or to a wantlist, never both at once), so a single gallery is
+// enough — `kind` only serves to choose the right label/the right creation
+// modal, not a tab.
 export class SelectListModal extends Modal {
 	private plugin: MTGCollectionPlugin;
 	private summaries: (ListGroup | WantlistGroup)[];
@@ -2906,14 +2810,14 @@ export class SelectListModal extends Modal {
 	private galleryEl!: HTMLElement;
 	private searchQuery = "";
 	private searchInputEl!: HTMLInputElement;
-	// Même convention que CopyCardModal.tileStaggerIndex : décale l'apparition
-	// des 8 premières tuiles à l'ouverture, jamais pendant la frappe dans la
-	// recherche (voir renderGallery/revealTile).
+	// Same convention as CopyCardModal.tileStaggerIndex: staggers the
+	// appearance of the first 8 tiles on opening, never while typing in the
+	// search (see renderGallery/revealTile).
 	private tileStaggerIndex = 0;
-	// true pour l'appel groupé "Add all" (performAddAll, add-cards-modal.ts) :
-	// cardName y vaut déjà "N cards", donc l'entourer de guillemets comme pour
-	// un nom de carte unique ("Add "N cards" to") lirait mal — plain retire
-	// juste les guillemets du titre, rien d'autre ne change.
+	// true for the grouped "Add all" call (performAddAll, add-cards-modal.ts):
+	// cardName is already "N cards" there, so surrounding it with quotes as
+	// for a single card name ("Add "N cards" to") would read badly — plain
+	// just removes the quotes from the title, nothing else changes.
 	private plain: boolean;
 
 	constructor(
@@ -2935,16 +2839,16 @@ export class SelectListModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		const { contentEl } = this;
-		// Mêmes classes que CopyCardModal (pas de classe mtg-search-modal ici,
-		// qui porte le style de la recherche de carte elle-même, pas de cette
-		// étape de sélection de destination).
+		// Same classes as CopyCardModal (no mtg-search-modal class here, which
+		// carries the styling of the card search itself, not of this
+		// destination-selection step).
 		contentEl.addClass("mtg-copy-card-modal");
 		contentEl.addClass("mtg-list-actions-modal");
 		contentEl.createEl("h2", { text: this.plain ? `Add ${this.cardName} to` : `Add "${this.cardName}" to` });
@@ -2958,9 +2862,8 @@ export class SelectListModal extends Modal {
 			"placeholder",
 			this.kind === "wantlist" ? "Search wantlists…" : "Search lists…"
 		);
-		// Ne reconstruit que la galerie à chaque frappe, jamais ce <input>
-		// lui-même — même raisonnement (perte de focus en cours de saisie) que
-		// CopyCardModal.searchInputEl.
+		// Only rebuilds the gallery on each keystroke, never this <input> itself —
+		// same reasoning (focus loss while typing) as CopyCardModal.searchInputEl.
 		this.searchInputEl.addEventListener("input", () => {
 			this.searchQuery = this.searchInputEl.value;
 			this.renderGallery();
@@ -2996,10 +2899,9 @@ export class SelectListModal extends Modal {
 			cls: "mtg-copy-card-gallery-name",
 			text: this.kind === "wantlist" ? "+ New wantlist" : "+ New list",
 		});
-		// La tuile "+ New X" reste toujours affichée, jamais filtrée par la
-		// recherche — même convention que CopyCardModal.renderNewTile : la
-		// recherche sert à retrouver une destination existante plus vite, pas
-		// à masquer l'option de création.
+		// The "+ New X" tile always stays displayed, never filtered by the search
+		// — same convention as CopyCardModal.renderNewTile: the search serves to
+		// find an existing destination faster, not to hide the creation option.
 		newTile.addEventListener("click", () => {
 			if (this.kind === "wantlist") {
 				new NewWantlistModal(this.app, this.plugin, (wantlist) => this.confirm(wantlist.id)).open();
@@ -3023,8 +2925,8 @@ export class SelectListModal extends Modal {
 			});
 	}
 
-	// Clic sur une tuile ajoute directement, comme CopyCardModal — pas de
-	// sélection intermédiaire suivie d'un bouton "Add" séparé.
+	// A click on a tile adds directly, like CopyCardModal — no intermediate
+	// selection followed by a separate "Add" button.
 	private confirm(id: string) {
 		this.onConfirm(id);
 		this.close();

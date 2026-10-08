@@ -5,14 +5,14 @@ import { applyModalOpenAnimation, addModalCloseButton, closeModalAnimated } from
 /* -------------------------------------------------------------------------- */
 /*  Restore backup confirmation modal                                        */
 /* -------------------------------------------------------------------------- */
-// Confirmation avant une restauration de sauvegarde (voir "Restore backup"
-// dans setting-tab.ts et MTGCollectionPlugin.restoreBackup) — une opération
-// bien plus destructive qu'un simple "Clear collection" (remplace collection
-// ET decks ET wantlists ET réglages d'un coup), donc une vraie fenêtre de
-// confirmation avec le détail de ce qui va être écrasé, pas juste un clic
-// immédiat. Même gabarit que AddAllConfirmModal (add-cards-modal.ts) : titre +
-// paragraphe(s) + une paire de boutons dans .mtg-card-detail-actions — pas
-// de window.confirm() natif, jamais utilisé dans ce plugin.
+// Confirmation before a backup restore (see "Restore backup" in setting-tab.ts
+// and MTGCollectionPlugin.restoreBackup) — an operation far more destructive
+// than a simple "Clear collection" (replaces collection AND decks AND
+// wantlists AND settings all at once), hence a real confirmation window with
+// the detail of what will be overwritten, not just an immediate click. Same
+// template as AddAllConfirmModal (add-cards-modal.ts): title + paragraph(s) +
+// a pair of buttons in .mtg-card-detail-actions — no native window.confirm(),
+// never used in this plugin.
 
 export class RestoreBackupConfirmModal extends Modal {
 	constructor(app: App, private summary: BackupSummary, private onConfirm: () => void | Promise<void>) {
@@ -44,8 +44,8 @@ export class RestoreBackupConfirmModal extends Modal {
 			void this.onConfirm();
 			this.close();
 		});
-		// Bouton neutre, sans classe particulière — même style par défaut que le
-		// "Cancel" d'AddAllConfirmModal/ChangePrintingModal.
+		// Neutral button, with no particular class — same default style as the
+		// "Cancel" of AddAllConfirmModal/ChangePrintingModal.
 		const cancelBtn = actions.createEl("button", { text: "Cancel" });
 		cancelBtn.addEventListener("click", () => this.close());
 	}
@@ -61,23 +61,21 @@ export class RestoreBackupConfirmModal extends Modal {
 /* -------------------------------------------------------------------------- */
 /*  Clear all data confirmation modal                                        */
 /* -------------------------------------------------------------------------- */
-// Confirmation avant "Clear all data" (setting-tab.ts) — bug + demande
-// rapportés ensemble : le bouton agissait immédiatement sans aucune
-// confirmation, et ne rafraîchissait pas les vues déjà ouvertes (corrigé
-// séparément dans setting-tab.ts, via refreshOpenViews()). Élargi le jour
-// même de "Clear collection" (cartes + listes seulement) à "Clear all
-// data" — demandé explicitement ("supprime également tout ce qui est dans
-// wantlist et decks") : efface aussi settings.decks/wantlist/wantlists,
-// pas seulement collection/lists. Même gabarit que
-// RestoreBackupConfirmModal ci-dessus : titre + récapitulatif chiffré +
-// avertissement + paire de boutons — pas de window.confirm() natif, jamais
-// utilisé dans ce plugin. Bouton de confirmation en rouge
-// (.mtg-modal-danger-btn) plutôt qu'accent-coloré comme les autres
-// confirmations de ce fichier : contrairement à "Add all"/"Restore a
-// backup" (des actions voulues, juste à confirmer), effacer irréversiblement
-// toutes les données est une action destructive à part entière, qui
-// mérite le même langage visuel "danger" que le bouton Delete de la barre
-// d'actions groupées ailleurs dans ce plugin.
+// Confirmation before "Clear all data" (setting-tab.ts) — bug + request
+// reported together: the button acted immediately without any confirmation,
+// and did not refresh the already-open views (fixed separately in
+// setting-tab.ts, via refreshOpenViews()). Widened the same day from "Clear
+// collection" (cards + lists only) to "Clear all data" — explicitly
+// requested ("also delete everything that's in wantlist and decks"): also
+// erases settings.decks/wantlist/wantlists, not only collection/lists. Same
+// template as RestoreBackupConfirmModal above: title + numeric summary +
+// warning + pair of buttons — no native window.confirm(), never used in this
+// plugin. Red confirmation button (.mtg-modal-danger-btn) rather than
+// accent-colored like the other confirmations in this file: unlike "Add
+// all"/"Restore a backup" (wanted actions, just to be confirmed),
+// irreversibly erasing all the data is a destructive action in its own
+// right, which deserves the same "danger" visual language as the Delete
+// button of the bulk-actions bar elsewhere in this plugin.
 
 export class ClearAllDataConfirmModal extends Modal {
 	constructor(
@@ -113,8 +111,8 @@ export class ClearAllDataConfirmModal extends Modal {
 			void this.onConfirm();
 			this.close();
 		});
-		// Bouton neutre, sans classe particulière — même style par défaut que le
-		// "Cancel" d'AddAllConfirmModal/RestoreBackupConfirmModal.
+		// Neutral button, with no particular class — same default style as the
+		// "Cancel" of AddAllConfirmModal/RestoreBackupConfirmModal.
 		const cancelBtn = actions.createEl("button", { text: "Cancel" });
 		cancelBtn.addEventListener("click", () => this.close());
 	}

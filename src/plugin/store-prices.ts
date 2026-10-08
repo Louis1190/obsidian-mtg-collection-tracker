@@ -5,23 +5,22 @@ import { Finish } from "../core/card-model";
 import type MTGCollectionPlugin from "../plugin";
 
 /* ---------------------------------------------------------------------------- */
-/*  Prix des magasins : tarifs Card Kingdom et Mana Pool (src/plugin/, groupe de méthodes de MTGCollectionPlugin).*/
+/* Store prices: Card Kingdom and Mana Pool pricelists (src/plugin/, method group of MTGCollectionPlugin). */
 /* ---------------------------------------------------------------------------- */
 
-// Charge (une fois par session) tout le tarif Card Kingdom — un seul
-// fichier pour le catalogue entier (~67 Mo), pas un point d'accès par
-// carte comme Scryfall (voir card-kingdom.ts). N'écrit le cache qu'en cas
-// de succès confirmé (map non vide) : un échec transitoire ne doit pas
-// figer une table vide, qui priverait alors TOUTE carte de prix Card
-// Kingdom pour le reste de la session — même logique que loadSymbology
-// (scryfall-cache.ts). fetchCardKingdomPricelist renvoie déjà une Map vide (jamais
-// une exception) sur un échec réseau/HTTP, même convention que
-// fetchScryfallCollection ailleurs dans ce plugin.
+// Loads (once per session) the whole Card Kingdom pricelist — a single file for
+// the entire catalog (~67 MB), not a per-card endpoint like Scryfall (see
+// card-kingdom.ts). Only writes the cache on a confirmed success (non-empty map):
+// a transient failure must not freeze an empty table, which would then deprive
+// EVERY card of a Card Kingdom price for the rest of the session — same logic as
+// loadSymbology (scryfall-cache.ts). fetchCardKingdomPricelist already returns an
+// empty Map (never an exception) on a network/HTTP failure, same convention as
+// fetchScryfallCollection elsewhere in this plugin.
 
 export async function loadCardKingdomPrices(this: MTGCollectionPlugin): Promise<Map<string, CardKingdomPriceEntry>> {
 	if (this.cardKingdomPricesCache) return this.cardKingdomPricesCache;
 	if (!this.cardKingdomPricesFetchPromise) {
-		// Mobile : lecture en flux (un tarif de 65 Mo via requestUrl y ferait planter l'application, voir fetchCardKingdomPricelist).
+		// Mobile: stream reading (a 65 MB pricelist via requestUrl would crash the app there, see fetchCardKingdomPricelist).
 		this.cardKingdomPricesFetchPromise = fetchCardKingdomPricelist({ stream: Platform.isMobileApp }).then((map) => {
 			if (map.size === 0) {
 				this.cardKingdomPricesFetchPromise = null;
@@ -33,18 +32,17 @@ export async function loadCardKingdomPrices(this: MTGCollectionPlugin): Promise<
 	}
 	return this.cardKingdomPricesFetchPromise;
 }
-// Prix de vente Card Kingdom pour une impression précise (par scryfallId +
-// foil/non-foil — voir cardKingdomKey). undefined si Card Kingdom ne
-// vend/n'a jamais vendu cette carte dans cette finition.
+// Card Kingdom selling price for a precise printing (by scryfallId +
+// foil/non-foil — see cardKingdomKey). undefined if Card Kingdom doesn't
+// sell/has never sold this card in this finish.
 
 export async function getCardKingdomPrice(this: MTGCollectionPlugin, scryfallId: string, isFoil: boolean): Promise<CardKingdomPriceEntry | undefined> {
 	const map = await this.loadCardKingdomPrices();
 	return map.get(cardKingdomKey(scryfallId, isFoil));
 }
-// Même logique que loadCardKingdomPrices : un seul aller-retour par
-// session, cache écrit seulement en cas de succès confirmé (map non
-// vide) pour qu'un échec transitoire ne prive pas toute la session de
-// prix Mana Pool.
+// Same logic as loadCardKingdomPrices: a single round trip per session,
+// cache written only on confirmed success (non-empty map) so that a
+// transient failure doesn't deprive the whole session of Mana Pool prices.
 
 export async function loadManaPoolPrices(this: MTGCollectionPlugin): Promise<Map<string, ManaPoolCardPrices>> {
 	if (this.manaPoolPricesCache) return this.manaPoolPricesCache;
@@ -60,10 +58,10 @@ export async function loadManaPoolPrices(this: MTGCollectionPlugin): Promise<Map
 	}
 	return this.manaPoolPricesFetchPromise;
 }
-// Prix Mana Pool pour une impression précise, selon sa finition — voir
-// pickManaPoolPrice pour la sélection NM/etched/foil et le fallback
-// "prix le plus bas disponible". undefined si Mana Pool n'a aucun
-// exemplaire de cette impression en stock.
+// Mana Pool price for a precise printing, according to its finish — see
+// pickManaPoolPrice for the NM/etched/foil selection and the "lowest
+// available price" fallback. undefined if Mana Pool has no copy of this
+// printing in stock.
 
 export async function getManaPoolPrice(this: MTGCollectionPlugin, scryfallId: string, finish: Finish): Promise<ManaPoolPriceResult | undefined> {
 	const map = await this.loadManaPoolPrices();

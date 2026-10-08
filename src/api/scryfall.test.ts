@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// scryfall.ts importe `requestUrl` depuis "obsidian" au niveau module. Le
-// paquet npm "obsidian" ne fournit que des types, pas d'implémentation
-// runtime — charger ce module sous Node/Vitest planterait sans ce mock.
+// scryfall.ts imports `requestUrl` from "obsidian" at module level. The
+// npm package "obsidian" only provides types, no runtime implementation —
+// loading this module under Node/Vitest would crash without this mock.
 vi.mock("obsidian", () => ({ requestUrl: vi.fn() }));
 
 import { requestUrl } from "obsidian";
@@ -50,10 +50,10 @@ function makeScryfallCard(overrides: Partial<ScryfallCard> = {}): ScryfallCard {
 	};
 }
 
-// applySvgColor n'utilise que .style et .querySelectorAll(...).forEach(...) —
-// un vrai environnement DOM (jsdom) n'est pas nécessaire pour cette seule
-// fonction, un objet minimal satisfaisant cette même interface suffit et
-// évite d'ajouter une dépendance DOM à ce stade.
+// applySvgColor only uses .style and .querySelectorAll(...).forEach(...) — a
+// real DOM environment (jsdom) isn't needed for this single function, a
+// minimal object satisfying that same interface is enough and avoids adding a
+// DOM dependency at this stage.
 function makeFakeSvgContainer(children: { style: Record<string, string> }[] = []) {
 	return {
 		style: {} as Record<string, string>,
@@ -293,11 +293,11 @@ describe("dedupeSetsByIcon", () => {
 
 describe("getSetGroupLabel", () => {
 	it("maps every real set_type observed live on /sets to a non-'Other' group", () => {
-		// Les 22 valeurs de set_type réellement vues en direct sur l'API au
-		// moment d'écrire ce test — si Scryfall en retire une, ce test continue
-		// de passer (aucune assertion négative) ; s'il en ajoute une nouvelle,
-		// getSetGroupLabel la renvoie vers "Other" plutôt que de planter, mais
-		// ce test-ci ne le détecterait pas — un test séparé couvre ce repli.
+		// The 22 set_type values actually seen live on the API at the time of
+		// writing this test — if Scryfall removes one, this test keeps passing (no
+		// negative assertion); if it adds a new one, getSetGroupLabel sends it to
+		// "Other" rather than crash, but this test would not detect it — a
+		// separate test covers that fallback.
 		const knownTypes = [
 			"core",
 			"expansion",
@@ -368,11 +368,11 @@ describe("requestScryfall", () => {
 		expect(res.status).toBe(200);
 	});
 
-	// Chaque cas ci-dessous inclut désormais le verrou global de départ
-	// (SCRYFALL_MIN_GAP_MS = 110ms, voir requestScryfall) EN PLUS de l'attente
-	// propre au 429 — la requête ne part elle-même qu'après ces 110ms, donc
-	// le délai total avant résolution est "110ms + attente 429", pas juste
-	// l'attente 429 seule.
+	// Each case below now includes the initial global gate
+	// (SCRYFALL_MIN_GAP_MS = 110ms, see requestScryfall) IN ADDITION to the
+	// 429's own wait — the request itself only goes out after those 110ms, so
+	// the total delay before resolution is "110ms + 429 wait", not just the
+	// 429 wait alone.
 
 	it("waits the Retry-After duration (seconds) before resolving on a 429", async () => {
 		vi.useFakeTimers();
@@ -646,12 +646,12 @@ describe("fetchScryfallCollection", () => {
 	});
 
 	it("calls onChunkResolved after each batch with only that batch's cards, before the whole call resolves", async () => {
-		// Root-cause d'un bug rapporté deux fois côté MTGCollectionPlugin.
-		// bulkFetchLegalities (plugin.ts) : sans un moyen de résoudre chaque
-		// id dès que SON lot revient, un appelant qui dérive une Promise par
-		// id à partir de la seule Promise renvoyée par cette fonction voit
-		// TOUS ses ids résolus seulement après le tout dernier lot, même
-		// ceux dont les données sont arrivées dans le premier.
+		// Root cause of a bug reported twice on the
+		// MTGCollectionPlugin.bulkFetchLegalities side (plugin.ts): without a way
+		// to resolve each id as soon as ITS batch comes back, a caller that
+		// derives one Promise per id from the single Promise returned by this
+		// function sees ALL its ids resolved only after the very last batch, even
+		// those whose data arrived in the first.
 		const ids = Array.from({ length: 80 }, (_, i) => `id${i}`);
 		mockRequestUrl
 			.mockResolvedValueOnce({
@@ -671,17 +671,17 @@ describe("fetchScryfallCollection", () => {
 
 		expect(onChunkResolved).toHaveBeenCalledTimes(2);
 		expect(chunkSnapshots).toEqual([75, 5]);
-		// Le premier appel ne doit contenir QUE les ids du premier lot, pas
-		// encore ceux du second (qui n'a pas encore été demandé à cet
-		// instant) — vérifie que c'est un instantané par lot, pas une
-		// référence vers la map cumulative finale.
+		// The first call must contain ONLY the ids of the first batch, not yet
+		// those of the second (which has not been requested yet at that moment) —
+		// checks that it is a per-batch snapshot, not a reference to the final
+		// cumulative map.
 		const firstCallResults = onChunkResolved.mock.calls[0][0] as Map<string, unknown>;
 		expect(firstCallResults.has("id0")).toBe(true);
 		expect(firstCallResults.has("id75")).toBe(false);
-		// Un instantané indépendant, pas une référence vers la map
-		// cumulative finale (qui, elle, contiendrait bien id75 une fois les
-		// deux lots traités) — sans cette distinction, le test précédent
-		// passerait même si le code passait `map` au lieu de `chunkMap`.
+		// An independent snapshot, not a reference to the final cumulative map
+		// (which would indeed contain id75 once both batches are processed) —
+		// without this distinction, the previous test would pass even if the code
+		// passed `map` instead of `chunkMap`.
 		expect(firstCallResults).not.toBe(map);
 		expect(map.size).toBe(80);
 	});

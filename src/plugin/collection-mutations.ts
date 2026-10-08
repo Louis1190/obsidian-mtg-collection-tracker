@@ -29,9 +29,9 @@ export function createListSilent(this: MTGCollectionPlugin, name: string): Colle
 	return list;
 }
 
-// Les cartes ajoutées avant l'introduction du groupement/tri (artiste,
-// couleurs, valeur de mana, date de sortie) n'ont pas ces informations :
-// on les récupère en une poignée de requêtes groupées auprès de Scryfall.
+// Cards added before the introduction of grouping/sorting (artist, colors,
+// mana value, release date) don't have this information: we fetch it in a
+// handful of grouped requests to Scryfall.
 
 export function getOrCreateListByName(this: MTGCollectionPlugin, name: string): CollectionList {
 	const existing = this.settings.lists.find((l) => l.name === name);
@@ -108,8 +108,8 @@ export function addCardToCollection(this: MTGCollectionPlugin,
 export function changeCollectionCardCount(this: MTGCollectionPlugin, rowId: string, delta: number, onDone: () => void) {
 	const card = this.settings.collection.find((c) => c.id === rowId);
 	if (!card) return;
-	// Le minimum est 1 : pour retirer complètement une carte de la collection,
-	// on utilise le bouton de suppression plutôt que de descendre à 0.
+	// The minimum is 1: to remove a card completely from the collection, we
+	// use the delete button rather than going down to 0.
 	card.count = Math.max(1, card.count + delta);
 	card.dateModified = Date.now();
 	void this.saveSettings();
@@ -124,22 +124,19 @@ export function removeCollectionCard(this: MTGCollectionPlugin, rowId: string) {
 	void this.saveSettings();
 }
 
-// Annule `delta` exemplaires ajoutés depuis "Add cards" (voir le panneau
-// "Add history" de AddCardsModal, onUndoAdd dans shared-search-ui.ts) —
-// retrouve la ligne par la MÊME clé de dédoublonnage qu'addCardToCollection
-// utilise déjà pour FUSIONNER un ajout (scryfallId + listId + finish/
-// language/condition), plutôt qu'un id de ligne qui pourrait devenir
-// invalide entre un "disable" (qui peut supprimer la ligne) et un
-// "re-enable" ultérieur. changeCollectionCardCount() ne convient pas ici : il plafonne
-// à 1, jamais 0, alors qu'annuler la toute première contribution doit
-// pouvoir retirer la ligne entièrement (voir le calcul ci-dessous, qui
-// décide lui-même décrément vs suppression selon le solde restant — un
-// ajustement +/- fait entretemps sur la même ligne, via le stepper de la
-// tuile carrousel ou depuis My Collection, reste donc intact : seul ce
-// que CETTE session a contribué est repris, jamais le compte réel
-// d'origine). Renvoie la ligne résultante (ou undefined si supprimée)
-// pour que AddCardsModal puisse resynchroniser sa propre tuile carrousel
-// sur l'état réel.
+// Undoes `delta` copies added from "Add cards" (see AddCardsModal's "Add history"
+// panel, onUndoAdd in shared-search-ui.ts) — finds the row by the SAME deduplication
+// key that addCardToCollection already uses to MERGE an addition (scryfallId + listId
+// + finish/language/condition), rather than a row id that could become invalid between
+// a "disable" (which can delete the row) and a later "re-enable".
+// changeCollectionCardCount() doesn't fit here: it caps at 1, never 0, whereas undoing
+// the very first contribution must be able to remove the row entirely (see the
+// computation below, which itself decides decrement vs deletion according to the
+// remaining balance — a +/- adjustment made in the meantime on the same row, via the
+// carousel tile's stepper or from My Collection, thus remains intact: only what THIS
+// session contributed is taken back, never the original real count). Returns the
+// resulting row (or undefined if deleted) so that AddCardsModal can resynchronize its
+// own carousel tile on the real state.
 
 export function undoAddToCollection(this: MTGCollectionPlugin, 
 	scryfallId: string,
@@ -209,10 +206,10 @@ export function setCollectionCardGrading(this: MTGCollectionPlugin,
 	void this.saveSettings();
 }
 
-// Séparée de setCollectionCardGrading : la boîte "Custom Price" s'édite maintenant en
-// ligne (pas via GradingModal, qui ne concerne plus que le grading),
-// donc son propre appel plugin ne doit pas pouvoir écraser gradingCompany/
-// gradingGrade en passant des valeurs par défaut.
+// Separate from setCollectionCardGrading: the "Custom Price" box is now edited inline
+// (not via GradingModal, which now only concerns grading), so its own plugin call
+// must not be able to overwrite gradingCompany/gradingGrade by passing default
+// values.
 
 export function setCollectionCardCustomPrice(this: MTGCollectionPlugin, rowId: string, customPrice: string) {
 	const card = this.settings.collection.find((c) => c.id === rowId);
@@ -222,8 +219,8 @@ export function setCollectionCardCustomPrice(this: MTGCollectionPlugin, rowId: s
 	void this.saveSettings();
 }
 
-// Définit directement la quantité (plutôt que par incrément), pour l'édition
-// en ligne du chiffre. Minimum 1, comme changeCollectionCardCount.
+// Directly sets the quantity (rather than by increment), for inline editing
+// of the number. Minimum 1, like changeCollectionCardCount.
 
 export function setCollectionCardCount(this: MTGCollectionPlugin, rowId: string, newCount: number, onDone: () => void) {
 	const card = this.settings.collection.find((c) => c.id === rowId);
@@ -234,8 +231,8 @@ export function setCollectionCardCount(this: MTGCollectionPlugin, rowId: string,
 	onDone();
 }
 
-// Change l'impression (édition/numéro/prix/rareté...) d'une carte déjà en
-// collection, en gardant la quantité/foil/langue/état/liste inchangés.
+// Changes the printing (set/number/price/rarity...) of a card already in
+// the collection, keeping quantity/foil/language/condition/list unchanged.
 
 export function changeCollectionCardPrinting(this: MTGCollectionPlugin, rowId: string, scry: ScryfallCard) {
 	const card = this.settings.collection.find((c) => c.id === rowId);
@@ -270,13 +267,12 @@ export function changeCollectionCardPrinting(this: MTGCollectionPlugin, rowId: s
 }
 
 
-// Repère les entrées strictement identiques (même carte Scryfall, même
-// liste, même statut foil, même langue, même état) sans rien modifier —
-// voir mergeListDuplicateGroup pour la fusion elle-même. Peut arriver par ex.
-// après un changement d'édition qui fait converger deux cartes vers la
-// même impression exacte au sein d'une même liste. Chaque groupe retourné
-// est trié par date d'ajout (la plus ancienne en premier, celle que
-// mergeListDuplicateGroup conservera).
+// Spots strictly identical entries (same Scryfall card, same list, same foil
+// status, same language, same condition) without modifying anything — see
+// mergeListDuplicateGroup for the merge itself. Can happen e.g. after a set
+// change that makes two cards converge on the exact same printing within a
+// same list. Each returned group is sorted by date added (the oldest first,
+// the one mergeListDuplicateGroup will keep).
 
 export function findListDuplicateGroups(this: MTGCollectionPlugin): CollectionCard[][] {
 	const groups = new Map<string, CollectionCard[]>();
@@ -290,9 +286,9 @@ export function findListDuplicateGroups(this: MTGCollectionPlugin): CollectionCa
 		.map((g) => [...g].sort((a, b) => a.dateAdded - b.dateAdded));
 }
 
-// Fusionne un groupe précis (déjà identifié par findListDuplicateGroups) :
-// les quantités sont additionnées dans l'entrée la plus ancienne (le
-// premier élément du groupe), les autres sont supprimées.
+// Merges a specific group (already identified by findListDuplicateGroups):
+// quantities are added together into the oldest entry (the first element
+// of the group), the others are deleted.
 
 export function mergeListDuplicateGroup(this: MTGCollectionPlugin, entries: CollectionCard[]): { removed: number } {
 	if (entries.length < 2) return { removed: 0 };
@@ -315,13 +311,13 @@ export function mergeListDuplicateGroup(this: MTGCollectionPlugin, entries: Coll
 	return { removed };
 }
 
-// Fusionne tous les groupes de doublons stricts (findListDuplicateGroups)
-// d'UNE SEULE liste — même calcul que mergeLists plus haut (qui l'applique
-// déjà, scopé à la liste fusionnée), juste exposé ici comme sa propre
-// action pour une liste déjà existante depuis ListSettingsModal ("Merge
-// duplicates") : agit immédiatement, sans écran de revue groupe par
-// groupe, cohérent avec le reste de cette fenêtre, où chaque bouton agit
-// tout de suite plutôt que d'ouvrir un second écran.
+// Merges all the strict-duplicate groups (findListDuplicateGroups) of ONE
+// SINGLE list — same computation as mergeLists higher up (which already
+// applies it, scoped to the merged list), just exposed here as its own
+// action for an already existing list from ListSettingsModal ("Merge
+// duplicates"): acts immediately, without a group-by-group review screen,
+// consistent with the rest of this window, where each button acts right
+// away rather than opening a second screen.
 
 export function mergeListDuplicates(this: MTGCollectionPlugin, listId: string): { merged: number; removed: number } {
 	const groups = this.findListDuplicateGroups().filter((g) => g[0].listId === listId);
@@ -332,17 +328,15 @@ export function mergeListDuplicates(this: MTGCollectionPlugin, listId: string): 
 	return { merged: groups.length, removed };
 }
 
-// Anti-spam léger contre les clics répétés/accidentels sur "Refresh now" :
-// n'empêche pas une vérification ponctuelle légitime (contrairement au
-// délai configuré dans les réglages, qui régit uniquement la vérification
-// automatique en arrière-plan).
+// Light anti-spam against repeated/accidental clicks on "Refresh now":
+// doesn't prevent a legitimate one-off check (unlike the delay configured
+// in the settings, which only governs the automatic background check).
 
-// Redemande à Scryfall le prix actuel de chaque impression distincte de la
-// collection ET de la wantlist, en requêtes groupées (75 par lot, léger
-// délai entre chaque — voir fetchScryfallCollection). Un identifiant présent
-// dans les deux n'est demandé qu'une fois (uniqueIds dédoublonne sur les
-// deux ensembles combinés). Une seule écriture sur disque à la fin, pas une
-// par carte.
+// Asks Scryfall again for the current price of each distinct printing of the
+// collection AND the wantlist, in grouped requests (75 per batch, slight
+// delay between each — see fetchScryfallCollection). An identifier present
+// in both is only requested once (uniqueIds deduplicates over the two sets
+// combined). A single disk write at the end, not one per card.
 
 export function bulkRemoveCollectionCards(this: MTGCollectionPlugin, ids: string[]) {
 	const idSet = new Set(ids);
@@ -413,10 +407,10 @@ export function createList(this: MTGCollectionPlugin, name: string): CollectionL
 	return list;
 }
 
-// isInbox : jamais supprimable, même par cet appel direct — l'interface
-// (ListSettingsModal) n'affiche déjà plus de bouton "Delete" pour Inbox,
-// mais ce garde-fou reste ici en défense en profondeur pour tout futur
-// appelant qui l'invoquerait directement.
+// isInbox: never deletable, even by this direct call — the interface
+// (ListSettingsModal) already no longer shows a "Delete" button for Inbox,
+// but this safeguard remains here as defense in depth for any future
+// caller that would invoke it directly.
 
 export function deleteList(this: MTGCollectionPlugin, listId: string) {
 	const list = this.settings.lists.find((l) => l.id === listId);
@@ -428,10 +422,10 @@ export function deleteList(this: MTGCollectionPlugin, listId: string) {
 	void this.saveSettings();
 }
 
-// Vide une liste (retire toutes ses cartes) sans supprimer la liste
-// elle-même, contrairement à deleteList juste au-dessus qui supprime les
-// deux à la fois — action de "nettoyage" distincte, demandée
-// explicitement depuis ListSettingsModal ("Vider la liste").
+// Empties a list (removes all its cards) without deleting the list itself,
+// unlike deleteList just above which deletes both at once — a distinct
+// "cleanup" action, explicitly requested from ListSettingsModal ("Empty
+// the list").
 
 export function clearList(this: MTGCollectionPlugin, listId: string) {
 	this.settings.collection = this.settings.collection.filter(
@@ -440,12 +434,12 @@ export function clearList(this: MTGCollectionPlugin, listId: string) {
 	void this.saveSettings();
 }
 
-// Fixe (ou efface, cardId undefined) l'image de couverture d'une liste —
-// voir CollectionList.coverCardId/resolveCoverImage (core/price.ts) pour
-// la résolution côté affichage. Ne valide pas que cardId appartient
-// bien à cette liste : ListSettingsModal ne propose que des cartes de la
-// liste elle-même, et resolveCoverImage retombe silencieusement sur le
-// choix automatique si l'id ne correspond plus à rien de toute façon.
+// Sets (or clears, cardId undefined) a list's cover image — see
+// CollectionList.coverCardId/resolveCoverImage (core/price.ts) for the
+// resolution on the display side. Doesn't validate that cardId really
+// belongs to this list: ListSettingsModal only offers cards from the list
+// itself, and resolveCoverImage silently falls back to the automatic
+// choice if the id no longer matches anything anyway.
 
 export function setListCoverCard(this: MTGCollectionPlugin, listId: string, cardId: string | undefined) {
 	const list = this.settings.lists.find((l) => l.id === listId);
@@ -454,9 +448,9 @@ export function setListCoverCard(this: MTGCollectionPlugin, listId: string, card
 	void this.saveSettings();
 }
 
-// Fixe (ou efface, icon undefined) le pictogramme d'une liste — voir
-// CollectionList.listIcon (core/data-model.ts) pour la résolution côté
-// affichage (renderListTile/CopyCardModal.renderTile).
+// Sets (or clears, icon undefined) a list's pictogram — see
+// CollectionList.listIcon (core/data-model.ts) for the resolution on the
+// display side (renderListTile/CopyCardModal.renderTile).
 
 export function setListIcon(this: MTGCollectionPlugin, listId: string, icon: ListIcon | undefined) {
 	const list = this.settings.lists.find((l) => l.id === listId);
@@ -465,12 +459,11 @@ export function setListIcon(this: MTGCollectionPlugin, listId: string, icon: Lis
 	void this.saveSettings();
 }
 
-// Version groupée de deleteList ci-dessus — mode sélection de la grille
-// "My Collection" (MTGCollectionView.listGallerySelectMode), une seule
-// écriture de settings pour tous les ids plutôt qu'un appel par liste.
-// Inbox n'est déjà jamais sélectionnable dans cette grille (voir
-// renderListTile), mais retirée ici aussi pour la même raison que
-// deleteList ci-dessus.
+// Grouped version of deleteList above — selection mode of the "My
+// Collection" grid (MTGCollectionView.listGallerySelectMode), a single
+// settings write for all the ids rather than one call per list. Inbox is
+// already never selectable in this grid (see renderListTile), but removed
+// here too for the same reason as deleteList above.
 
 export function bulkDeleteLists(this: MTGCollectionPlugin, listIds: string[]) {
 	const inboxId = this.settings.lists.find((l) => l.isInbox)?.id;
@@ -480,27 +473,25 @@ export function bulkDeleteLists(this: MTGCollectionPlugin, listIds: string[]) {
 	void this.saveSettings();
 }
 
-// "Merge" — mode sélection de la grille "My Collection" (voir
-// MTGCollectionView.listGallerySelectMode/MergeListsModal). Crée une
-// nouvelle liste, y réaffecte toutes les cartes des listes sélectionnées
-// (simple changement de listId, pas une copie — les CollectionCard existants
-// sont conservés tels quels, avec leur id/finish/langue/condition/
-// grading/prix personnalisé), supprime les listes d'origine, puis fusionne
-// automatiquement les doublons désormais dans la même liste (même carte
-// présente dans plusieurs des listes fusionnées, même finish/langue/
-// condition) en réutilisant telle quelle la logique déjà établie de
-// findListDuplicateGroups/mergeListDuplicateGroup ("Merge duplicate cards") —
-// plutôt qu'une réimplémentation, puisque c'est exactement le même calcul
-// une fois que les cartes partagent le même listId.
+// "Merge" — selection mode of the "My Collection" grid (see
+// MTGCollectionView.listGallerySelectMode/MergeListsModal). Creates a new
+// list, reassigns to it all the cards of the selected lists (a simple listId
+// change, not a copy — the existing CollectionCards are kept as is, with
+// their id/finish/language/condition/grading/custom price), deletes the
+// original lists, then automatically merges the duplicates now in the same
+// list (same card present in several of the merged lists, same
+// finish/language/condition) by reusing as is the already established logic
+// of findListDuplicateGroups/mergeListDuplicateGroup ("Merge duplicate
+// cards") — rather than a reimplementation, since it is exactly the same
+// computation once the cards share the same listId.
 
 export function mergeLists(this: MTGCollectionPlugin, listIds: string[], name: string): CollectionList {
 	const newList = this.createListSilent(name);
-	// Inbox n'est déjà jamais sélectionnable dans la grille (voir
-	// renderListTile), donc jamais réellement présente dans listIds en
-	// pratique — retirée quand même par défense en profondeur, puisque
-	// mergeLists SUPPRIME chaque liste d'origine une fois ses cartes
-	// réaffectées (voir plus bas), ce qui violerait la protection contre
-	// la suppression d'Inbox si jamais atteint par un autre chemin.
+	// Inbox is already never selectable in the grid (see renderListTile), so
+	// never actually present in listIds in practice — removed anyway as
+	// defense in depth, since mergeLists DELETES each original list once its
+	// cards are reassigned (see below), which would violate the protection
+	// against deleting Inbox if it were ever reached through another path.
 	const inboxId = this.settings.lists.find((l) => l.isInbox)?.id;
 	const idSet = new Set(listIds.filter((id) => id !== inboxId));
 	this.settings.collection.forEach((c) => {
@@ -514,9 +505,9 @@ export function mergeLists(this: MTGCollectionPlugin, listIds: string[], name: s
 	return newList;
 }
 
-// isInbox : jamais renommable — même garde-fou/raisonnement que
-// deleteList ci-dessus (l'UI ne montre déjà plus le champ de
-// renommage pour Inbox, ceci reste une défense en profondeur).
+// isInbox: never renamable — same safeguard/reasoning as deleteList above
+// (the UI already no longer shows the rename field for Inbox, this remains
+// a defense in depth).
 
 export function renameList(this: MTGCollectionPlugin, listId: string, name: string) {
 	const list = this.settings.lists.find((l) => l.id === listId);
@@ -525,11 +516,11 @@ export function renameList(this: MTGCollectionPlugin, listId: string, name: stri
 	void this.saveSettings();
 }
 
-// Copie une carte de la collection vers une autre liste (ou la même) sans
-// retirer l'original — contrairement à moveCollectionCardToList qui déplace.
-// c.id !== card.id exclut l'entrée elle-même d'une fusion sur elle-même :
-// copier dans sa propre liste crée un doublon volontaire
-// plutôt que de simplement doubler sa quantité en place.
+// Copies a card from the collection to another list (or the same one)
+// without removing the original — unlike moveCollectionCardToList which
+// moves. c.id !== card.id excludes the entry itself from a merge onto
+// itself: copying into its own list creates a deliberate duplicate rather
+// than simply doubling its quantity in place.
 
 export function copyCollectionCardToList(this: MTGCollectionPlugin, cardId: string, targetListId: string) {
 	const card = this.settings.collection.find((c) => c.id === cardId);
@@ -559,9 +550,9 @@ export function copyCollectionCardToList(this: MTGCollectionPlugin, cardId: stri
 	void this.saveSettings();
 }
 
-// Copie une carte de la collection vers une wantlist : la condition/langue
-// n'ont pas de sens pour une carte désirée (voir WantlistCard), donc
-// simplement omises plutôt que reportées.
+// Copies a card from the collection to a wantlist: condition/language make
+// no sense for a wanted card (see WantlistCard), so they are simply
+// omitted rather than carried over.
 
 export function copyCollectionCardToWantlist(this: MTGCollectionPlugin, cardId: string, targetWantlistId: string) {
 	const card = this.settings.collection.find((c) => c.id === cardId);
@@ -614,9 +605,9 @@ export function copyCollectionCardToWantlist(this: MTGCollectionPlugin, cardId: 
 	void this.saveSettings();
 }
 
-// Déplace (plutôt que copie) une carte de la collection vers une autre
-// liste : réutilise copyCollectionCardToList pour la logique de fusion/création côté
-// destination, puis retire l'original.
+// Moves (rather than copies) a card from the collection to another list: reuses
+// copyCollectionCardToList for the merge/creation logic on the destination side,
+// then removes the original.
 
 export function moveCollectionCardToList(this: MTGCollectionPlugin, cardId: string, targetListId: string) {
 	this.copyCollectionCardToList(cardId, targetListId);
@@ -631,5 +622,5 @@ export function moveCollectionCardToWantlist(this: MTGCollectionPlugin, cardId: 
 
 /* ----------------------------- Wantlists ------------------------------ */
 
-// Renvoie l'entrée résultante (existante ou nouvellement créée) — même
-// raison que le retour ajouté à addCardToCollection ci-dessus.
+// Returns the resulting entry (existing or newly created) — same reason as
+// the return added to addCardToCollection above.

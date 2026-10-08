@@ -3,37 +3,36 @@ import { requestUrlOrNull } from "./safe-request";
 import { Finish } from "../core/card-model";
 
 /* -------------------------------------------------------------------------- */
-/*  Mana Pool pricelist — 3ᵉ source pour la box "Store Prices"               */
+/* Mana Pool pricelist — 3rd source for the "Store Prices" box */
 /* -------------------------------------------------------------------------- */
 
-// Endpoint public confirmé (curl direct) : pas de clé, pas de compte, malgré
-// ce que suggère la doc générale de l'API ("you must have a Mana Pool
-// account and generate an API access token") — cette exigence concerne les
-// endpoints vendeur/acheteur/commandes, pas /prices/singles. JSON complet
-// (~50 Mo, tout le catalogue en stock) sous {"meta":{...},"data":[{
-// scryfall_id, price_cents, price_cents_nm, price_cents_foil,
-// price_cents_nm_foil, price_cents_etched, price_cents_nm_etched, url,
-// ...}]} — contrairement à Card Kingdom, une seule ligne par scryfall_id
-// couvre déjà toutes les finitions (pas de ligne séparée par foil/non-foil),
-// donc pas besoin de clé composite ici, juste scryfall_id. Pas de version
-// "par carte" non plus — un seul aller-retour pour tout le catalogue, indexé
-// une fois en mémoire (voir fetchManaPoolPricelist) comme pour Card Kingdom.
-// La doc de la v1 prévient elle-même qu'elle est "still in active
-// development and is subject to change without notice" — rien ne garantit
-// que cet accès anonyme reste ouvert indéfiniment.
+// Public endpoint, confirmed (direct curl): no key, no account, despite what
+// the API's general docs suggest ("you must have a Mana Pool account and
+// generate an API access token") — that requirement concerns the
+// seller/buyer/orders endpoints, not /prices/singles. Complete JSON (~50 MB,
+// the whole in-stock catalog) under {"meta":{...},"data":[{scryfall_id,
+// price_cents, price_cents_nm, price_cents_foil, price_cents_nm_foil,
+// price_cents_etched, price_cents_nm_etched, url, ...}]} — unlike Card
+// Kingdom, a single row per scryfall_id already covers all finishes (no
+// separate row per foil/non-foil), so no composite key is needed here, just
+// scryfall_id. No "per card" version either — one round trip for the whole
+// catalog, indexed once in memory (see fetchManaPoolPricelist) as with Card
+// Kingdom. The v1 docs themselves warn that it is "still in active
+// development and is subject to change without notice" — nothing guarantees
+// that this anonymous access stays open indefinitely.
 const MANAPOOL_PRICES_URL = "https://manapool.com/api/v1/prices/singles";
 
 const MANAPOOL_HEADERS = {
-	// Même identifiant + contact que SCRYFALL_HEADERS (scryfall.ts) — bonne
-	// pratique générale, pas une exigence documentée spécifiquement par Mana
-	// Pool comme elle l'est chez Scryfall.
+	// Same identifier + contact as SCRYFALL_HEADERS (scryfall.ts) — general
+	// good practice, not a requirement documented specifically by Mana Pool as
+	// it is at Scryfall.
 	"User-Agent": "ObsidianMTGCollectionTracker/1.0 (+https://github.com/Louis1190/obsidian-mtg-collection-tracker)",
 	Accept: "application/json",
 };
 
-// Toutes les variantes de prix (cents) pour une impression donnée, telles que
-// renvoyées par Mana Pool — la sélection de la bonne paire selon la finition
-// de la carte se fait dans pickManaPoolPrice, pas ici.
+// All the price variants (cents) for a given printing, as returned by Mana
+// Pool — selecting the right pair according to the card's finish is done in
+// pickManaPoolPrice, not here.
 export interface ManaPoolCardPrices {
 	url: string;
 	priceCents: number | null;
@@ -46,10 +45,9 @@ export interface ManaPoolCardPrices {
 
 export interface ManaPoolPriceResult {
 	priceCents: number;
-	// Faux si aucun exemplaire Near Mint n'était en stock pour cette
-	// finition et qu'on est retombé sur le prix le plus bas disponible
-	// (toutes conditions confondues) — permet à l'appelant d'afficher une
-	// mise en garde plutôt que de faire passer un prix "Played" pour du NM.
+	// False if no Near Mint copy was in stock for this finish and we fell back
+	// to the lowest available price (all conditions combined) — lets the
+	// caller show a warning rather than pass a "Played" price off as NM.
 	isNearMint: boolean;
 	url: string;
 }
@@ -65,17 +63,18 @@ interface ManaPoolRawEntry {
 	price_cents_nm_etched?: number | null;
 }
 
-// Un prix à 0/absent/invalide n'est pas un vrai prix à afficher — même
-// traitement que Card Kingdom et que Scryfall lui-même (jamais "$0.00").
+// A price of 0/missing/invalid is not a real price to display — same
+// treatment as Card Kingdom and Scryfall itself (never "$0.00").
 function normalizeCents(value: number | null | undefined): number | null {
 	return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-// Le tarif Mana Pool (49 Mo décompressés) n'est PAS chargé sur téléphone / tablette : requestUrl y encode toute la réponse en base64
-// (66 Mo de texte) et l'application Obsidian plante faute de mémoire (même cause que Card Kingdom, voir card-kingdom.ts), et la lire en
-// flux par fetch() est impossible — Mana Pool ne répond pas avec access-control-allow-origin (vérifié dans l'application Android réelle :
-// « Failed to fetch »). Il n'existe pas de point d'accès par carte (les filtres de l'url sont ignorés, le fichier complet revient). La
-// colonne Mana Pool de « Store Prices » y reste donc grisée, avec la mention « Not on mobile » (renderStorePricesBox).
+// The Mana Pool pricelist (49 MB decompressed) is NOT loaded on phone / tablet: requestUrl encodes the whole
+// response as base64 there (66 MB of text) and the Obsidian app crashes for lack of memory (same cause as Card
+// Kingdom, see card-kingdom.ts), and reading it as a stream with fetch() is impossible — Mana Pool does not
+// answer with access-control-allow-origin (checked in the real Android app: "Failed to fetch"). There is no
+// per-card endpoint (the url's filters are ignored, the complete file comes back). The Mana Pool column of
+// "Store Prices" therefore stays greyed out there, with the mention "Not on mobile" (renderStorePricesBox).
 export function manaPoolPricesSupported(): boolean {
 	return !Platform.isMobileApp;
 }
@@ -93,10 +92,10 @@ export async function fetchManaPoolPricelist(): Promise<Map<string, ManaPoolCard
 
 	for (const row of rows) {
 		if (!row.scryfall_id || !row.url) continue;
-		// Une impression ne devrait apparaître qu'une fois dans ce flux (une
-		// ligne = toutes les finitions pour ce scryfall_id) — garder la
-		// première rencontrée par sécurité si un doublon apparaît malgré
-		// tout, même précédent que Card Kingdom pour ses propres doublons.
+		// A printing should appear only once in this stream (one row = all
+		// finishes for that scryfall_id) — keep the first one encountered as a
+		// precaution if a duplicate appears anyway, same precedent as Card Kingdom
+		// for its own duplicates.
 		if (map.has(row.scryfall_id)) continue;
 
 		map.set(row.scryfall_id, {
@@ -113,14 +112,13 @@ export async function fetchManaPoolPricelist(): Promise<Map<string, ManaPoolCard
 	return map;
 }
 
-// Sélectionne la paire (NM, prix le plus bas dispo) correspondant à la
-// finition de la carte — "etched" a son propre champ dédié chez Mana Pool
-// (contrairement à Card Kingdom, qui n'a qu'un prix foil générique) ;
-// "surged" n'a — comme partout ailleurs dans ce plugin (voir
-// getRawCardPrice/types.ts) — aucun champ de prix dédié, donc traité comme
-// "foiled". Retombe sur le prix le plus bas toutes conditions confondues
-// quand aucun exemplaire NM n'est en stock pour cette finition, plutôt que
-// de ne rien afficher.
+// Selects the (NM, lowest available price) pair matching the card's finish
+// — "etched" has its own dedicated field at Mana Pool (unlike Card
+// Kingdom, which only has a generic foil price); "surged" has — as
+// everywhere else in this plugin (see getRawCardPrice/types.ts) — no
+// dedicated price field, so it is treated as "foiled". Falls back to the
+// lowest price, all conditions combined, when no NM copy is in stock for
+// this finish, rather than showing nothing.
 export function pickManaPoolPrice(entry: ManaPoolCardPrices, finish: Finish): ManaPoolPriceResult | undefined {
 	let nm: number | null;
 	let fallback: number | null;

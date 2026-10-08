@@ -69,8 +69,8 @@ export function openAddWantlistCardsModal(this: MTGCollectionView, wantlistId: s
 	const modal = new AddCardsModal(this.app, this.plugin, {
 		onAdd: (card, options) => this.plugin.addCardToWantlist(card, wantlistId, { finish: options.finish }),
 		onChangeQuantity: (entryId, delta, onDone) => this.plugin.changeWantlistCardCount(entryId, delta, onDone),
-		// Voir openCollectionCardDetailById/openWantlistCardDetailById pour le
-		// raisonnement complet (même idée, côté wantlist).
+		// See openCollectionCardDetailById/openWantlistCardDetailById for the full
+		// reasoning (same idea, on the wantlist side).
 		onOpenDetail: (entryId, onDetailClosed) => this.openWantlistCardDetailById(entryId, onDetailClosed),
 		onUndoAdd: (card, options, undoListId, delta) =>
 			this.plugin.undoAddToWantlist(card.id, undoListId, options.finish, delta),
@@ -85,9 +85,8 @@ export function openAddWantlistCardsModal(this: MTGCollectionView, wantlistId: s
 	modal.open();
 }
 
-// Voir openCollectionCardDetailById (collection-render.ts) — même raisonnement, côté wantlist ;
-// publique depuis le 2026-09-08 pour la même raison ("Copies in Lists"
-// cross-section).
+// See openCollectionCardDetailById (collection-render.ts) — same reasoning, on the wantlist
+// side; public since 2026-09-08 for the same reason (cross-section "Copies in Lists").
 
 export function openWantlistCardDetailById(this: MTGCollectionView, 
 	entryId: string,
@@ -171,12 +170,12 @@ export function renderWantlistBulkActionsBar(this: MTGCollectionView,
 	bar.createDiv({ cls: "mtg-bulk-actions-divider" });
 
 	const selectedIds = () => Array.from(this.selectedWantlistCardIds);
-	// Clear inclus ici (comme My Collection), Select all délibérément exclu
-	// — voir le commentaire équivalent dans renderDeckBulkActionsBar.
+	// Clear included here (like My Collection), Select all deliberately
+	// excluded — see the equivalent comment in renderDeckBulkActionsBar.
 	const actionButtons: HTMLButtonElement[] = [clearBtn];
 
-	// Ouvre une modale (pas un menu déroulant) : pas de caret, même
-	// traitement que "Move to"/"Copy to" dans My Collection.
+	// Opens a modal (not a dropdown menu): no caret, same treatment as "Move
+	// to"/"Copy to" in My Collection.
 	const acquiredBtn = bar.createEl("button", {
 		text: "Mark as acquired",
 		cls: "mtg-bulk-action-btn",
@@ -266,8 +265,8 @@ export function renderWantlistBulkActionsBar(this: MTGCollectionView,
 				this.render();
 			}
 		});
-		// Même fix mousedown/preventDefault que My Collection : sans lui, le
-		// blur (donc commit) se déclenche avant le click de Cancel.
+		// Same mousedown/preventDefault fix as My Collection: without it, the blur
+		// (hence commit) fires before the click of Cancel.
 		cancelQtyBtn.addEventListener("mousedown", (e) => e.preventDefault());
 		cancelQtyBtn.addEventListener("click", () => {
 			input.removeEventListener("blur", commit);
@@ -275,7 +274,7 @@ export function renderWantlistBulkActionsBar(this: MTGCollectionView,
 		});
 	});
 
-	// Exporter en fichier (CSV/TXT au choix) — même bouton "Export" que My
+	// Export to a file (CSV/TXT of your choice) — same "Export" button as My
 	// Collection (collection-render.ts)/My Decks (deck-render.ts).
 	const exportBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	exportBtn.createSpan({ text: "Export" });
@@ -302,11 +301,11 @@ export function renderWantlistBulkActionsBar(this: MTGCollectionView,
 	actionButtons.push(copyTxtBtn);
 	copyTxtBtn.addEventListener("click", () => this.copyWantlistSelectionTxt());
 
-	// Séparateur avant Delete — même traitement que My Collection.
+	// Separator before Delete — same treatment as My Collection.
 	bar.createDiv({ cls: "mtg-bulk-actions-divider" });
 
-	// Supprimer — confirmation à deux étapes, même idiome que My Collection
-	// au lieu de l'ancien texte "Confirm delete?" sans possibilité d'annuler.
+	// Delete — two-step confirmation, same idiom as My Collection instead of
+	// the old "Confirm delete?" text with no possibility of canceling.
 	const deleteBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	setIcon(deleteBtn.createSpan({ cls: "mtg-bulk-action-btn-icon" }), "trash-2");
 	deleteBtn.createSpan({ text: "Delete" });
@@ -340,8 +339,8 @@ export function renderWantlistBulkActionsBar(this: MTGCollectionView,
 }
 
 
-// Même principe que listSelectionTxtLines (collection-render.ts), côté
-// wantlist — partagé entre exportWantlistSelectionTxt et
+// Same principle as listSelectionTxtLines (collection-render.ts), on the
+// wantlist side — shared between exportWantlistSelectionTxt and
 // copyWantlistSelectionTxt.
 
 export function wantlistSelectionTxtLines(this: MTGCollectionView): string {
@@ -354,8 +353,8 @@ export function exportWantlistSelectionTxt(this: MTGCollectionView) {
 	this.downloadTextFile(this.wantlistSelectionTxtLines(), "mtg-wantlist-selection.txt");
 }
 
-// Pendant wantlist du "Copy TXT" de My Collection — voir copyListSelectionTxt
-// (collection-render.ts) pour le raisonnement sur .catch().
+// Wantlist counterpart of My Collection's "Copy TXT" — see
+// copyListSelectionTxt (collection-render.ts) for the reasoning on .catch().
 
 export function copyWantlistSelectionTxt(this: MTGCollectionView) {
 	const count = this.selectedWantlistCardIds.size;
@@ -372,10 +371,10 @@ export function exportWantlistCsv(this: MTGCollectionView, wantlistId: string) {
 	this.downloadWantlistCsv(cards, filename);
 }
 
-// Même format "qty - name" que listTxtLines (collection-render.ts), mais pour LA
-// wantlist entière (WantlistSettingsModal, "Export"/"Copy to clipboard")
-// plutôt que la sélection en cours — voir wantlistSelectionTxtLines
-// ci-dessus, un sous-ensemble différent de settings.wantlist.
+// Same "qty - name" format as listTxtLines (collection-render.ts), but for the
+// ENTIRE wantlist (WantlistSettingsModal, "Export"/"Copy to clipboard") rather
+// than the current selection — see wantlistSelectionTxtLines above, a different
+// subset of settings.wantlist.
 
 export function wantlistTxtLines(this: MTGCollectionView, wantlistId: string): string {
 	const cards = this.plugin.settings.wantlist.filter((c) => c.listId === wantlistId);
@@ -389,9 +388,9 @@ export function exportWantlistTxt(this: MTGCollectionView, wantlistId: string) {
 	this.downloadTextFile(this.wantlistTxtLines(wantlistId), filename);
 }
 
-// navigator.clipboard.writeText : même précédent déjà établi (voir
-// copyListTxt, collection-render.ts) — .catch() explicite plutôt qu'une résolution
-// supposée systématique.
+// navigator.clipboard.writeText: same precedent already established (see
+// copyListTxt, collection-render.ts) — explicit .catch() rather than a resolution
+// assumed to always happen.
 
 export function copyWantlistTxt(this: MTGCollectionView, wantlistId: string) {
 	const cardCount = this.plugin.settings.wantlist.filter((c) => c.listId === wantlistId).length;
@@ -438,14 +437,14 @@ export function wantlistGroupsToTxtLines(this: MTGCollectionView, groups: Wantli
 		.join("\n\n");
 }
 
-// Même principe, côté deck.
+// Same principle, on the deck side.
 
 export function triggerImportIntoWantlist(this: MTGCollectionView, wantlistId: string) {
 	this.triggerImportWantlist(wantlistId);
 }
 
-// "Import TXT" de WantlistSettingsModal — même chose que triggerImportTxtIntoList (collection-render.ts),
-// côté wantlist (plugin.importDecklistToWantlist).
+// "Import TXT" of WantlistSettingsModal — same thing as triggerImportTxtIntoList (collection-render.ts),
+// on the wantlist side (plugin.importDecklistToWantlist).
 
 export function triggerImportTxtIntoWantlist(this: MTGCollectionView, wantlistId: string) {
 	const wantlist = this.plugin.settings.wantlists.find((w) => w.id === wantlistId);
@@ -456,26 +455,26 @@ export function triggerImportTxtIntoWantlist(this: MTGCollectionView, wantlistId
 	});
 }
 
-// Crée la vignette d'une carte avec le symbole d'édition en badge, en bas à
-// droite, coloré selon la rareté (comme sur les vraies cartes / Delver).
-// Replie/déplie UNE ligne à la fois via une classe CSS pure (technique
-// "grid-template-rows: 0fr / 1fr" sur l'enveloppe .mtg-card-row-outer) —
-// pas de mesure ni d'animation pilotée en JS, donc pas d'état à
-// désynchroniser sur des clics rapides (c'était la cause des groupes qui
-// refusaient de se rouvrir). Bien plus fluide que l'ancienne approche par
-// max-height, qui forçait un recalcul de mise en page à chaque image.
-// Mode Tableau excepté : la ligne y est aplatie (display:contents) et n'a
-// donc aucune boîte propre — ni hauteur ni opacité à animer sur l'enveloppe
-// elle-même. On applique un léger fondu directement sur chaque CELLULE
-// (nom, édition, prix, etc., qui ont chacune leur propre boîte) avant de
-// masquer la ligne — pas un vrai repliement fluide, juste une disparition
-// un peu plus douce qu'un basculement instantané.
+// Creates a card's thumbnail with the set symbol as a badge, bottom right,
+// colored according to rarity (as on real cards / Delver).
+// Collapses/expands ONE row at a time via a pure CSS class
+// ("grid-template-rows: 0fr / 1fr" technique on the .mtg-card-row-outer
+// wrapper) — no measurement nor JS-driven animation, so no state to
+// desynchronize on quick clicks (that was the cause of the groups that
+// refused to reopen). Far smoother than the old max-height approach, which
+// forced a layout recalculation on every frame.
+// Table mode excepted: the row is flattened there (display:contents) and
+// therefore has no box of its own — neither height nor opacity to animate
+// on the wrapper itself. A light fade is applied directly to each CELL
+// (name, set, price, etc., which each have their own box) before hiding the
+// row — not a true fluid collapse, just a slightly softer disappearance
+// than an instant toggle.
 
 
 export function openWantlist(this: MTGCollectionView, wantlistId: string) {
 	this.activeSection = "wantlists";
 	this.openWantlistId = wantlistId;
-	// Voir le commentaire équivalent dans openList().
+	// See the equivalent comment in openList().
 	this.selectedWantlistIds.clear();
 	this.wantlistGallerySelectMode = false;
 	this.render();
@@ -608,11 +607,11 @@ export function renderWantlistGrid(this: MTGCollectionView) {
 		this.wantlistGalleryBulkBarWasVisible = false;
 	}
 
-	// Petit titre « Wantlists: … » avec le nombre de wantlists, « x of y
-	// wantlists match » pendant une recherche — même titre (et même classe) que
-	// « Lists » dans renderListGrid, demandé explicitement pour les 3 galeries.
-	// "All Wanted" (tuile virtuelle) n'est comptée ni dans l'un ni dans l'autre
-	// nombre : ce n'est pas une wantlist de l'utilisateur.
+	// Small "Wantlists: …" title with the number of wantlists, "x of y
+	// wantlists match" during a search — same title (and same class) as "Lists"
+	// in renderListGrid, explicitly requested for the 3 galleries. "All Wanted"
+	// (virtual tile) is counted in neither number: it is not one of the user's
+	// wantlists.
 	this.bodyEl.createDiv({
 		cls: "mtg-list-grid-section-title",
 		text: formatCountTitle(
@@ -623,8 +622,8 @@ export function renderWantlistGrid(this: MTGCollectionView) {
 		),
 	});
 
-	// Nombre de colonnes automatique (1/2/4 selon la largeur du panneau) —
-	// voir renderListGrid et .mtg-set-grid-wrap dans styles.css.
+	// Automatic number of columns (1/2/4 depending on the panel's width) — see
+	// renderListGrid and .mtg-set-grid-wrap in styles.css.
 	const gridWrap = this.bodyEl.createDiv({ cls: "mtg-set-grid-wrap" });
 	const grid = gridWrap.createDiv({
 		cls: `mtg-set-grid${this.wantlistGallerySelectMode ? " mtg-gallery-selecting" : ""}`,
@@ -651,33 +650,31 @@ export function renderWantlistTile(this: MTGCollectionView, grid: HTMLElement, g
 	const tile = grid.createDiv({
 		cls: `mtg-set-tile${isVirtual ? " mtg-set-tile-all-wanted" : ""}`,
 	});
-	// "All Wanted" traité exactement comme "All Cards" côté My Collection
-	// (demandé explicitement, capture à l'appui) : pas d'image/dégradé de
-	// fond, gris foncé fixe à la place (.mtg-set-tile-all-wanted, calquée
-	// sur .mtg-set-tile-all-cards) — voir renderListTile pour le
-	// raisonnement complet, transposé tel quel ici.
+	// "All Wanted" treated exactly like "All Cards" on the My Collection side
+	// (explicitly requested, screenshot in support): no background
+	// image/gradient, fixed dark gray instead (.mtg-set-tile-all-wanted,
+	// modeled on .mtg-set-tile-all-cards) — see renderListTile for the full
+	// reasoning, transposed as is here.
 	if (group.coverImage && !isVirtual) {
 		const bg = tile.createDiv({ cls: "mtg-set-tile-bg" });
 		bg.style.backgroundImage = `linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.85)), url("${group.coverImage}")`;
 	}
 	const content = tile.createDiv({ cls: "mtg-set-tile-content" });
 
-	// Agrégat virtuel "All Wanted" : pictogramme (le même cœur que "My
-	// Wantlists" dans le menu de gauche) + texte, ancrés en BAS de la
-	// tuile — pas le layout centré verticalement d'Inbox/"All Cards"
-	// (mtg-set-tile-content-pinned) mais la même rangée imbriquée
-	// (mtg-set-tile-icon-row) qu'une liste normale avec un pictogramme
-	// choisi manuellement juste en dessous : demandé explicitement
-	// ("place juste les éléments en bas, comme nous le faisons pour les
-	// listes") après un premier essai centré verticalement — "All
-	// Wanted" partage la grille des wantlists normales (min-height
-	// 200px, .mtg-set-tile) plutôt que la grille dédiée à hauteur
-	// réduite d'Inbox/"All Cards" (.mtg-pinned-tiles-grid, 100px), où le
-	// centrage se voyait à peine ; ici il laissait un vide visible
-	// au-dessus du texte. content garde donc son flex-direction/
-	// justify-content par défaut (colonne, ancrée en bas) au lieu du
-	// modificateur -pinned, exactement comme pour l'icône manuelle
-	// ci-dessous.
+	// Virtual aggregate "All Wanted": pictogram (the same heart as "My
+	// Wantlists" in the left menu) + text, anchored at the BOTTOM of the tile
+	// — not the vertically centered layout of Inbox/"All Cards"
+	// (mtg-set-tile-content-pinned) but the same nested row
+	// (mtg-set-tile-icon-row) as a normal list with a manually chosen
+	// pictogram just below: explicitly requested ("just put the elements at
+	// the bottom, as we do for lists") after a first vertically centered
+	// attempt — "All Wanted" shares the grid of the normal wantlists
+	// (min-height 200px, .mtg-set-tile) rather than the dedicated
+	// reduced-height grid of Inbox/"All Cards" (.mtg-pinned-tiles-grid,
+	// 100px), where the centering was barely noticeable; here it left a
+	// visible gap above the text. content therefore keeps its default
+	// flex-direction/justify-content (column, anchored at the bottom) instead
+	// of the -pinned modifier, exactly as for the manual icon below.
 	let textParent: HTMLElement = content;
 	if (isVirtual) {
 		const iconRow = content.createDiv({ cls: "mtg-set-tile-icon-row" });
@@ -686,11 +683,10 @@ export function renderWantlistTile(this: MTGCollectionView, grid: HTMLElement, g
 		textParent = iconRow.createDiv({ cls: "mtg-set-tile-pinned-text" });
 	}
 
-	// Pictogramme choisi manuellement (WantlistSettingsModal, "Choose
-	// icon") — même bloc/même raisonnement que renderListTile
-	// (collection-render.ts, voir son propre commentaire), transposé tel quel côté wantlist :
-	// jamais pour l'agrégat virtuel "All Wanted" (pas de Wantlist
-	// réelle derrière, donc pas d'icône à lui poser).
+	// Pictogram chosen manually (WantlistSettingsModal, "Choose icon") — same block/same
+	// reasoning as renderListTile (collection-render.ts, see its own comment), transposed as
+	// is on the wantlist side: never for the virtual aggregate "All Wanted" (no real Wantlist
+	// behind it, so no icon to set on it).
 	if (group.icon && !isVirtual) {
 		const iconRow = content.createDiv({ cls: "mtg-set-tile-icon-row" });
 		const iconCircle = iconRow.createDiv({ cls: "mtg-set-tile-pictogram-circle" });
@@ -753,8 +749,8 @@ export function renderWantlistTile(this: MTGCollectionView, grid: HTMLElement, g
 	}
 }
 
-// Barre d'actions groupées de la grille "My Wantlists" — même structure
-// que renderListGalleryBulkActionsBar.
+// Bulk actions bar of the "My Wantlists" grid — same structure as
+// renderListGalleryBulkActionsBar.
 
 export function renderWantlistGalleryBulkActionsBar(this: MTGCollectionView, 
 	container: HTMLElement,
@@ -865,8 +861,8 @@ export function renderWantlistGalleryBulkActionsBar(this: MTGCollectionView,
 		);
 	});
 
-	// Fusionne les wantlists sélectionnées en une nouvelle — même
-	// raisonnement que le bouton "Merge" de My Collection (voir
+	// Merges the selected wantlists into a new one — same reasoning as the
+	// "Merge" button of My Collection (see
 	// renderListGalleryBulkActionsBar/MergeWantlistsModal).
 	const mergeBtn = bar.createEl("button", { text: "Merge", cls: "mtg-bulk-action-btn" });
 	actionButtons.push(mergeBtn);
@@ -935,19 +931,18 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 		return;
 	}
 
-	// Échafaudage flex-colonne (voir .mtg-collection-body-detail,
-	// styles.css) : stickyHeader (hauteur naturelle) puis
-	// .mtg-detail-scroll-area (le reste de la hauteur disponible, avec sa
-	// propre scrollbar — voir plus bas) se partagent ainsi toute la
-	// hauteur de this.bodyEl, qui prend lui-même toute la hauteur de
-	// this.mainEl dans ce mode. Retiré à chaque render() (voir plus haut
-	// dans render()) avant d'être potentiellement rajouté ici — jamais
-	// hérité tel quel via cloneNode(false).
+	// Flex-column scaffolding (see .mtg-collection-body-detail, styles.css):
+	// stickyHeader (natural height) then .mtg-detail-scroll-area (the rest of
+	// the available height, with its own scrollbar — see further down) thus
+	// share the whole height of this.bodyEl, which itself takes the whole
+	// height of this.mainEl in this mode. Removed on every render() (see
+	// higher up in render()) before potentially being added back here — never
+	// inherited as is via cloneNode(false).
 	this.bodyEl.addClass("mtg-collection-body-detail");
 	const stickyHeader = this.bodyEl.createDiv({ cls: "mtg-detail-sticky-header" });
 
-	// Voir renderListDetail pour le raisonnement complet — group.coverImage
-	// déjà calculé ci-dessus (pickCoverImage/groupByWantlist, core/price.ts).
+	// See renderListDetail for the full reasoning — group.coverImage already
+	// computed above (pickCoverImage/groupByWantlist, core/price.ts).
 	const headerBanner = stickyHeader.createDiv({ cls: "mtg-detail-header-banner" });
 	if (group.coverImage) {
 		const bannerBg = headerBanner.createDiv({ cls: "mtg-detail-banner-bg" });
@@ -972,13 +967,13 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 
 	const titleRow = headerBanner.createDiv({ cls: "mtg-deck-title-row" });
 	const titleInfo = titleRow.createDiv({ cls: "mtg-title-info" });
-	// Ouvre les settings (WantlistSettingsModal) au clic sur le titre, au
-	// lieu du renommage en ligne d'origine — demandé explicitement, le
-	// renommage reste accessible depuis cette même fenêtre.
-	// openWantlistSettings est réutilisé plus bas par menuBtn (le bouton
-	// "...") pour ne pas dupliquer la construction de la modale. isVirtual
-	// ("All Wanted") n'a pas de settings du tout (pas de menuBtn non plus,
-	// voir plus bas) : titre non cliquable, comme avant.
+	// Opens the settings (WantlistSettingsModal) on clicking the title,
+	// instead of the original inline rename — explicitly requested, renaming
+	// remains accessible from this same window. openWantlistSettings is reused
+	// further down by menuBtn (the "..." button) to avoid duplicating the
+	// construction of the modal. isVirtual ("All Wanted") has no settings at
+	// all (no menuBtn either, see further down): title not clickable, as
+	// before.
 	const openWantlistSettings = () =>
 		new WantlistSettingsModal(this.app, this.plugin, this, group.id).open();
 	if (!isVirtual) {
@@ -994,11 +989,10 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 		text: `${group.cards.length} unique · ${group.totalQty} cards · ${formatMoney(group.totalValue, this.plugin.settings.priceCurrency)}`,
 	});
 
-	// "+ Add cards"/"Select cards"/"..." vivaient auparavant sur la
-	// rangée du titre, juste au-dessus — déplacés ici, à droite de la
-	// barre de recherche, pour gagner de la hauteur verticale (demandé
-	// explicitement, capture d'écran annotée à l'appui, même changement
-	// que My Collection/My Decks).
+	// "+ Add cards"/"Select cards"/"..." used to live on the title row, just
+	// above — moved here, to the right of the search bar, to gain vertical
+	// height (explicitly requested, annotated screenshot in support, same
+	// change as My Collection/My Decks).
 	const searchActionsRow = stickyHeader.createDiv({ cls: "mtg-detail-search-actions-row" });
 	const filterRow = searchActionsRow.createDiv({ cls: "mtg-collection-toolbar mtg-inline-filter-row" });
 	const actionsRow = searchActionsRow.createDiv({ cls: "mtg-detail-search-actions" });
@@ -1099,14 +1093,13 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 		this.cachedWantlistCardGroups = cardGroups;
 		this.lastWantlistDataSignature = dataSignature;
 	}
-	// Groupe épinglé "Recently Added" — même principe que dans
-	// renderListDetail (voir son propre commentaire, plus détaillé) :
-	// recalculé à chaque rendu plutôt que mis en cache avec cardGroups,
-	// prépendu (pas exclu de son groupe normal) pour que pagination/
-	// navigation/rendu existants le traitent gratuitement, affiché aussi
-	// sur "All Wanted" (recentlyAddedWantlistCardIds est un Set global de
-	// session, pas par wantlist), et uniquement quand les cartes sont
-	// groupées (wantlistGroupBy !== "none").
+	// Pinned "Recently Added" group — same principle as in renderListDetail
+	// (see its own, more detailed comment): recomputed on every render rather
+	// than cached with cardGroups, prepended (not excluded from its normal
+	// group) so that the existing pagination/navigation/rendering treat it for
+	// free, also displayed on "All Wanted" (recentlyAddedWantlistCardIds is a
+	// global session Set, not per wantlist), and only when the cards are
+	// grouped (wantlistGroupBy !== "none").
 	if (this.wantlistGroupBy !== "none") {
 		const recentIds = this.plugin.recentlyAddedWantlistCardIds;
 		if (recentIds.size > 0) {
@@ -1128,7 +1121,7 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 	const navOrder = cardGroups.flatMap((g) => g.cards);
 	this.navOrderForWantlistClick = navOrder;
 
-	// Voir le commentaire équivalent dans renderListDetail.
+	// See the equivalent comment in renderListDetail.
 	const scrollArea = this.bodyEl.createDiv({ cls: "mtg-detail-scroll-area" });
 	scrollArea.addEventListener("scroll", () => this.handleScrollAreaScroll(scrollArea));
 	setupPanelScrollFade(scrollArea);
@@ -1150,8 +1143,8 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 	}
 
 	if (filteredCards.length === 0) {
-		// Une recherche sans résultat n'est pas une wantlist vide — voir le
-		// commentaire équivalent dans renderListDetail.
+		// A search with no results is not an empty wantlist — see the equivalent
+		// comment in renderListDetail.
 		list.createEl("p", {
 			text:
 				group.cards.length > 0
@@ -1248,8 +1241,8 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 					}
 				});
 			} else if (cardGroup.isRecentlyAdded) {
-				// Voir la même branche dans renderListDetail — icône Lucide
-				// locale, pas de fetch réseau nécessaire.
+				// See the same branch in renderListDetail — local Lucide icon, no network
+				// fetch needed.
 				const iconEl = centerEl.createSpan({ cls: "mtg-group-header-icon" });
 				setIcon(iconEl, "clock");
 				centerEl.createSpan({ cls: "mtg-group-header-label", text: cardGroup.label });
@@ -1286,11 +1279,10 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 
 			const isSelected = this.selectedWantlistCardIds.has(card.id);
 			const signature = this.wantlistCardRowSignature(card, isSelected);
-			// Même clé "recent:" que cachedListRowElements (voir son propre
-			// commentaire, plus détaillé) : une carte récemment ajoutée
-			// apparaît à la fois dans ce groupe épinglé et dans son groupe
-			// normal, un cache keyé uniquement par card.id ferait sinon
-			// partager le même nœud DOM aux deux endroits.
+			// Same "recent:" key as cachedListRowElements (see its own, more detailed
+			// comment): a recently added card appears both in this pinned group and in
+			// its normal group, a cache keyed only by card.id would otherwise make the
+			// same DOM node shared between the two places.
 			const cacheKey = cardGroup.isRecentlyAdded ? `recent:${card.id}` : card.id;
 			const cached = this.cachedWantlistRowElements.get(cacheKey);
 			const row =
@@ -1313,11 +1305,10 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 		if (!liveWantlistRowIds.has(id)) this.cachedWantlistRowElements.delete(id);
 	}
 
-	// navOrder.length (pas filteredCards.length) : voir le commentaire
-	// jumeau dans collection-render.ts — le groupe épinglé "Recently
-	// Added" double chaque carte récente, donc filteredCards.length sous-
-	// compte le nombre réel de lignes à travers cardGroups et coupait la
-	// pagination trop tôt.
+	// navOrder.length (not filteredCards.length): see the twin comment in
+	// collection-render.ts — the pinned "Recently Added" group doubles each
+	// recent card, so filteredCards.length undercounts the real number of rows
+	// across cardGroups and cut the pagination off too early.
 	if (navOrder.length > this.wantlistRenderLimit) {
 		this.renderLoadMoreSentinel(list, () => {
 			this.wantlistRenderLimit += RENDER_BATCH_SIZE;
@@ -1326,7 +1317,7 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 	}
 }
 
-// Voir collectionCardRowSignature (My Collection) pour le principe général.
+// See collectionCardRowSignature (My Collection) for the general principle.
 
 export function wantlistCardRowSignature(this: MTGCollectionView, card: WantlistCard, isSelected: boolean): string {
 	return [
@@ -1348,13 +1339,13 @@ export function wantlistCardRowSignature(this: MTGCollectionView, card: Wantlist
 		this.plugin.settings.priceCurrency,
 		isSelected,
 		this.wantlistSelectMode,
-		// Voir collectionCardRowSignature — même raison d'être pour wantlistViewMode.
+		// See collectionCardRowSignature — same purpose for wantlistViewMode.
 		phoneAwareViewMode(this.wantlistViewMode),
 	].join("|");
 }
 
-// Voir buildCollectionCardRow (My Collection) pour le principe général — le clic
-// principal référence this.navOrderForWantlistClick plutôt que navOrder.
+// See buildCollectionCardRow (My Collection) for the general principle — the
+// main click references this.navOrderForWantlistClick rather than navOrder.
 
 export function buildWantlistCardRow(this: MTGCollectionView, card: WantlistCard, isSelected: boolean): HTMLElement {
 	const row = createDiv();
@@ -1375,8 +1366,8 @@ export function buildWantlistCardRow(this: MTGCollectionView, card: WantlistCard
 	if (card.finish !== "regular") {
 		nameLine.createSpan({ cls: "mtg-foil-pill", text: getFinishLabel(card.finish) });
 	}
-	// Voir buildCollectionCardRow (My Collection) pour le principe général de cette
-	// colonne/de cet aperçu.
+	// See buildCollectionCardRow (My Collection) for the general principle of this
+	// column/this preview.
 	if (phoneAwareViewMode(this.wantlistViewMode) === "table") {
 		const manaValueCell = body.createDiv({ cls: "mtg-table-mana-value-cell" });
 		if (card.manaCost) {
@@ -1499,11 +1490,10 @@ export function buildWantlistCardRow(this: MTGCollectionView, card: WantlistCard
 	return row;
 }
 
-// Vue Carte (My Wantlists) — voir buildCollectionCardTile (My Collection) pour le
-// principe général. WantlistCard n'a pas de langue/condition (voir
-// CLAUDE.md "Data model notes"), donc pas de ligne langue/condition ici —
-// seulement édition/numéro (+ pastille foil), quantité, "Mark as acquired"
-// et prix.
+// Card view (My Wantlists) — see buildCollectionCardTile (My Collection) for the
+// general principle. WantlistCard has no language/condition (see CLAUDE.md "Data
+// model notes"), so no language/condition row here — only set/number (+ foil
+// pill), quantity, "Mark as acquired" and price.
 
 export function buildWantlistCardTile(this: MTGCollectionView, card: WantlistCard, isSelected: boolean): HTMLElement {
 	const tile = createDiv();
@@ -1525,25 +1515,25 @@ export function buildWantlistCardTile(this: MTGCollectionView, card: WantlistCar
 		false,
 		"tile"
 	);
-	// Repère "souhaité" (coin haut-gauche, cœur blanc sur fond couleur
-	// d'accent) — demandé explicitement, capture à l'appui : toute carte de
-	// wantlist EST par nature "voulue", contrairement au ruban "Wanted"
-	// existant (mtg-thumb-wanted-ribbon) qui, lui, marque dans un DECK une
-	// carte encore non possédée — deux concepts différents, donc deux
-	// badges différents plutôt qu'une réutilisation. Posé directement sur
-	// le wrap retourné par renderThumbWithBadge plutôt que d'ajouter un
-	// paramètre à cette fonction partagée (Collection/Deck/Wantlist) — ce
-	// badge n'a de sens que côté Wantlist. Icône Lucide directe (setIcon)
-	// plutôt qu'un helper partagé dans card-detail-fx.ts — ce fichier reste
-	// volontairement sans dépendance obsidian (voir son propre en-tête).
+	// "Wanted" marker (top-left corner, white heart on an accent-color
+	// background) — explicitly requested, screenshot in support: every
+	// wantlist card IS by nature "wanted", unlike the existing "Wanted" ribbon
+	// (mtg-thumb-wanted-ribbon) which, for its part, marks in a DECK a card
+	// that is not yet owned — two different concepts, so two different badges
+	// rather than a reuse. Placed directly on the wrap returned by
+	// renderThumbWithBadge rather than adding a parameter to that shared
+	// function (Collection/Deck/Wantlist) — this badge only makes sense on the
+	// Wantlist side. Direct Lucide icon (setIcon) rather than a shared helper
+	// in card-detail-fx.ts — that file deliberately stays free of any obsidian
+	// dependency (see its own header).
 	const wantBadge = thumbWrap.createDiv({ cls: "mtg-wantlist-heart-badge" });
 	setIcon(wantBadge, "heart");
 
 	const info = tile.createDiv({ cls: "mtg-card-tile-info" });
 
-	// Ligne 1 : icône d'édition + code/numéro à gauche ; "Mark as acquired"
-	// + foil à droite (pas de langue/état ici — WantlistCard n'a
-	// aucun des deux, voir CLAUDE.md "Data model notes").
+	// Row 1: set icon + code/number on the left; "Mark as acquired" + foil on
+	// the right (no language/condition here — WantlistCard has neither, see
+	// CLAUDE.md "Data model notes").
 	const row1 = info.createDiv({ cls: "mtg-card-tile-row1" });
 	const row1Left = row1.createDiv({ cls: "mtg-card-tile-row1-left" });
 	const setIconEl = row1Left.createSpan({ cls: "mtg-card-tile-set-icon" });
@@ -1552,9 +1542,9 @@ export function buildWantlistCardTile(this: MTGCollectionView, card: WantlistCar
 		setSvgMarkup(setIconEl, svg);
 		const svgEl = setIconEl.querySelector("svg");
 		if (svgEl) {
-			// Un peu plus grand que le badge en coin qu'il remplace (13px) —
-			// ici il porte seul l'identification de l'édition, sans logo
-			// redondant sur l'image (voir renderThumbWithBadge).
+			// A bit larger than the corner badge it replaces (13px) — here it alone
+			// carries the identification of the set, without a redundant logo on the
+			// image (see renderThumbWithBadge).
 			svgEl.setAttribute("width", "16");
 			svgEl.setAttribute("height", "16");
 		}
@@ -1590,13 +1580,12 @@ export function buildWantlistCardTile(this: MTGCollectionView, card: WantlistCar
 		row1Right.createSpan({ cls: "mtg-foil-pill", text: getFinishLabel(card.finish) });
 	}
 
-	// Ligne 2 : quantité, flèches horizontales — voir buildCollectionCardTile (My
-	// Collection) pour le principe général.
+	// Row 2: quantity, horizontal arrows — see buildCollectionCardTile (My
+	// Collection) for the general principle.
 	const qtyRow = info.createDiv({ cls: "mtg-card-tile-qty-row" });
-	// mtg-card-tile-stepper : boutons +/- agrandis, scopés à la vue Carte
-	// uniquement — la fenêtre de détail garde ses propres boutons à leur
-	// taille d'origine (mtg-stepper-horizontal seul), ce modificateur ne
-	// s'applique qu'ici.
+	// mtg-card-tile-stepper: enlarged +/- buttons, scoped to the Card view
+	// only — the detail window keeps its own buttons at their original size
+	// (mtg-stepper-horizontal alone), this modifier only applies here.
 	const stepper = qtyRow.createDiv({ cls: "mtg-stepper mtg-stepper-horizontal mtg-card-tile-stepper" });
 	stepper.addEventListener("click", (evt) => {
 		if (!this.wantlistSelectMode) evt.stopPropagation();
@@ -1619,9 +1608,9 @@ export function buildWantlistCardTile(this: MTGCollectionView, card: WantlistCar
 		this.plugin.changeWantlistCardCount(card.id, -1, () => this.render());
 	});
 
-	// Ligne 3 : prix, sur une seule ligne — voir buildCollectionCardTile (My
-	// Collection) pour pourquoi la ligne est toujours créée, prix connu ou
-	// non (garde une hauteur de tuile cohérente dans toute la rangée).
+	// Row 3: price, on a single line — see buildCollectionCardTile (My
+	// Collection) for why the row is always created, price known or not (keeps
+	// a consistent tile height across the whole row).
 	const priceLine = info.createDiv({ cls: "mtg-card-tile-price-line" });
 	const currency = this.plugin.settings.priceCurrency;
 	const unitPrice = formatCardPrice(card, currency);

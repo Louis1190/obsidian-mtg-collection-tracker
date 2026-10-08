@@ -25,23 +25,22 @@ import type MTGCollectionPlugin from "../plugin";
 export const GITHUB_POLL_ACTIVE_MS = 2 * 1000;
 export const GITHUB_POLL_IDLE_MS = 10 * 1000;
 export const GITHUB_ACTIVE_WINDOW_MS = 60 * 1000;
-// Le minuteur bat plus vite que la cadence la plus rapide : c'est lui qui décide, à chaque battement, si
-// un sondage est dû (un setInterval à durée fixe ne saurait pas changer de cadence).
+// The timer beats faster than the fastest pace: it is what decides, at each beat, whether a poll is due
+// (a fixed-duration setInterval couldn't change pace).
 export const GITHUB_TICK_MS = 1000;
-// Envoi : 1 s après la première modification (le temps de grouper une rafale), puis au plus un envoi
-// toutes les 6 s. Chaque envoi est un commit du fichier entier : si l'utilisateur édite sans arrêt
-// (3 envois ou plus dans la dernière minute), l'écart passe à 20 s pour ne pas gonfler le dépôt.
+// Upload: 1 s after the first change (time to group a burst), then at most one upload every 6 s.
+// Each upload is a commit of the whole file: if the user edits non-stop (3 uploads or more in the
+// last minute), the gap goes to 20 s so as not to bloat the repository.
 export const GITHUB_PUSH_DEBOUNCE_MS = 1 * 1000;
 export const GITHUB_MIN_GAP_MS = 6 * 1000;
 export const GITHUB_BUSY_GAP_MS = 20 * 1000;
 export const GITHUB_BUSY_PUSHES = 3;
 const BUSY_WINDOW_MS = 60 * 1000;
-// Lectures/envois successifs dans un même cycle (un conflit en provoque un de plus).
+// Successive reads/uploads within a single cycle (a conflict causes one more).
 const MAX_PASSES = 4;
-// Après un échec : 5 s, 10 s, 20 s, 40 s, puis 1 min au plus pour un serveur en erreur ; pour une simple panne de
-// réseau (téléphone qui change de Wi-Fi, mise en veille) on réessaie bien plus vite, 3 s doublées jusqu'à 15 s :
-// l'attente d'une minute (5 min avant) se payait en synchronisations qui ne partaient plus alors que le réseau
-// était revenu depuis longtemps.
+// After a failure: 5 s, 10 s, 20 s, 40 s, then 1 min at most for a server in error; for a simple network outage
+// (phone changing Wi-Fi, sleep) we retry much faster, 3 s doubled up to 15 s: the one-minute wait (5 min before)
+// was paid for in syncs that no longer went out although the network had been back for a long time.
 const BACKOFF_BASE_MS = 5 * 1000;
 const BACKOFF_MAX_MS = 60 * 1000;
 const NETWORK_BACKOFF_BASE_MS = 3 * 1000;
@@ -49,13 +48,13 @@ const NETWORK_BACKOFF_MAX_MS = 15 * 1000;
 const TOKEN_SECRET_ID = "mtg-collection-github-token";
 const TOKEN_LOCAL_KEY = "mtg-collection-tracker:github-token";
 
-// Ce que GitHub ne reçoit jamais : un secret ne quitte pas l'appareil dans un fichier (même politique
-// que les sauvegardes). Retiré aussi des comparaisons et de la fusion avec ce que GitHub renvoie.
+// What GitHub never receives: a secret does not leave the device in a file (same policy as backups).
+// Also removed from the comparisons and from the merge with what GitHub sends back.
 export const GITHUB_UNSHARED_KEYS: ReadonlySet<string> = new Set(["cardbaseApiKey"]);
 
 export type GithubSyncReason = "poll" | "focus" | "push" | "flush" | "manual" | "startup";
 
-// Un fragment tel que GitHub le porte : le sha de ses octets stockés et son texte JSON.
+// A shard as GitHub holds it: the sha of its stored bytes and its JSON text.
 export interface ShardInfo {
 	sha: string;
 	text: string;
@@ -64,36 +63,36 @@ export interface ShardInfo {
 export interface GithubSyncState {
 	chain: Promise<void>;
 	pollQueued: boolean;
-	/** L'état local contient peut-être quelque chose que GitHub n'a pas. */
+	/** The local state perhaps contains something GitHub doesn't have. */
 	dirty: boolean;
-	/** Ce que GitHub porte, fragment par fragment (nom du fichier → sha + texte), tel qu'on l'a lu ou envoyé. */
+	/** What GitHub holds, shard by shard (file name → sha + text), as read or sent. */
 	shards: Map<string, ShardInfo>;
-	/** Dernière version recomposée VENUE de GitHub : point de départ des fusions (jamais nos envois). */
+	/** Last recomposed version COMING from GitHub: starting point of the merges (never our uploads). */
 	baseText: string | null;
-	/** L'ancien fichier unique (data.json.gz, ou data.json) a déjà été lu (une fois) pour amorcer les fragments. */
+	/** The old single file (data.json.gz, or data.json) has already been read (once) to seed the shards. */
 	legacyTried: boolean;
-	/** ETag du dernier listage du dossier : un 304 veut dire "rien n'a changé nulle part". */
+	/** ETag of the last folder listing: a 304 means "nothing has changed anywhere". */
 	listEtag: string | null;
 	pushTimer: number | null;
 	lastPushAt: number;
-	/** Dates des derniers envois réussis (pour reconnaître une édition continue). */
+	/** Dates of the last successful uploads (to recognize continuous editing). */
 	pushTimes: number[];
 	failures: number;
 	retryAt: number;
-	/** L'attente en cours vient d'une limite de débit de GitHub : à respecter même quand l'utilisateur revient sur l'appli. */
+	/** The wait in progress comes from a GitHub rate limit: to be respected even when the user comes back to the app. */
 	rateLimited: boolean;
-	/** Dernier échange réussi (pour dire depuis quand ça ne marche plus). */
+	/** Last successful exchange (to say since when it hasn't been working). */
 	lastOkAt: number;
-	/** Délai maximum d'une requête (ms) ; celui de l'API par défaut. Les tests le raccourcissent. */
+	/** Maximum duration of a request (ms); the API's default one. Tests shorten it. */
 	requestTimeoutMs?: number;
-	/** Jeton / dépôt / droits : inutile de réessayer avant que l'utilisateur ne change quelque chose. */
+	/** Token / repository / permissions: no point retrying before the user changes something. */
 	fatal: boolean;
 	status: { state: "off" | "idle" | "syncing" | "error"; message: string; at: number };
-	/** Appelés à chaque changement d'état (l'écran Home affiche l'état sans ouvrir les réglages). */
+	/** Called on every state change (the Home screen shows the state without opening the settings). */
 	listeners: Set<() => void>;
-	/** Jusqu'à quand le sondage reste rapide même si la fenêtre n'est pas visible (voir pollIntervalMs). */
+	/** Until when polling stays fast even if the window isn't visible (see pollIntervalMs). */
 	activeUntil: number;
-	/** Dernier sondage lancé par le minuteur (pour savoir si le suivant est dû). */
+	/** Last poll launched by the timer (to know whether the next is due). */
 	lastPollAt: number;
 }
 
@@ -147,7 +146,7 @@ export function setGithubToken(this: MTGCollectionPlugin, token: string): void {
 		const store = (this.app as unknown as { secretStorage?: { setSecret?: (id: string, v: string) => void } }).secretStorage;
 		if (store && typeof store.setSecret === "function") {
 			store.setSecret(TOKEN_SECRET_ID, value);
-			// Plus rien en clair dans le stockage local si le coffre sécurisé existe.
+			// Nothing left in plain text in local storage if the secure vault exists.
 			this.app.saveLocalStorage(TOKEN_LOCAL_KEY, null);
 			return;
 		}
@@ -175,11 +174,11 @@ function githubTarget(plugin: MTGCollectionPlugin): GithubTarget | null {
 	};
 }
 
-/* --------------------------------- état ------------------------------------ */
+/* --------------------------------- state ------------------------------------ */
 
 function setStatus(plugin: MTGCollectionPlugin, state: GithubSyncState["status"]["state"], message: string) {
 	plugin.github.status = { state, message, at: Date.now() };
-	// Un abonné qui plante (vue en cours de fermeture…) ne doit jamais empêcher la synchronisation.
+	// A subscriber that crashes (view being closed…) must never prevent synchronization.
 	for (const listener of [...plugin.github.listeners]) {
 		try {
 			listener();
@@ -189,15 +188,16 @@ function setStatus(plugin: MTGCollectionPlugin, state: GithubSyncState["status"]
 	}
 }
 
-// S'abonne aux changements d'état ; renvoie la fonction qui se désabonne. Pas de relance à chaque sondage :
-// l'état est réécrit toutes les ~4 s tant que ça marche, l'abonné repeint peu et sans rien reconstruire.
+// Subscribes to state changes; returns the function that unsubscribes. No re-launch on each poll: the state
+// is rewritten every ~4 s as long as it works, the subscriber repaints little and without rebuilding
+// anything.
 export function subscribeGithubStatus(this: MTGCollectionPlugin, listener: () => void): () => void {
 	const listeners = this.github.listeners;
 	listeners.add(listener);
 	return () => void listeners.delete(listener);
 }
 
-// La ligne d'état de Home (voir core/github-status.ts).
+// Home's status line (see core/github-status.ts).
 export function githubHomeStatus(this: MTGCollectionPlugin): GithubHomeStatus | null {
 	const st = this.github;
 	return homeStatusOf({
@@ -250,8 +250,8 @@ function commitMessage(): string {
 	return `Sync from ${device}`;
 }
 
-// Ce qui part sur GitHub : les réglages partagés, sans ce qui est propre à l'appareil et sans la clé d'API
-// cardbase (même politique que les sauvegardes : un secret ne quitte pas l'appareil dans un fichier).
+// What goes to GitHub: the shared settings, without what is specific to the device and without the
+// cardbase API key (same policy as backups: a secret does not leave the device in a file).
 function sharedView(plugin: MTGCollectionPlugin): Record<string, unknown> {
 	return omitKeys(omitDeviceLocal(plugin.settings), GITHUB_UNSHARED_KEYS);
 }
@@ -265,8 +265,8 @@ const NOT_JSON: GithubFailure = {
 	message: "A data file on GitHub is not valid JSON. Fix or delete it there, then sync again.",
 };
 
-// Fragments téléchargés en parallèle (les ENVOIS, eux, se font un par un : deux écritures simultanées sur la
-// même branche se refusent mutuellement).
+// Shards downloaded in parallel (the UPLOADS, for their part, are done one by one: two simultaneous writes
+// on the same branch refuse each other).
 const DOWNLOAD_CONCURRENCY = 4;
 
 function parseShard(text: string): ShardObj | null {
@@ -278,8 +278,8 @@ function parseShard(text: string): ShardObj | null {
 	}
 }
 
-// Télécharge `names`. Rend les fragments lus, ou la première erreur (rien n'est alors appliqué : un fragment lu
-// mais pas fusionné ne serait plus jamais retéléchargé, son sha étant déjà connu).
+// Downloads `names`. Returns the shards read, or the first error (nothing is then applied: a shard read but not
+// merged would never be downloaded again, its sha being already known).
 async function downloadShards(target: GithubTarget, names: string[]): Promise<Map<string, ShardInfo> | GithubFailure> {
 	const out = new Map<string, ShardInfo>();
 	let failure: GithubFailure | null = null;
@@ -293,7 +293,7 @@ async function downloadShards(target: GithubTarget, names: string[]): Promise<Ma
 				failure = got;
 				return;
 			}
-			// Disparu entre le listage et la lecture : le sondage suivant le dira.
+			// Disappeared between the listing and the read: the next poll will say.
 			if (got.kind === "ok") out.set(names[i], { sha: got.sha, text: got.text });
 		}
 	};
@@ -301,24 +301,24 @@ async function downloadShards(target: GithubTarget, names: string[]): Promise<Ma
 	return failure ?? out;
 }
 
-// Fusionne un texte venu de GitHub dans l'état local. null = ce n'est pas un JSON de réglages.
+// Merges a text coming from GitHub into the local state. null = this is not a settings JSON.
 function absorb(plugin: MTGCollectionPlugin, text: string, onReceived: () => void): { needsWrite: boolean } | null {
 	const st = plugin.github;
 	prepareLocal(plugin);
 	const merged = mergeForeignText(plugin, text, st.baseText, GITHUB_UNSHARED_KEYS);
 	if (!merged) return null;
 	st.baseText = text;
-	// Le fichier local (et donc Syncthing) doit suivre ce que GitHub vient d'apporter.
+	// The local file (and therefore Syncthing) must follow what GitHub has just brought.
 	if (merged.changedLocal) {
 		void plugin.persistSettings();
 		onReceived();
-		noteActivity(st); // l'autre appareil est actif : on reste réactif pour la suite
+		noteActivity(st); // the other device is active: we stay responsive for what follows
 	}
 	return { needsWrite: merged.needsWrite };
 }
 
-// Ce que le listage dit de GitHub → ce qu'il faut en télécharger, puis fusion de l'état recomposé. Rend une
-// erreur à signaler, ou null.
+// What the listing says about GitHub → what has to be downloaded from it, then merge of the recomposed
+// state. Returns an error to report, or null.
 async function pullFromListing(
 	plugin: MTGCollectionPlugin,
 	target: GithubTarget,
@@ -331,9 +331,9 @@ async function pullFromListing(
 	const toFetch = [...listed.values()].filter((e) => st.shards.get(e.name)?.sha !== e.sha).map((e) => e.name);
 	const vanished = [...st.shards.keys()].filter((n) => !listed.has(n));
 
-	// Tant que le fragment commun n'existe pas, la migration depuis l'ancien fichier unique (1.0.507-1.0.511,
-	// puis ≤ 1.0.506) n'est pas finie — le fragment commun est écrit EN DERNIER : on lit l'ancien fichier, UNE
-	// fois, pour que ce qu'il contient ne soit jamais perdu. L'ancien fichier, lui, n'est plus jamais touché.
+	// As long as the common shard doesn't exist, the migration from the old single file (1.0.507-1.0.511, then
+	// ≤ 1.0.506) isn't finished — the common shard is written LAST: we read the old file, ONCE, so that what
+	// it contains is never lost. The old file, for its part, is never touched again.
 	let legacyText: string | null = null;
 	if (!listed.has(CORE_SHARD) && !st.legacyTried) {
 		const names = new Set(entries.map((e) => e.name));
@@ -360,12 +360,12 @@ async function pullFromListing(
 		parsed.set(n, obj);
 	}
 
-	// Tout d'un coup, sans aucun await : l'état local ne peut pas bouger entre le calcul de la fusion et son application.
+	// All at once, with no await: the local state can't move between the computation of the merge and its application.
 	st.shards = next;
 	let needsWrite = false;
 	if (legacyText !== null) {
 		if (!absorb(plugin, legacyText, onReceived)) return NOT_JSON;
-		needsWrite = true; // les fragments n'existent pas (tous) encore : il faut les créer
+		needsWrite = true; // the shards don't (all) exist yet: they have to be created
 	}
 	if (parsed.size > 0) {
 		const outcome = absorb(plugin, JSON.stringify(assembleShards(parsed)), onReceived);
@@ -378,19 +378,19 @@ async function pullFromListing(
 
 type PushOutcome = { kind: "ok"; sent: boolean } | { kind: "conflict" } | { kind: "error"; failure: GithubFailure };
 
-// Un fragment que GitHub a encore plein de cartes dont nous n'avons plus aucune (supprimées, ou déplacées dans une
-// autre liste) est vidé, pour ne pas laisser traîner des cartes que seule une pierre tombale (90 jours) masque.
+// A shard that GitHub still holds full of cards of which we have none left (deleted, or moved to another list)
+// is emptied, so as not to leave lying around cards that only a (90-day) tombstone masks.
 function emptyShardFor(name: string): ShardObj {
 	if (name.startsWith("list-")) return { _shard: SHARD_FORMAT, collection: [] };
 	if (name.startsWith("wantlist-")) return { _shard: SHARD_FORMAT, wantlist: [] };
 	return { _shard: SHARD_FORMAT, decks: [] };
 }
 
-// Envoie, un par un, les fragments qui diffèrent de ce que GitHub porte — le fragment commun en dernier.
+// Uploads, one by one, the shards that differ from what GitHub holds — the common shard last.
 async function pushDirty(plugin: MTGCollectionPlugin, target: GithubTarget): Promise<PushOutcome> {
 	const st = plugin.github;
 	const version = plugin.dataVersion;
-	prepareLocal(plugin); // suppressions encore dans le délai de regroupement
+	prepareLocal(plugin); // deletions still within the grouping delay
 	const local = encodeShards(sharedView(plugin));
 
 	const toSend: { name: string; text: string }[] = [];
@@ -398,12 +398,12 @@ async function pushDirty(plugin: MTGCollectionPlugin, target: GithubTarget): Pro
 		const mine = local.get(name);
 		const held = st.shards.get(name);
 		const heldObj = held ? parseShard(held.text) : null;
-		// Même égalité que la fusion : ni l'ordre, ni les prix, ni les dates de rafraîchissement n'y comptent.
+		// Same equality as the merge: neither the order, nor the prices, nor the refresh dates count there.
 		if (shardsEqual(name, mine, heldObj ?? undefined)) continue;
 		toSend.push({ name, text: JSON.stringify(mine ?? emptyShardFor(name)) });
 	}
 	if (toSend.length === 0) {
-		// Seuls des prix (ou des dates de rafraîchissement) ont changé : les autres appareils les ignorent, rien à envoyer.
+		// Only prices (or refresh dates) changed: the other devices ignore them, nothing to send.
 		st.dirty = false;
 		return { kind: "ok", sent: false };
 	}
@@ -415,12 +415,12 @@ async function pushDirty(plugin: MTGCollectionPlugin, target: GithubTarget): Pro
 			st.shards.set(item.name, { sha: put.sha, text: item.text });
 			continue;
 		}
-		if (put.kind === "conflict") return { kind: "conflict" }; // ce qui est déjà parti reste parti
+		if (put.kind === "conflict") return { kind: "conflict" }; // what has already gone out stays out
 		return { kind: "error", failure: put };
 	}
 	st.lastPushAt = Date.now();
 	st.pushTimes = [...st.pushTimes.filter((t) => st.lastPushAt - t < BUSY_WINDOW_MS), st.lastPushAt];
-	// Une modification arrivée pendant l'envoi reste à envoyer.
+	// A change that arrived during the upload remains to be uploaded.
 	st.dirty = plugin.dataVersion !== version;
 	return { kind: "ok", sent: true };
 }
@@ -435,8 +435,8 @@ async function cycle(plugin: MTGCollectionPlugin, reason: GithubSyncReason): Pro
 		return;
 	}
 	if (st.fatal && reason !== "manual") return;
-	// L'utilisateur qui revient sur l'appli ("focus", "flush") ou qui touche le bouton ("manual") n'attend pas la
-	// fin d'une attente après une panne réseau ; une limite de débit de GitHub, elle, reste respectée.
+	// A user coming back to the app ("focus", "flush") or touching the button ("manual") doesn't wait for the end
+	// of a wait after a network outage; a GitHub rate limit, however, is still respected.
 	const userDriven = reason === "manual" || reason === "focus" || reason === "flush";
 	if (Date.now() < st.retryAt && reason !== "manual" && !(userDriven && !st.rateLimited)) return;
 	if (reason === "manual" || reason === "startup") setStatus(plugin, "syncing", "");
@@ -444,7 +444,7 @@ async function cycle(plugin: MTGCollectionPlugin, reason: GithubSyncReason): Pro
 	let note = "";
 	try {
 		for (let pass = 0; pass < MAX_PASSES; pass++) {
-			// 1. Le dossier a-t-il changé ? (léger : un 304 ne coûte rien) Si oui, on télécharge ce qui a changé et on fusionne.
+			// 1. Has the folder changed? (lightweight: a 304 costs nothing) If so, we download what changed and merge.
 			const listing = await githubListFolder(target, st.listEtag);
 			if (listing.kind === "error") return fail(plugin, listing);
 			if (listing.kind !== "notModified") {
@@ -456,11 +456,11 @@ async function cycle(plugin: MTGCollectionPlugin, reason: GithubSyncReason): Pro
 			}
 			if (!st.dirty) break;
 
-			// 2. Envoyer ce que GitHub n'a pas.
+			// 2. Send what GitHub doesn't have.
 			const outcome = await pushDirty(plugin, target);
 			if (outcome.kind === "error") return fail(plugin, outcome.failure);
 			if (outcome.kind === "conflict") {
-				st.listEtag = null; // quelqu'un est passé : relire pour de bon, fusionner, réessayer
+				st.listEtag = null; // someone got in between: re-read for real, merge, retry
 				if (pass === MAX_PASSES - 1) return fail(plugin, { kind: "error", status: 409, fatal: false, message: "GitHub keeps changing under us; retrying shortly." });
 				continue;
 			}
@@ -503,24 +503,24 @@ export function githubSync(this: MTGCollectionPlugin, reason: GithubSyncReason =
 
 /* ------------------------------ planification ------------------------------ */
 
-// Cadence de sondage : rapide si la fenêtre est visible ou si une activité récente l'a "réveillée".
+// Polling pace: fast if the window is visible or if recent activity has "woken it up".
 export function pollIntervalMs(visible: boolean, now: number, activeUntil: number): number {
 	return visible || now < activeUntil ? GITHUB_POLL_ACTIVE_MS : GITHUB_POLL_IDLE_MS;
 }
 
-// Un sondage est-il dû à cet instant ?
+// Is a poll due at this moment?
 export function pollDue(visible: boolean, now: number, lastPollAt: number, activeUntil: number): boolean {
 	return now - lastPollAt >= pollIntervalMs(visible, now, activeUntil);
 }
 
-// Quelque chose vient de se passer ici (modification, retour sur l'appli, changement reçu) : sondage rapide
-// pendant la minute qui suit, même si la fenêtre se cache entre-temps.
+// Something has just happened here (change, return to the app, received change): fast polling for the
+// following minute, even if the window hides in the meantime.
 function noteActivity(st: GithubSyncState) {
 	st.activeUntil = Date.now() + GITHUB_ACTIVE_WINDOW_MS;
 }
 
-// Délai avant le prochain envoi : jamais moins que le groupement d'une rafale, et pas avant la fin de
-// l'écart minimum depuis le dernier envoi — plus long quand l'utilisateur édite sans arrêt.
+// Delay before the next upload: never less than the grouping of a burst, and not before the end of
+// the minimum gap since the last upload — longer when the user edits non-stop.
 export function pushDelay(now: number, lastPushAt: number, pushTimes: number[]): number {
 	const busy = pushTimes.filter((t) => now - t < BUSY_WINDOW_MS).length >= GITHUB_BUSY_PUSHES;
 	const gap = busy ? GITHUB_BUSY_GAP_MS : GITHUB_MIN_GAP_MS;
@@ -529,7 +529,7 @@ export function pushDelay(now: number, lastPushAt: number, pushTimes: number[]):
 
 function scheduleGithubPush(plugin: MTGCollectionPlugin) {
 	const st = plugin.github;
-	if (st.pushTimer !== null) return; // l'envoi qui viendra prendra l'état le plus récent
+	if (st.pushTimer !== null) return; // the upload that comes will take the most recent state
 	const wait = pushDelay(Date.now(), st.lastPushAt, st.pushTimes);
 	st.pushTimer = window.setTimeout(() => {
 		st.pushTimer = null;
@@ -537,7 +537,7 @@ function scheduleGithubPush(plugin: MTGCollectionPlugin) {
 	}, wait);
 }
 
-// Appelé par saveSettings() et quand une autre source (Syncthing) vient de changer l'état local.
+// Called by saveSettings() and when another source (Syncthing) has just changed the local state.
 export function markGithubDirty(this: MTGCollectionPlugin): void {
 	if (!githubEnabled(this)) return;
 	this.github.dirty = true;
@@ -545,8 +545,8 @@ export function markGithubDirty(this: MTGCollectionPlugin): void {
 	scheduleGithubPush(this);
 }
 
-// Appli passée en arrière-plan / fermeture : envoyer tout de suite ce qui attend (au mieux : un
-// mobile peut suspendre la requête).
+// App moved to the background / closing: send right away what is waiting (best effort: a mobile
+// may suspend the request).
 export function flushGithubSync(this: MTGCollectionPlugin): Promise<void> {
 	const st = this.github;
 	if (st.pushTimer !== null) {
@@ -557,14 +557,15 @@ export function flushGithubSync(this: MTGCollectionPlugin): Promise<void> {
 	return this.githubSync("flush");
 }
 
-// À appeler quand la configuration change (dépôt, branche, dossier, jeton, activation) :
-// on repart d'un état neuf — rien de ce qu'on savait ne vaut pour une autre cible.
+// To be called when the configuration changes (repository, branch, folder, token,
+// activation): we start again from a fresh state — nothing we knew holds for another
+// target.
 export function resetGithubSync(this: MTGCollectionPlugin): void {
 	const st = this.github;
 	if (st.pushTimer !== null) window.clearTimeout(st.pushTimer);
 	Object.assign(st, createGithubState(), { chain: st.chain, listeners: st.listeners });
 	if (githubTarget(this)) {
-		st.dirty = true; // la première synchro fusionne puis envoie ce qui manque
+		st.dirty = true; // the first sync merges then sends what is missing
 		void this.githubSync("manual");
 	} else {
 		setStatus(this, "off", "");
@@ -606,8 +607,8 @@ export function setupGithubSync(this: MTGCollectionPlugin): void {
 			void this.githubSync("focus");
 		} else void this.flushGithubSync();
 	});
-	// Au démarrage : un premier échange sans attendre le premier sondage. Marqué sale, car on ne sait
-	// pas ce que GitHub a reçu de cet appareil pendant qu'il était éteint.
+	// At startup: a first exchange without waiting for the first poll. Marked dirty, because we don't
+	// know what GitHub received from this device while it was off.
 	if (githubTarget(this)) {
 		this.github.dirty = true;
 		void this.githubSync("startup");

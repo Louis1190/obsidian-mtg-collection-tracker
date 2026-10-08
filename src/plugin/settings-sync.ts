@@ -14,57 +14,56 @@ import {
 import type MTGCollectionPlugin from "../plugin";
 
 /* -------------------------------------------------------------------------- */
-/*  Synchronisation multi-appareils de data.json (2026-10-03).
+/* Multi-device synchronization of data.json (2026-10-03).
 
-    data.json voyage par Syncthing entre le Mac, l'iPad et le téléphone. Avant
-    ce fichier, le plugin ne le lisait qu'au démarrage et le réécrivait en
-    entier à chaque modification : un appareil qui recevait une version plus
-    récente la gardait sur disque mais pas en mémoire, puis l'écrasait à sa
-    prochaine sauvegarde (6 data.sync-conflict-*.json dans la vault en
-    témoignent). Désormais :
+    data.json travels via Syncthing between the Mac, the iPad and the phone.
+    Before this file, the plugin only read it at startup and rewrote it in full
+    on every change: a device that received a more recent version kept it on disk
+    but not in memory, then overwrote it at its next save (6
+    data.sync-conflict-*.json files in the vault bear witness). Now:
 
-    - toute écriture est précédée d'un contrôle du disque (stat, quasi gratuit) ;
-      si le fichier a changé ailleurs, on FUSIONNE (core/settings-merge.ts) au
-      lieu d'écraser ;
-    - le plugin surveille aussi le fichier hors écriture : hook Obsidian
-      `onExternalSettingsChange` (instantané sur desktop), sondage toutes les
-      20 s, retour au premier plan — Obsidian mobile est suspendu en arrière-
-      plan, un fichier arrivé pendant ce temps n'y déclenche aucun événement.
+    - every write is preceded by a disk check (stat, almost free); if the file
+      has changed elsewhere, we MERGE (core/settings-merge.ts) instead of
+      overwriting;
+    - the plugin also watches the file outside of writes: Obsidian hook
+      `onExternalSettingsChange` (instant on desktop), polling every 20 s, return
+      to the foreground — Obsidian mobile is suspended in the background, a file
+      that arrived during that time triggers no event there.
 
-    TOUT ce qui touche au fichier passe par une seule file (`persistChain`) :
-    jamais deux lectures/fusions/écritures en même temps. */
+    EVERYTHING that touches the file goes through a single queue
+    (`persistChain`): never two reads/merges/writes at the same time. */
 /* -------------------------------------------------------------------------- */
 
-// Un contrôle de sondage ne coûte qu'un stat tant que le fichier n'a pas bougé : on peut
-// le faire souvent. C'est le filet des cas où Obsidian n'émet aucun événement (mobile
-// suspendu, horloge d'un appareil qui dérive) ; l'événement lui-même reste instantané.
+// A polling check only costs a stat as long as the file hasn't moved: it can be done
+// often. It is the safety net for cases where Obsidian emits no event (suspended mobile,
+// a device's drifting clock); the event itself remains instantaneous.
 export const SETTINGS_POLL_MS = 5 * 1000;
-// Stockage local de l'appareil (Obsidian le limite au coffre ET à l'appareil, jamais synchronisé).
+// The device's local storage (Obsidian limits it to the vault AND to the device, never synchronized).
 export const DEVICE_SETTINGS_STORAGE_KEY = "mtg-collection-tracker:device-settings";
 export const SYNC_BACKUP_DIR = "sync-backups";
 export const SYNC_BACKUP_KEEP = 3;
-// Au-delà, une fusion qui supprime (ou ajoute) autant d'éléments localement garde
-// d'abord une copie de l'état local et prévient. Une grosse suppression venue d'un
-// autre appareil (gros "Delete list") ou un gros import est légitime, mais doit rester
-// récupérable ; un gros AJOUT est aussi ce que donnerait un appareil resté sur une
-// ancienne version du plugin (sans pierres tombales) qui réécrit un vieux fichier :
-// les cartes supprimées depuis reviendraient, et il faut pouvoir revenir en arrière.
+// Beyond it, a merge that removes (or adds) as many items locally first keeps a copy
+// of the local state and warns. A big deletion coming from another device (big "Delete
+// list") or a big import is legitimate, but must remain recoverable; a big ADDITION is
+// also what a device left on an old plugin version (without tombstones) that rewrites
+// an old file would give: the cards deleted since would come back, and it must be
+// possible to go back.
 export const BIG_REMOVAL_THRESHOLD = 25;
 export const BIG_ADDITION_THRESHOLD = 200;
-// Écart toléré entre l'mtime demandé à l'écriture et celui relu juste après :
-// au-delà, quelqu'un d'autre a touché le fichier dans l'intervalle. Large à dessein :
-// certains systèmes de fichiers (FAT/exFAT d'un stockage externe Android) arrondissent
-// l'mtime à 2 s, et un fichier livré par Syncthing porte la date de SON auteur.
+// Tolerated gap between the mtime requested at write time and the one re-read right
+// after: beyond it, someone else touched the file in the meantime. Wide on purpose:
+// some file systems (the FAT/exFAT of an Android external storage) round the mtime to
+// 2 s, and a file delivered by Syncthing carries the date of ITS author.
 const WRITE_RACE_TOLERANCE_MS = 5000;
-// Nombre maximal de lectures successives avant d'écrire (voir reconcileUntilStable).
+// Maximum number of successive reads before writing (see reconcileUntilStable).
 const MAX_RECONCILE_PASSES = 3;
 const SAVE_RETRY_MS = 5000;
-// Garde-fou : au plus MERGE_WRITE_MAX écritures déclenchées par un contrôle
-// externe (donc pas par une modification de l'utilisateur) par fenêtre. Deux
-// appareils qui se renverraient indéfiniment chacun leur version d'un même
-// réglage (chacun juge que l'autre n'a "rien changé") réécriraient 6 Mo toutes
-// les quelques secondes, sans fin ; ici la boucle s'arrête d'elle-même et la
-// prochaine vraie modification reprend la main.
+// Safeguard: at most MERGE_WRITE_MAX writes triggered by an external check
+// (hence not by a user modification) per window. Two devices that would
+// endlessly send each other back their own version of a same setting (each
+// judging that the other has "changed nothing") would rewrite 6 MB every few
+// seconds, without end; here the loop stops by itself and the next real
+// modification takes over.
 export const MERGE_WRITE_WINDOW_MS = 2 * 60 * 1000;
 export const MERGE_WRITE_MAX = 4;
 
@@ -75,11 +74,11 @@ export interface DiskSignature {
 
 type Obj = Record<string, unknown>;
 
-// Nom du fichier de données dans un dossier choisi par l'utilisateur (dans le dossier du plugin, c'est
-// le data.json d'Obsidian, comme avant).
+// Name of the data file in a folder chosen by the user (in the plugin's folder, it is Obsidian's
+// data.json, as before).
 export const CUSTOM_DATA_FILE_NAME = "mtg-collection-data.json";
 
-// "" = le dossier du plugin. Sinon un chemin relatif à la vault, sans ".." ni "." : null si invalide.
+// "" = the plugin's folder. Otherwise a vault-relative path, with no ".." or ".": null if invalid.
 export function normalizeDataFolder(input: string): string | null {
 	const parts = input
 		.trim()
@@ -108,9 +107,9 @@ function parseSettingsText(text: string): Obj | null {
 	}
 }
 
-// Une seule file pour toutes les opérations disque : la chaîne ne rejette
-// jamais (toute erreur est journalisée ici), sinon un seul échec bloquerait
-// définitivement les suivantes.
+// A single queue for all the disk operations: the chain never rejects (any
+// error is logged here), otherwise a single failure would block the
+// following ones for good.
 function enqueue(plugin: MTGCollectionPlugin, task: () => Promise<void>): Promise<void> {
 	const run = plugin.persistChain.then(task).catch((e) => {
 		console.error("MTG Collection Tracker: settings sync failed.", e);
@@ -121,15 +120,14 @@ function enqueue(plugin: MTGCollectionPlugin, task: () => Promise<void>): Promis
 
 /* ------------------------------- chargement -------------------------------- */
 
-// Remplace loadData() pour le chargement initial : on a besoin du TEXTE du
-// fichier (version de départ de la fusion, détection d'écho) et de sa signature,
-// que loadData() ne donne pas. Même résultat par ailleurs (fichier absent ou
-// illisible → null → réglages par défaut), avec une précaution en plus : un
-// fichier illisible est mis de côté avant que la première sauvegarde ne
-// l'écrase par des réglages vides.
+// Replaces loadData() for the initial load: we need the file's TEXT (starting
+// version of the merge, echo detection) and its signature, which loadData()
+// doesn't provide. Same result otherwise (file missing or unreadable → null →
+// default settings), with one extra precaution: an unreadable file is set aside
+// before the first save overwrites it with empty settings.
 export async function readSettingsFromDisk(this: MTGCollectionPlugin): Promise<Partial<MTGCollectionSettings> | null> {
-	// Où est le fichier ? C'est un réglage propre à l'appareil, donc lu dans le stockage de l'appareil
-	// AVANT le fichier lui-même (les autres réglages propres à l'appareil sont repris juste après).
+	// Where is the file? It's a device-specific setting, hence read from the device's storage BEFORE
+	// the file itself (the other device-specific settings are taken up just after).
 	const stored = readLocalStore(this);
 	const storedFolder = stored !== null && typeof stored === "object" ? (stored as Obj).dataFolder : "";
 	this.dataFolderInUse = (typeof storedFolder === "string" && normalizeDataFolder(storedFolder)) || "";
@@ -139,9 +137,9 @@ export async function readSettingsFromDisk(this: MTGCollectionPlugin): Promise<P
 	const adapter = this.app.vault.adapter;
 	let seeding = false;
 	if (!(await adapter.exists(path))) {
-		// Dossier choisi mais fichier pas (encore) là — par exemple pas encore livré par Syncthing sur
-		// un nouvel appareil : plutôt que de démarrer sur une collection VIDE (on croirait tout perdu),
-		// on repart des données de l'emplacement d'origine ; la première sauvegarde créera le fichier.
+		// Folder chosen but file not (yet) there — for example not yet delivered by Syncthing on a new
+		// device: rather than starting on an EMPTY collection (you'd think everything was lost), we
+		// start again from the data at the original location; the first save will create the file.
 		const fallback = this.dataFolderInUse ? defaultDataPath(this) : null;
 		if (!fallback || !(await adapter.exists(fallback))) return null;
 		path = fallback;
@@ -165,7 +163,7 @@ export async function readSettingsFromDisk(this: MTGCollectionPlugin): Promise<P
 		}
 		return null;
 	}
-	if (seeding) return data; // rien n'est lu "depuis" l'emplacement actif
+	if (seeding) return data; // nothing is read "from" the active location
 	this.diskText = text;
 	this.syncBaseText = text;
 	const st = await adapter.stat(path);
@@ -175,12 +173,12 @@ export async function readSettingsFromDisk(this: MTGCollectionPlugin): Promise<P
 
 export type DataFolderResult = { ok: true; mergedExisting: boolean } | { ok: false; message: string };
 
-// Change le dossier qui contient le fichier de données (réglage "Data folder"). Jamais de perte :
-// 1. l'ancien fichier est mis à jour une dernière fois puis laissé en place — rien n'est supprimé ;
-// 2. si un fichier de données existe déjà dans le nouveau dossier (celui d'un autre appareil que
-//    Syncthing y a livré, par exemple), il est FUSIONNÉ avec les données en mémoire, pas écrasé ;
-// 3. à la moindre erreur on revient à l'emplacement précédent.
-// Tout passe par la file des opérations disque.
+// Changes the folder that contains the data file ("Data folder" setting). Never any loss:
+// 1. the old file is updated one last time then left in place — nothing is deleted;
+// 2. if a data file already exists in the new folder (that of another device which Syncthing
+//    delivered there, for example), it is MERGED with the in-memory data, not overwritten;
+// 3. at the slightest error we go back to the previous location.
+// Everything goes through the disk-operations queue.
 export function changeDataFolder(this: MTGCollectionPlugin, folder: string): Promise<DataFolderResult> {
 	return new Promise((resolve) => {
 		void enqueue(this, async () => {
@@ -225,7 +223,7 @@ export function changeDataFolder(this: MTGCollectionPlugin, folder: string): Pro
 				console.error("MTG Collection Tracker: changing the data folder failed, keeping the previous one.", e);
 				this.dataFolderInUse = previous;
 				this.diskText = null;
-				this.diskSig = null; // le prochain contrôle relira l'ancien fichier
+				this.diskSig = null; // the next check will re-read the old file
 				this.syncBaseText = null;
 				resolve({ ok: false, message: e instanceof Error ? e.message : String(e) });
 			}
@@ -233,8 +231,8 @@ export function changeDataFolder(this: MTGCollectionPlugin, folder: string): Pro
 	});
 }
 
-// À appeler une fois les réglages chargés ET migrés : les suppressions seront
-// détectées par rapport à cet état.
+// To be called once the settings are loaded AND migrated: deletions will be
+// detected relative to this state.
 export function markSettingsLoaded(this: MTGCollectionPlugin) {
 	this.knownKeys = snapshotKeys(this.settings as unknown as Obj);
 	this.knownScalars = snapshotScalars(this.settings as unknown as Obj);
@@ -242,9 +240,9 @@ export function markSettingsLoaded(this: MTGCollectionPlugin) {
 	this.settingsLoaded = true;
 }
 
-/* ------------------------ réglages propres à l'appareil ---------------------- */
+/* ------------------------ device-specific settings ---------------------- */
 
-// Lecture du stockage local ; repli sur localStorage si l'API d'Obsidian (≥ 1.8.7) manque.
+// Reading of the local storage; fallback to localStorage if Obsidian's API (≥ 1.8.7) is missing.
 function readLocalStore(plugin: MTGCollectionPlugin): unknown {
 	try {
 		const app = plugin.app as unknown as { loadLocalStorage?: (k: string) => unknown };
@@ -266,24 +264,24 @@ function writeLocalStore(plugin: MTGCollectionPlugin, value: Obj): void {
 	}
 }
 
-// Appelé juste après la lecture de data.json : les valeurs propres à CET appareil
-// reprennent le dessus. Premier lancement après la mise à jour (rien en stock) : on
-// garde ce que data.json contenait jusque-là — l'appareil ne change donc pas d'aspect —
-// et on le met en stock tout de suite, car data.json n'en portera plus.
+// Called right after reading data.json: the values specific to THIS device take over.
+// First launch after the update (nothing in storage): we keep what data.json contained
+// until now — the device therefore doesn't change look — and put it in storage right
+// away, since data.json will no longer carry it.
 export function loadDeviceLocalSettings(this: MTGCollectionPlugin) {
 	const stored = readLocalStore(this);
 	if (stored !== null && typeof stored === "object" && !Array.isArray(stored)) {
 		const target = this.settings as unknown as Obj;
 		const defaults = DEFAULT_SETTINGS as unknown as Obj;
 		for (const [k, v] of Object.entries(stored as Obj)) {
-			// Seulement une clé connue, du bon type : un stock périmé ou trafiqué ne doit rien casser.
+			// Only a known key, of the right type: a stale or tampered storage must not break anything.
 			if (DEVICE_LOCAL_KEYS.has(k) && typeof v === typeof defaults[k]) target[k] = v;
 		}
 	}
 	this.saveDeviceLocalSettings();
 }
 
-// Synchrone et peu coûteux (une trentaine de valeurs) : appelé à chaque saveSettings().
+// Synchronous and inexpensive (about thirty values): called on every saveSettings().
 export function saveDeviceLocalSettings(this: MTGCollectionPlugin) {
 	const picked = pickDeviceLocal(this.settings);
 	const serialized = JSON.stringify(picked);
@@ -292,9 +290,9 @@ export function saveDeviceLocalSettings(this: MTGCollectionPlugin) {
 	writeLocalStore(this, picked);
 }
 
-/* -------------------------------- écriture --------------------------------- */
+/* -------------------------------- writing --------------------------------- */
 
-// Chemin de toutes les sauvegardes (voir saveSettings, flushPendingSave).
+// Path of all the saves (see saveSettings, flushPendingSave).
 export function persistSettings(this: MTGCollectionPlugin): Promise<void> {
 	return enqueue(this, async () => {
 		const path = dataFilePath(this);
@@ -306,9 +304,9 @@ export function persistSettings(this: MTGCollectionPlugin): Promise<void> {
 		await reconcileUntilStable(this, path);
 		await writeToDisk(this, path);
 	}).then(() => {
-		// Écriture ratée : une seule nouvelle tentative différée — Obsidian
-		// avalait silencieusement ce genre d'échec (saveData), la modification
-		// restait alors en mémoire seulement jusqu'à la sauvegarde suivante.
+		// Failed write: a single deferred new attempt — Obsidian silently
+		// swallowed this kind of failure (saveData), the change then remained in
+		// memory only until the next save.
 		if (this.saveFailed && this.saveRetryTimer === null) {
 			this.saveRetryTimer = window.setTimeout(() => {
 				this.saveRetryTimer = null;
@@ -318,8 +316,8 @@ export function persistSettings(this: MTGCollectionPlugin): Promise<void> {
 	});
 }
 
-// Contrôle (et fusion éventuelle) hors écriture : hook Obsidian, sondage,
-// retour au premier plan. Un seul contrôle en attente à la fois.
+// Check (and possible merge) outside of writes: Obsidian hook, polling,
+// return to the foreground. Only one check pending at a time.
 export function checkForExternalChange(this: MTGCollectionPlugin, _reason = "poll"): Promise<void> {
 	if (!this.settingsLoaded || this.externalCheckQueued) return Promise.resolve();
 	this.externalCheckQueued = true;
@@ -327,7 +325,7 @@ export function checkForExternalChange(this: MTGCollectionPlugin, _reason = "pol
 		this.externalCheckQueued = false;
 		const path = dataFilePath(this);
 		if (!path) return;
-		// Le fichier n'a pas bougé : rien à fusionner, donc rien à préparer non plus.
+		// The file hasn't moved: nothing to merge, so nothing to prepare either.
 		const st = await this.app.vault.adapter.stat(path);
 		const known = this.diskSig;
 		if (!st || (known && known.mtime === st.mtime && known.size === st.size)) return;
@@ -345,10 +343,10 @@ export function checkForExternalChange(this: MTGCollectionPlugin, _reason = "pol
 	});
 }
 
-// Appelé par Obsidian quand data.json change sur le disque hors du plugin
-// (compare l'mtime à celui de sa dernière lecture/écriture — voir app.js,
-// Plugin._onConfigFileChange). Fiable sur desktop ; sur mobile et quand
-// l'horloge d'un appareil dérive il peut manquer : d'où le sondage ci-dessous.
+// Called by Obsidian when data.json changes on disk outside the plugin
+// (compares the mtime to that of its last read/write — see app.js,
+// Plugin._onConfigFileChange). Reliable on desktop; on mobile and when a
+// device's clock drifts it can be missed: hence the polling below.
 export function onExternalSettingsChange(this: MTGCollectionPlugin): Promise<void> {
 	return this.checkForExternalChange("watcher");
 }
@@ -363,9 +361,9 @@ export function setupSettingsSync(this: MTGCollectionPlugin) {
 
 /* --------------------------------- internes -------------------------------- */
 
-// Inscrit les suppressions faites depuis la dernière écriture AVANT toute
-// fusion : une suppression locale encore dans le délai de regroupement n'a pas
-// de pierre tombale, la copie encore présente à distance la ferait revenir.
+// Records the deletions made since the last write BEFORE any merge: a local
+// deletion still within the grouping delay has no tombstone, the copy still
+// present remotely would bring it back.
 export function prepareLocal(plugin: MTGCollectionPlugin) {
 	if (!plugin.knownKeys || !plugin.knownScalars || !plugin.knownPrints) return;
 	const settings = plugin.settings as unknown as Obj;
@@ -378,9 +376,10 @@ export function prepareLocal(plugin: MTGCollectionPlugin) {
 	plugin.knownPrints = snapshotEntityPrints(settings);
 }
 
-// Fusionne, puis re-contrôle le disque juste avant de rendre la main : un fichier arrivé
-// pendant la lecture/fusion (Syncthing renomme le sien par-dessus) serait sinon écrasé
-// par l'écriture qui suit. La fenêtre qui reste est celle d'un seul stat → write.
+// Merges, then re-checks the disk just before handing back control: a file that arrived
+// during the read/merge (Syncthing renames its own over it) would otherwise be
+// overwritten by the write that follows. The window that remains is that of a single
+// stat → write.
 async function reconcileUntilStable(plugin: MTGCollectionPlugin, path: string): Promise<{ needsWrite: boolean }> {
 	let needsWrite = false;
 	for (let pass = 0; pass < MAX_RECONCILE_PASSES; pass++) {
@@ -394,18 +393,18 @@ async function reconcileUntilStable(plugin: MTGCollectionPlugin, path: string): 
 }
 
 export interface ForeignMergeOutcome {
-	/** L'état local a changé (il faut le sauvegarder et rafraîchir les vues). */
+	/** The local state has changed (it must be saved and the views refreshed). */
 	changedLocal: boolean;
-	/** L'état fusionné contient quelque chose que la source n'a pas : il faut le lui renvoyer. */
+	/** The merged state contains something the source doesn't have: it has to be sent back to it. */
 	needsWrite: boolean;
 }
 
-// Fusionne `text` (le contenu d'une source extérieure : le fichier du disque que Syncthing a pu
-// remplacer, ou le fichier GitHub) dans les réglages en mémoire. `baseText` = dernière version
-// VENUE DE CETTE SOURCE (jamais nos propres écritures — voir core/settings-merge.ts). Renvoie
-// null si `text` n'est pas un JSON de réglages. Synchrone de bout en bout : aucun await entre le
-// calcul de la fusion et son application, l'état local ne peut pas bouger entre les deux.
-// `ignore` : clés que cette source ne transporte pas (voir omitKeys).
+// Merges `text` (the content of an external source: the disk file that Syncthing may have
+// replaced, or the GitHub file) into the in-memory settings. `baseText` = last version COMING
+// FROM THIS SOURCE (never our own writes — see core/settings-merge.ts). Returns null if `text`
+// is not a settings JSON. Synchronous from end to end: no await between the computation of the
+// merge and its application, the local state can't move between the two. `ignore`: keys that
+// this source doesn't carry (see omitKeys).
 export function mergeForeignText(
 	plugin: MTGCollectionPlugin,
 	text: string,
@@ -442,8 +441,8 @@ export function mergeForeignText(
 			`MTG Collection Tracker: merged data from another device (+${report.added} −${report.removed} ~${report.updated}).`
 		);
 	}
-	// Ce qui vient d'être fusionné n'est PAS une modification locale : sans cette
-	// remise à jour, le prochain contrôle l'horodaterait comme telle.
+	// What has just been merged is NOT a local modification: without this update,
+	// the next check would timestamp it as such.
 	plugin.knownKeys = snapshotKeys(local);
 	plugin.knownScalars = snapshotScalars(local);
 	plugin.knownPrints = snapshotEntityPrints(local);
@@ -453,20 +452,20 @@ export function mergeForeignText(
 async function reconcile(plugin: MTGCollectionPlugin, path: string): Promise<{ needsWrite: boolean }> {
 	const adapter = plugin.app.vault.adapter;
 	const st = await adapter.stat(path);
-	if (!st) return { needsWrite: false }; // fichier supprimé : la prochaine écriture le recrée
+	if (!st) return { needsWrite: false }; // file deleted: the next write re-creates it
 	const sig: DiskSignature = { mtime: st.mtime, size: st.size };
 	const known = plugin.diskSig;
 	if (known && known.mtime === sig.mtime && known.size === sig.size) return { needsWrite: false };
 
 	const text = await adapter.read(path);
 	if (text === plugin.diskText) {
-		plugin.diskSig = sig; // mtime retouché, contenu identique
+		plugin.diskSig = sig; // mtime touched up, identical content
 		return { needsWrite: false };
 	}
 	const outcome = mergeForeignText(plugin, text, plugin.syncBaseText);
 	if (!outcome) {
-		// Illisible (copie partielle, autre outil de sync…) : on ne touche à rien,
-		// la prochaine écriture le remplacera par un fichier valide.
+		// Unreadable (partial copy, another sync tool…): we touch nothing, the
+		// next write will replace it with a valid file.
 		console.warn("MTG Collection Tracker: data.json on disk is not valid JSON, ignoring it.");
 		plugin.diskSig = sig;
 		return { needsWrite: false };
@@ -474,15 +473,15 @@ async function reconcile(plugin: MTGCollectionPlugin, path: string): Promise<{ n
 	plugin.syncBaseText = text;
 	plugin.diskText = text;
 	plugin.diskSig = sig;
-	// Ce que Syncthing vient d'apporter doit aussi partir vers GitHub (s'il est activé).
+	// What Syncthing has just brought must also go to GitHub (if enabled).
 	if (outcome.changedLocal) plugin.markGithubDirty();
 	return { needsWrite: outcome.needsWrite };
 }
 
 async function writeToDisk(plugin: MTGCollectionPlugin, path: string): Promise<void> {
-	// Sans les réglages propres à l'appareil : un changement de tri ne doit ni réécrire 6 Mo ni partir ailleurs.
+	// Without the device-specific settings: a sort change must neither rewrite 6 MB nor go elsewhere.
 	const text = JSON.stringify(omitDeviceLocal(plugin.settings), null, 2);
-	if (text === plugin.diskText) return; // le disque a déjà exactement cet état
+	if (text === plugin.diskText) return; // the disk already has exactly this state
 	const adapter = plugin.app.vault.adapter;
 	const mtime = Date.now();
 	plugin.saveFailed = false;
@@ -490,8 +489,8 @@ async function writeToDisk(plugin: MTGCollectionPlugin, path: string): Promise<v
 		try {
 			await adapter.write(path, text, { mtime });
 		} catch (e) {
-			// Dossier choisi par l'utilisateur, supprimé depuis : on le recrée une fois plutôt que de
-			// perdre la sauvegarde.
+			// Folder chosen by the user, deleted since: we re-create it once rather than lose the
+			// save.
 			if (!plugin.dataFolderInUse || (await adapter.exists(plugin.dataFolderInUse))) throw e;
 			await adapter.mkdir(plugin.dataFolderInUse);
 			await adapter.write(path, text, { mtime });
@@ -505,16 +504,16 @@ async function writeToDisk(plugin: MTGCollectionPlugin, path: string): Promise<v
 	if (st && Math.abs(st.mtime - mtime) <= WRITE_RACE_TOLERANCE_MS) {
 		plugin.diskSig = { mtime: st.mtime, size: st.size };
 	} else {
-		// Le fichier ne porte pas l'mtime qu'on vient de lui donner : un autre
-		// processus l'a réécrit entre-temps. On oublie la signature pour que
-		// le prochain contrôle relise et fusionne.
+		// The file doesn't carry the mtime we just gave it: another process
+		// rewrote it in the meantime. We forget the signature so that the next
+		// check re-reads and merges.
 		plugin.diskSig = null;
 		void plugin.checkForExternalChange("write-race");
 	}
 }
 
-// Copie de secours dans le dossier du plugin (les 3 plus récentes par type).
-// Jamais bloquant : un échec ici ne doit ni empêcher la fusion ni l'écriture.
+// Safety copy in the plugin's folder (the 3 most recent per type). Never
+// blocking: a failure here must neither prevent the merge nor the write.
 async function saveSyncBackup(plugin: MTGCollectionPlugin, kind: "remote" | "local", text: string): Promise<void> {
 	try {
 		const adapter = plugin.app.vault.adapter;

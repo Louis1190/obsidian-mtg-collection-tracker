@@ -1,27 +1,26 @@
 /* -------------------------------------------------------------------------- */
-/*  Réglages propres à CHAQUE appareil (2026-10-03) — logique pure.
+/* Settings specific to EACH device (2026-10-03) — pure logic.
 
-    data.json est synchronisé entre le Mac, l'iPad et le téléphone ; or la façon
-    dont chacun navigue (mode de vue, tri, regroupement, menu replié, barres
-    Obsidian masquées…) n'a aucune raison d'être la même : changer le tri sur le
-    téléphone ne doit pas re-trier l'écran du Mac, ni "menu replié" suivre d'un
-    appareil à l'autre (c'était déjà un défaut connu de navCollapsed).
+    data.json is synchronized between the Mac, the iPad and the phone; yet the way
+    each one navigates (view mode, sort, grouping, collapsed menu, hidden Obsidian
+    bars…) has no reason to be the same: changing the sort on the phone must not
+    re-sort the Mac's screen, nor should "collapsed menu" follow from one device
+    to another (it was already a known defect of navCollapsed).
 
-    Ces clés vivent donc dans `this.settings` comme avant (tout le code qui les
-    lit/écrit est inchangé), mais ne sont ni écrites dans data.json, ni fusionnées
-    avec une version venue d'ailleurs : elles sont gardées dans le stockage local
-    de l'appareil (src/plugin/settings-sync.ts, loadDeviceLocalSettings /
+    These keys therefore live in `this.settings` as before (all the code that
+    reads/writes them is unchanged), but are neither written to data.json nor
+    merged with a version coming from elsewhere: they are kept in the device's
+    local storage (src/plugin/settings-sync.ts, loadDeviceLocalSettings /
     saveDeviceLocalSettings).
 
-    N'en font PAS partie, volontairement : les réglages saisis dans l'onglet des
-    paramètres du plugin (couleur d'accent, devise, icône de la barre latérale,
-    seuils, intervalles de rafraîchissement/sauvegarde, clé d'API) — de la
-    configuration, pas de l'état de navigation. Pour déplacer une clé d'un côté
-    à l'autre, c'est ici et seulement ici.  */
+    Deliberately NOT part of it: the settings typed in the plugin's settings tab
+    (accent color, currency, sidebar icon, thresholds, refresh/backup intervals,
+    API key) — configuration, not navigation state. To move a key from one side to
+    the other, it's here and only here. */
 /* -------------------------------------------------------------------------- */
 
 export const DEVICE_LOCAL_KEYS: ReadonlySet<string> = new Set([
-	// Vue d'une liste ouverte : My Collection
+	// View of an open list: My Collection
 	"collectionGroupBy",
 	"collectionSortBy",
 	"collectionSortReverse",
@@ -40,7 +39,7 @@ export const DEVICE_LOCAL_KEYS: ReadonlySet<string> = new Set([
 	"wantlistSortReverse",
 	"wantlistGroupReverse",
 	"wantlistViewMode",
-	// Tri des galeries (grilles de listes / decks / wantlists)
+	// Sort of the galleries (grids of lists / decks / wantlists)
 	"listGridSortBy",
 	"listGridSortReverse",
 	"deckGridSortBy",
@@ -53,21 +52,21 @@ export const DEVICE_LOCAL_KEYS: ReadonlySet<string> = new Set([
 	// Bloc Market Trends de Home
 	"homeMoversPeriod",
 	"homeMoversVendor",
-	// Synchronisation GitHub (optionnelle) : chaque appareil a sa propre configuration — et son
-	// propre jeton, qui n'est dans aucun réglage. Activer la synchro sur le Mac ne doit pas
-	// l'activer sur un téléphone qui n'a pas (encore) de jeton.
+	// GitHub synchronization (optional): each device has its own configuration — and its own
+	// token, which is in no setting. Enabling sync on the Mac must not enable it on a phone
+	// that doesn't (yet) have a token.
 	"githubSyncEnabled",
 	"githubRepo",
 	"githubBranch",
 	"githubPath",
 	"githubApiBase",
-	// Où est le fichier de données sur cet appareil.
+	// Where the data file is on this device.
 	"dataFolder",
 ]);
 
 type Bag = Record<string, unknown>;
 
-// Copie superficielle sans les clés propres à l'appareil : ce qui part dans data.json.
+// Shallow copy without the device-specific keys: what goes into data.json.
 export function omitDeviceLocal(settings: object): Bag {
 	const src = settings as Bag;
 	const out: Bag = {};
@@ -75,7 +74,7 @@ export function omitDeviceLocal(settings: object): Bag {
 	return out;
 }
 
-// Les seules clés propres à l'appareil : ce qui part dans son stockage local.
+// The only device-specific keys: what goes into its local storage.
 export function pickDeviceLocal(settings: object): Bag {
 	const src = settings as Bag;
 	const out: Bag = {};

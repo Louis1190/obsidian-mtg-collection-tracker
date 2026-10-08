@@ -168,8 +168,8 @@ describe("collectorNumberCompare", () => {
 	});
 
 	it("falls back to alphabetical comparison when the numeric prefixes tie", () => {
-		// parseInt("23a") === parseInt("23b") === 23 : le nombre seul ne
-		// distingue pas ces deux numéros de collection.
+		// parseInt("23a") === parseInt("23b") === 23: the number alone doesn't
+		// tell these two collector numbers apart.
 		expect(collectorNumberCompare("23a", "23b")).toBeLessThan(0);
 	});
 
@@ -202,11 +202,11 @@ describe("groupSortValue / groupLabelFor", () => {
 		expect(groupLabelFor("function", overridden)).toBe("Wincon");
 		expect(groupLabelFor("function", detected)).toBe("Draw");
 		expect(groupLabelFor("function", fallback)).toBe("Creature");
-		// Land (une catégorie connue de DECK_FUNCTION_CATEGORIES) doit trier
-		// avant un repli de type inconnu de cette même liste (ex. "Creature"
-		// y est bien présent, donc ce test compare plutôt deux catégories
-		// connues entre elles pour confirmer que le tri suit bien
-		// DECK_FUNCTION_CATEGORIES et non l'ordre alphabétique).
+		// Land (a known category of DECK_FUNCTION_CATEGORIES) must sort before an
+		// unknown-type fallback of this same list (e.g. "Creature" is in there, so
+		// this test rather compares two known categories with each other to
+		// confirm that the sort does follow DECK_FUNCTION_CATEGORIES and not
+		// alphabetical order).
 		const land = makeCard({ typeLine: "Land" });
 		const ramp = makeCard({ typeLine: "Artifact", oracleText: "{T}: Add {C}." });
 		expect(String(groupSortValue("function", land)).localeCompare(String(groupSortValue("function", ramp)))).toBeLessThan(
@@ -217,9 +217,9 @@ describe("groupSortValue / groupLabelFor", () => {
 
 describe("DECK_GROUP_BY_OPTIONS", () => {
 	it("adds Function right after Don't group, keeping every other option from GROUP_BY_OPTIONS in order", () => {
-		// "Category" retiré le 2026-09-07 (Commander est devenu une Function,
-		// pas une catégorie — voir DeckCardCategory, data-model.ts) : Function
-		// est désormais la seule option propre aux decks.
+		// "Category" removed on 2026-09-07 (Commander became a Function, not a
+		// category — see DeckCardCategory, data-model.ts): Function is now the
+		// only option specific to decks.
 		expect(DECK_GROUP_BY_OPTIONS[0]).toEqual(GROUP_BY_OPTIONS[0]);
 		expect(DECK_GROUP_BY_OPTIONS[1]).toEqual({ value: "function", label: "Function" });
 		expect(DECK_GROUP_BY_OPTIONS.slice(2)).toEqual(GROUP_BY_OPTIONS.slice(1));
@@ -306,8 +306,8 @@ describe("compareCardsBy", () => {
 	});
 
 	it("resolves listName sort against the collection's lists", () => {
-		// a est sur "list2" (Alpha list), b sur "list1" (Zeta list) : "Alpha
-		// list" < "Zeta list" donc a doit passer avant b.
+		// a is on "list2" (Alpha list), b on "list1" (Zeta list): "Alpha list" <
+		// "Zeta list" so a must come before b.
 		expect(compareCardsBy("listName", lists)(a, b)).toBeLessThan(0);
 	});
 });
@@ -351,10 +351,9 @@ describe("groupAndSortCards", () => {
 });
 
 describe("estimateStackColumnHeight", () => {
-	// Recalculé indépendamment des constantes internes du module (pas un
-	// import) pour que ce test détecte vraiment un changement du ratio
-	// carte/du recouvrement, pas seulement qu'il "matche ce que le code fait
-	// déjà".
+	// Recomputed independently of the module's internal constants (not an
+	// import) so that this test truly detects a change in the card
+	// ratio/overlap, not just that it "matches what the code already does".
 	const HEADER = 47;
 	const W = 220;
 	const cardHeight = W * (680 / 488);
@@ -381,11 +380,11 @@ describe("estimateStackColumnHeight", () => {
 		}
 	});
 
-	// La vraie disparité qui a fait s'effondrer le nombre de colonnes que
-	// column-fill: balance choisissait de peupler pour "Group by Type" (voir
-	// docs/history/deck-stats-and-stacks-views.md) — un seul groupe bien plus
-	// long que les autres fixe une hauteur de colonne cible que balance ne
-	// pouvait plus jamais redescendre.
+	// The real disparity that made the number of columns collapse that
+	// column-fill: balance chose to populate for "Group by Type" (see
+	// docs/history/deck-stats-and-stacks-views.md) — a single group much
+	// longer than the others sets a target column height that balance could
+	// never bring back down.
 	it("a 45-card pile is dramatically taller than four separate 4-card piles combined", () => {
 		expect(estimateStackColumnHeight(45)).toBeGreaterThan(estimateStackColumnHeight(4) * 4);
 	});

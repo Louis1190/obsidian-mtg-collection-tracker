@@ -78,17 +78,15 @@ import { setSvgMarkup } from "../ui/svg-markup";
     deck open/close. Split out of view.ts on 2026-09-10 ("Phase 5b").  */
 /* -------------------------------------------------------------------------- */
 
-// Voir openCollectionCardDetailById (collection-render.ts)/openWantlistCardDetailById
-// (wantlist-render.ts) — même
-// raisonnement, côté deck (uniformisation demandée explicitement : la
-// fenêtre "Add cards" du Deck n'avait jusqu'ici ni tuile cliquable une
-// fois ajoutée, ni panneau d'historique, contrairement à My Collection/
-// My Wantlists). Cherche la ligne par (deckId, scryfallId) plutôt que
-// par un id de ligne propre : DeckCard n'en a pas (voir data-model.ts),
-// scryfallId est déjà la clé qu'utilisent changeDeckCardCount/
-// removeDeckCard/undoAddToDeck pour retrouver une ligne dans un deck
-// donné. Publique depuis le 2026-09-08, même raison que ces deux
-// méthodes ("Copies in Lists" cross-section).
+// See openCollectionCardDetailById (collection-render.ts)/openWantlistCardDetailById
+// (wantlist-render.ts) — same reasoning, on the deck side (harmonization explicitly
+// requested: the Deck's "Add cards" window had until now neither a clickable tile
+// once added, nor a history panel, unlike My Collection/My Wantlists). Looks up the
+// row by (deckId, scryfallId) rather than by an id of its own: DeckCard has none (see
+// data-model.ts), scryfallId is already the key that
+// changeDeckCardCount/removeDeckCard/undoAddToDeck use to find a row in a given deck.
+// Public since 2026-09-08, same reason as those two methods (cross-section "Copies in
+// Lists").
 
 export function openDeckCardDetailById(this: MTGCollectionView,
 	deckId: string,
@@ -106,9 +104,9 @@ export function openDeckCardDetailById(this: MTGCollectionView,
 			originalOnClose();
 			const freshDeck = this.plugin.settings.decks.find((d) => d.id === deckId);
 			const freshRow = freshDeck?.cards.find((c) => c.scryfallId === scryfallId);
-			// { id, count } — id = scryfallId ici (voir le commentaire de
-			// openDeckCardDetailById ci-dessus), même convention que
-			// syncFromHistory/onDetailClosed attendent déjà des 2 autres flux.
+			// { id, count } — id = scryfallId here (see the comment of
+			// openDeckCardDetailById above), same convention that
+			// syncFromHistory/onDetailClosed already expect from the 2 other flows.
 			onDetailClosed(freshRow ? { id: freshRow.scryfallId, count: freshRow.count } : undefined);
 		};
 	}
@@ -116,48 +114,43 @@ export function openDeckCardDetailById(this: MTGCollectionView,
 }
 
 
-// Onglets "board" (Mainboard/Sideboard/Maybeboard), sous la barre Group
-// by/Sort by/modes d'affichage (renderGroupSortBar) — remplace l'ancien
-// regroupement "Category" (retiré de DECK_GROUP_BY_OPTIONS, card-sorting.ts,
-// sur demande explicite : "Commander n'est pas une catégorie"). S'applique
-// dans TOUTES les vues (List/Grid/Table/Card/Stacks, pas juste Stacks) —
-// filtre deck.cards AVANT le filtre texte/Group by/Sort by habituels côté
-// appelant (renderDeckDetail), qui continuent de s'appliquer normalement
-// À L'INTÉRIEUR de l'onglet actif (confirmé explicitement — l'onglet ne
-// remplace pas le groupement, il filtre juste le sous-ensemble de cartes
-// affiché). Chaque compteur compte les EXEMPLAIRES physiques (somme de
-// count) sur l'ENSEMBLE du deck, pas le sous-ensemble déjà filtré par la
-// recherche — cohérent avec le fait que les onglets restent une vue
-// d'ensemble stable du deck, indépendante de ce qui est tapé dans la barre
-// de recherche au-dessus. Prend toute la largeur de la fenêtre (3 onglets
-// à `flex: 1` égal, voir .mtg-deck-board-tabs/-tab, styles.css) — demandé
-// explicitement dans la même capture d'écran que le déplacement ci-dessus.
+// "Board" tabs (Mainboard/Sideboard/Maybeboard), under the Group by/Sort
+// by/display modes bar (renderGroupSortBar) — replaces the old "Category"
+// grouping (removed from DECK_GROUP_BY_OPTIONS, card-sorting.ts, on explicit
+// request: "Commander is not a category"). Applies in ALL views
+// (List/Grid/Table/Card/Stacks, not just Stacks) — filters deck.cards BEFORE
+// the usual text filter/Group by/Sort by on the caller's side
+// (renderDeckDetail), which keep applying normally INSIDE the active tab
+// (explicitly confirmed — the tab doesn't replace the grouping, it just
+// filters the displayed subset of cards). Each counter counts the physical
+// COPIES (sum of count) over the ENTIRE deck, not the subset already
+// filtered by the search — consistent with the fact that the tabs remain a
+// stable overview of the deck, independent of what is typed in the search
+// bar above. Takes the full width of the window (3 tabs at equal `flex: 1`,
+// see .mtg-deck-board-tabs/-tab, styles.css) — explicitly requested in the
+// same screenshot as the move above.
 
 export function renderDeckBoardTabs(this: MTGCollectionView, deck: Deck, container: HTMLElement) {
 	const tabs = container.createDiv({ cls: "mtg-deck-board-tabs" });
-	// Racine du vrai bug derrière "toujours aussi abrupt" malgré deux
-	// essais de durée/courbe CSS différentes : ces boutons sont recréés de
-	// zéro à CHAQUE render() (voir render(), view.ts — this.bodyEl.
-	// cloneNode(false), tout le sous-arbre reconstruit puis échangé via
-	// replaceWith), et l'ancien click handler appelait this.render()
-	// directement — le nouvel onglet actif naissait donc déjà avec
-	// .is-active dès sa toute première peinture, jamais en train de
-	// PASSER de gris à accent sur un nœud DOM existant. Aucune durée/
-	// courbe de transition CSS ne peut jouer dans ce cas : "une classe
-	// déjà présente au tout premier paint d'un élément ne déclenche
-	// aucune transition, seul un changement de classe sur un élément
-	// DÉJÀ EXISTANT le fait" (même principe déjà établi pour
-	// legalFormatsShownFor/le bloc Graded, CardDetailModal). Fixé en
-	// basculant .is-active directement sur les vrais nœuds déjà affichés
-	// (qui, eux, restent en place le temps de la transition), puis en
-	// différant le render() réel (nécessaire pour rafraîchir la liste de
-	// cartes filtrée en dessous) jusqu'à ce que la transition CSS ait
-	// fini de jouer — même idiome que le repli du bloc Graded/Custom
-	// Price (CardDetailModal.close) ou toggleGroupRows (src/view/
-	// shared-render-helpers.ts). this.deckActiveBoard reste la seule source de vérité :
-	// un double-clic rapide entre deux onglets programme simplement
-	// deux render() différés qui aboutissent tous les deux au même état
-	// correct, sans jamais rien corrompre.
+	// Root of the real bug behind "still as abrupt" despite two attempts at different
+	// CSS durations/curves: these buttons are recreated from scratch on EVERY render()
+	// (see render(), view.ts — this.bodyEl.cloneNode(false), the whole subtree rebuilt
+	// then swapped via replaceWith), and the old click handler called this.render()
+	// directly — the new active tab was therefore born already with .is-active from its
+	// very first paint, never in the process of GOING from gray to accent on an
+	// existing DOM node. No CSS transition duration/curve can play in this case: "a
+	// class already present at the very first paint of an element triggers no
+	// transition, only a class change on an ALREADY existing element does" (same
+	// principle already established for legalFormatsShownFor/the Graded block,
+	// CardDetailModal). Fixed by toggling .is-active directly on the real nodes already
+	// displayed (which, for their part, stay in place for the duration of the
+	// transition), then deferring the actual render() (needed to refresh the filtered
+	// card list below) until the CSS transition has finished playing — same idiom as
+	// the collapse of the Graded/Custom Price block (CardDetailModal.close) or
+	// toggleGroupRows (src/view/shared-render-helpers.ts). this.deckActiveBoard remains
+	// the single source of truth: a quick double-click between two tabs simply
+	// schedules two deferred render() calls that both end up at the same correct state,
+	// without ever corrupting anything.
 	const tabEls: HTMLElement[] = [];
 	DECK_BOARD_TABS.forEach((tab) => {
 		const count = deck.cards
@@ -174,9 +167,9 @@ export function renderDeckBoardTabs(this: MTGCollectionView, deck: Deck, contain
 			btn.addClass("is-active");
 			this.deckActiveBoard = tab.value;
 			this.persistSortSettings();
-			// 350ms = exactement la durée de la transition CSS déclarée sur
-			// .mtg-deck-board-tab (styles.css) — laisse le fondu couleur
-			// jouer jusqu'au bout avant que render() ne remplace ces nœuds.
+			// 350ms = exactly the duration of the CSS transition declared on
+			// .mtg-deck-board-tab (styles.css) — lets the color fade play through to
+			// the end before render() replaces these nodes.
 			window.setTimeout(() => this.render(), 350);
 		});
 	});
@@ -214,19 +207,18 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 	bar.createDiv({ cls: "mtg-bulk-actions-divider" });
 
 	const selectedIds = () => Array.from(this.selectedDeckCardIds);
-	// Clear inclus ici (comme My Collection) pour profiter du même bascule
-	// disabled à 0 sélection que le reste ; Select all en reste
-	// délibérément exclu, c'est justement le bouton utile quand rien n'est
-	// encore sélectionné.
+	// Clear included here (like My Collection) to benefit from the same
+	// disabled toggle at 0 selection as the rest; Select all is deliberately
+	// excluded from it, it is precisely the useful button when nothing is
+	// selected yet.
 	const actionButtons: HTMLButtonElement[] = [clearBtn];
 
-	// Déplacer/copier vers une liste, un deck ou une wantlist — même
-	// CopyCardModal (sourceKind: "deck") que le bouton individuel "Deck"/
-	// "Copy card to…" de DeckCardDetailModal, capable de prendre plusieurs
-	// cartes à la fois exactement comme son homologue My Collection
-	// (moveBtn/copyBtn dans renderCollectionBulkActionsBar, collection-render.ts). deckContext
-	// fournit le deck de départ, nécessaire ici puisqu'une DeckCard n'a pas
-	// d'id propre (voir CopyCardModal.deckContext).
+	// Move/copy to a list, a deck or a wantlist — same CopyCardModal (sourceKind: "deck") as
+	// the individual "Deck"/"Copy card to…" button of DeckCardDetailModal, able to take
+	// several cards at once exactly like its My Collection counterpart (moveBtn/copyBtn in
+	// renderCollectionBulkActionsBar, collection-render.ts). deckContext provides the source
+	// deck, necessary here since a DeckCard has no id of its own (see
+	// CopyCardModal.deckContext).
 	const moveBtn = bar.createEl("button", { text: "Move to", cls: "mtg-bulk-action-btn" });
 	actionButtons.push(moveBtn);
 	moveBtn.addEventListener("click", () => {
@@ -239,9 +231,9 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 			cards,
 			"deck",
 			() => {
-				// Les cartes ont quitté ce deck (déplacées ailleurs) — la
-				// sélection ne pointe plus vers des lignes valides ici, même
-				// comportement que "Move to" dans My Collection.
+				// The cards have left this deck (moved elsewhere) — the selection no
+				// longer points to valid rows here, same behavior as "Move to" in My
+				// Collection.
 				this.selectedDeckCardIds.clear();
 				this.render();
 			},
@@ -250,9 +242,8 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 		).open();
 	});
 
-	// Copier ne retire rien du deck actuellement affiché, donc ne vide PAS
-	// selectedDeckCardIds — même comportement que "Copy to" dans My
-	// Collection.
+	// Copying removes nothing from the currently displayed deck, so does NOT
+	// clear selectedDeckCardIds — same behavior as "Copy to" in My Collection.
 	const copyBtn = bar.createEl("button", { text: "Copy to", cls: "mtg-bulk-action-btn" });
 	actionButtons.push(copyBtn);
 	copyBtn.addEventListener("click", () => {
@@ -262,9 +253,9 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 		new CopyCardModal(this.app, this.plugin, cards, "deck", () => this.render(), "copy", { deckId }).open();
 	});
 
-	// "Board" (Mainboard/Sideboard/Maybeboard) — même 3 options que le
-	// picker "Board" de DeckCardDetailModal (DECK_BOARD_TABS), appliquées
-	// à toute la sélection au lieu d'une carte à la fois.
+	// "Board" (Mainboard/Sideboard/Maybeboard) — same 3 options as the "Board"
+	// picker of DeckCardDetailModal (DECK_BOARD_TABS), applied to the whole
+	// selection instead of one card at a time.
 	const boardBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	boardBtn.createSpan({ text: "Board" });
 	setIcon(boardBtn.createSpan({ cls: "mtg-bulk-action-btn-caret" }), "chevron-down");
@@ -284,12 +275,11 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 		);
 	});
 
-	// "Function" (Ramp/Removal/Draw/etc., voir DECK_FUNCTION_CATEGORIES) —
-	// même picker que la boîte "Function" de DeckCardDetailModal, avec
-	// "Auto" en tête pour revenir à la détection automatique sur toute la
-	// sélection (pas de "detected" précis à prévisualiser ici, contrairement
-	// au picker carte par carte, puisque plusieurs cartes différentes
-	// peuvent être sélectionnées à la fois).
+	// "Function" (Ramp/Removal/Draw/etc., see DECK_FUNCTION_CATEGORIES) — same
+	// picker as the "Function" box of DeckCardDetailModal, with "Auto" at the
+	// top to go back to automatic detection on the whole selection (no precise
+	// "detected" to preview here, unlike the card-by-card picker, since
+	// several different cards can be selected at once).
 	const functionBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	functionBtn.createSpan({ text: "Function" });
 	setIcon(functionBtn.createSpan({ cls: "mtg-bulk-action-btn-caret" }), "chevron-down");
@@ -319,8 +309,8 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 		);
 	});
 
-	// Changer l'état — mêmes idiomes que Condition/Language/Finish côté My
-	// Collection (renderCollectionBulkActionsBar, collection-render.ts), sur bulkSetDeckCardCondition/Language/Finish
+	// Change the condition — same idioms as Condition/Language/Finish on the My Collection side
+	// (renderCollectionBulkActionsBar, collection-render.ts), on bulkSetDeckCardCondition/Language/Finish
 	// (plugin.ts).
 	const conditionBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	conditionBtn.createSpan({ text: "Condition" });
@@ -383,7 +373,7 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 		);
 	});
 
-	// Régler la quantité
+	// Set the quantity
 	const qtyBtn = bar.createEl("button", { text: "Quantity", cls: "mtg-bulk-action-btn" });
 	actionButtons.push(qtyBtn);
 	qtyBtn.addEventListener("click", () => {
@@ -417,8 +407,8 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 				this.render();
 			}
 		});
-		// Même fix mousedown/preventDefault que My Collection : sans lui, le
-		// blur (donc commit) se déclenche avant le click de Cancel.
+		// Same mousedown/preventDefault fix as My Collection: without it, the blur
+		// (hence commit) fires before the click of Cancel.
 		cancelQtyBtn.addEventListener("mousedown", (e) => e.preventDefault());
 		cancelQtyBtn.addEventListener("click", () => {
 			input.removeEventListener("blur", commit);
@@ -426,9 +416,9 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 		});
 	});
 
-	// Exporter la sélection en fichier (CSV, même colonnes que
-	// buildDeckCsvString/exportDeckCsv, ou TXT) — même bouton "Export" avec
-	// choix de format que My Collection (renderCollectionBulkActionsBar, collection-render.ts).
+	// Export the selection to a file (CSV, same columns as buildDeckCsvString/exportDeckCsv, or
+	// TXT) — same "Export" button with a choice of format as My Collection
+	// (renderCollectionBulkActionsBar, collection-render.ts).
 	const exportBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	exportBtn.createSpan({ text: "Export" });
 	setIcon(exportBtn.createSpan({ cls: "mtg-bulk-action-btn-caret" }), "chevron-down");
@@ -454,17 +444,17 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 	actionButtons.push(copyTxtBtn);
 	copyTxtBtn.addEventListener("click", () => this.copyDeckSelectionTxt(deckId));
 
-	// Séparateur avant Delete — même traitement que My Collection, pour
-	// isoler visuellement l'action destructive du reste.
+	// Separator before Delete — same treatment as My Collection, to visually
+	// isolate the destructive action from the rest.
 	bar.createDiv({ cls: "mtg-bulk-actions-divider" });
 
-	// Retirer du deck — confirmation à deux étapes (bouton neutre → paire
-	// rouge "Delete"/"Cancel"), même idiome que My Collection au lieu de
-	// l'ancien texte "Confirm remove?" sans possibilité d'annuler. Libellé
-	// "Delete" (comme My Collection/My Wantlists, renommé le 2026-09-08 —
-	// voir le commentaire en tête de fonction) : ne supprime QUE la ligne
-	// dans ce deck (bulkRemoveDeckCards), jamais la carte de la collection/
-	// wantlist dont elle vient.
+	// Remove from the deck — two-step confirmation (neutral button → red
+	// "Delete"/"Cancel" pair), same idiom as My Collection instead of the old
+	// "Confirm remove?" text with no possibility of canceling. Label "Delete"
+	// (like My Collection/My Wantlists, renamed on 2026-09-08 — see the
+	// comment at the head of the function): only deletes the row in this deck
+	// (bulkRemoveDeckCards), never the card of the collection/wantlist it
+	// comes from.
 	const deleteBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	setIcon(deleteBtn.createSpan({ cls: "mtg-bulk-action-btn-icon" }), "trash-2");
 	deleteBtn.createSpan({ text: "Delete" });
@@ -497,8 +487,8 @@ export function renderDeckBulkActionsBar(this: MTGCollectionView,
 	}
 }
 
-// Même principe que listSelectionTxtLines (collection-render.ts), côté deck —
-// partagé entre exportDeckSelectionTxt et copyDeckSelectionTxt.
+// Same principle as listSelectionTxtLines (collection-render.ts), on the deck
+// side — shared between exportDeckSelectionTxt and copyDeckSelectionTxt.
 
 export function deckSelectionTxtLines(this: MTGCollectionView, deckId: string): string {
 	const deck = this.plugin.settings.decks.find((d) => d.id === deckId);
@@ -511,8 +501,9 @@ export function exportDeckSelectionTxt(this: MTGCollectionView, deckId: string) 
 	this.downloadTextFile(this.deckSelectionTxtLines(deckId), "mtg-deck-selection.txt");
 }
 
-// Pendant deck du "Copy TXT" de My Collection — voir copyListSelectionTxt
-// (collection-render.ts) pour le raisonnement sur .catch().
+// Deck counterpart of My Collection's "Copy TXT" — see
+// copyListSelectionTxt (collection-render.ts) for the reasoning on
+// .catch().
 
 export function copyDeckSelectionTxt(this: MTGCollectionView, deckId: string) {
 	const count = this.selectedDeckCardIds.size;
@@ -522,11 +513,12 @@ export function copyDeckSelectionTxt(this: MTGCollectionView, deckId: string) {
 		.catch(() => new Notice("Could not copy to clipboard."));
 }
 
-// Pendant deck de exportListSelectionCsv (My Collection) — sélection en cours
-// (renderDeckBulkActionsBar), pas le deck entier (voir exportDeckCsv plus
-// bas). Réutilise buildDeckCsvString/downloadDeckCsv tels quels — même
-// forme d'entrée ({card, deckName}[]) que exportDeckCsv, un DeckCard seul
-// ne sait pas de quel deck il vient une fois extrait de Deck.cards.
+// Deck counterpart of exportListSelectionCsv (My Collection) — current
+// selection (renderDeckBulkActionsBar), not the entire deck (see
+// exportDeckCsv further down). Reuses buildDeckCsvString/downloadDeckCsv as
+// is — same input shape ({card, deckName}[]) as exportDeckCsv, a lone
+// DeckCard doesn't know which deck it comes from once extracted from
+// Deck.cards.
 
 export function exportDeckSelectionCsv(this: MTGCollectionView, deckId: string) {
 	const deck = this.plugin.settings.decks.find((d) => d.id === deckId);
@@ -544,23 +536,23 @@ export function decksToTxtLines(this: MTGCollectionView, decks: Deck[]): string 
 		.join("\n\n");
 }
 
-// Équivalent buildListCsvString pour un ou plusieurs decks à la fois. entries
-// porte le nom du deck d'origine par ligne (même raisonnement que la
-// colonne "List"/"Wantlist" des deux autres exports) plutôt qu'un simple
-// CollectionCard[], puisqu'un DeckCard seul ne sait pas de quel deck il vient
-// une fois extrait de Deck.cards.
-// Colonnes Finish/Language/Condition/GradingCompany/GradingGrade/
-// GradingLabel/CustomPrice ajoutées lors de l'harmonisation My Decks/My
-// Collection (2026-08-25) — même ordre/mêmes noms que buildListCsvString (My
-// Collection, collection-render.ts), "Deck" à la place de "List". Colonne
-// PriceUsd ajoutée le 2026-09-02 une fois DeckCard doté d'un vrai prix
-// persisté (voir "Data model notes", CLAUDE.md) — même position/même nom
-// que buildListCsvString (juste avant la colonne "List"/"Deck"), `c.priceUsd
-// ?? ""` plutôt qu'un repli via toDeckPricedCard : cette colonne veut le
-// prix BRUT tel quel (même convention que c.priceUsd dans buildListCsvString,
-// jamais formaté/converti), pas la valeur foil-aware déjà résolue selon
-// le finish (ce que toDeckPricedCard/formatCardPrice calculent pour
-// l'affichage).
+// Equivalent of buildListCsvString for one or several decks at once. entries
+// carries the name of the source deck per row (same reasoning as the
+// "List"/"Wantlist" column of the two other exports) rather than a simple
+// CollectionCard[], since a lone DeckCard doesn't know which deck it comes
+// from once extracted from Deck.cards.
+// Columns
+// Finish/Language/Condition/GradingCompany/GradingGrade/GradingLabel/CustomPrice
+// added during the My Decks/My Collection harmonization (2026-08-25) — same
+// order/same names as buildListCsvString (My Collection,
+// collection-render.ts), "Deck" in place of "List". PriceUsd column added on
+// 2026-09-02 once DeckCard was given a real persisted price (see "Data model
+// notes", CLAUDE.md) — same position/same name as buildListCsvString (just
+// before the "List"/"Deck" column), `c.priceUsd ?? ""` rather than a fallback
+// via toDeckPricedCard: this column wants the RAW price as is (same
+// convention as c.priceUsd in buildListCsvString, never formatted/converted),
+// not the foil-aware value already resolved according to the finish (what
+// toDeckPricedCard/formatCardPrice compute for display).
 
 export function buildDeckCsvString(this: MTGCollectionView, entries: { card: DeckCard; deckName: string }[]): string {
 	const header =
@@ -594,13 +586,12 @@ export function downloadDeckCsv(this: MTGCollectionView, entries: { card: DeckCa
 	this.downloadTextFile(this.buildDeckCsvString(entries), filename, "text/csv");
 }
 
-// Même trio Export CSV/Export TXT/Copy to clipboard que exportListCsv/
-// exportListTxt/copyListTxt (collection-render.ts), côté deck (DeckSettingsModal,
-// harmonisé sur ListSettingsModal) — pour UN SEUL deck cette fois, pas la
-// sélection de la barre d'actions groupées de la grille "My Decks"
-// (exportDeckSelectionTxt/copyDeckSelectionTxt un peu plus haut, qui
-// portent sur les cartes cochées à l'intérieur d'un deck déjà ouvert, un
-// sous-ensemble différent).
+// Same trio Export CSV/Export TXT/Copy to clipboard as
+// exportListCsv/exportListTxt/copyListTxt (collection-render.ts), on the deck
+// side (DeckSettingsModal, harmonized on ListSettingsModal) — for a SINGLE deck
+// this time, not the selection of the bulk actions bar of the "My Decks" grid
+// (exportDeckSelectionTxt/copyDeckSelectionTxt a bit higher up, which concern the
+// cards ticked inside an already open deck, a different subset).
 
 export function exportDeckCsv(this: MTGCollectionView, deckId: string) {
 	const deck = this.plugin.settings.decks.find((d) => d.id === deckId);
@@ -612,8 +603,9 @@ export function exportDeckCsv(this: MTGCollectionView, deckId: string) {
 	);
 }
 
-// Même format "qty - name" que listTxtLines (collection-render.ts)/
-// wantlistSelectionTxtLines (wantlist-render.ts), pour UN SEUL deck entier.
+// Same "qty - name" format as listTxtLines
+// (collection-render.ts)/wantlistSelectionTxtLines (wantlist-render.ts),
+// for a SINGLE whole deck.
 
 export function deckTxtLines(this: MTGCollectionView, deckId: string): string {
 	const deck = this.plugin.settings.decks.find((d) => d.id === deckId);
@@ -627,9 +619,9 @@ export function exportDeckTxt(this: MTGCollectionView, deckId: string) {
 	this.downloadTextFile(this.deckTxtLines(deckId), filename);
 }
 
-// navigator.clipboard.writeText : même précédent déjà établi (voir
-// copyListTxt, collection-render.ts) — .catch() explicite plutôt qu'une résolution
-// supposée systématique.
+// navigator.clipboard.writeText: same precedent already established (see
+// copyListTxt, collection-render.ts) — explicit .catch() rather than a resolution
+// assumed to always happen.
 
 export function copyDeckTxt(this: MTGCollectionView, deckId: string) {
 	const deck = this.plugin.settings.decks.find((d) => d.id === deckId);
@@ -640,9 +632,9 @@ export function copyDeckTxt(this: MTGCollectionView, deckId: string) {
 		.catch(() => new Notice("Could not copy to clipboard."));
 }
 
-// "Import" → "Import CSV" de DeckSettingsModal — passe par plugin.importDeckCsv (nouveau : jusqu'ici un deck n'avait
-// aucun chemin d'import CSV, voir son propre commentaire dans plugin.ts) plutôt qu'importCsv ; le flux fichier est
-// celui de file-import.ts.
+// "Import" → "Import CSV" of DeckSettingsModal — goes through plugin.importDeckCsv (new: until now a deck had no
+// CSV import path at all, see its own comment in plugin.ts) rather than importCsv; the file flow is that of
+// file-import.ts.
 
 export function triggerImportIntoDeck(this: MTGCollectionView, deckId: string) {
 	importCsvFile(this, {
@@ -653,9 +645,9 @@ export function triggerImportIntoDeck(this: MTGCollectionView, deckId: string) {
 	});
 }
 
-// "Import" → "Import TXT" de DeckSettingsModal — réutilise plugin.importDecklistToDeck (déjà existante, voir
-// NewDeckModal — cette méthode a toujours pu cibler n'importe quel deck existant, pas seulement un deck fraîchement
-// créé) plutôt que d'écrire un 2ᵉ chemin de résolution de decklist.
+// "Import" → "Import TXT" of DeckSettingsModal — reuses plugin.importDecklistToDeck (already existing, see
+// NewDeckModal — this method has always been able to target any existing deck, not just a freshly created one)
+// rather than writing a 2nd decklist resolution path.
 
 export function triggerImportTxtIntoDeck(this: MTGCollectionView, deckId: string) {
 	const deck = this.plugin.settings.decks.find((d) => d.id === deckId);
@@ -729,8 +721,8 @@ export function renderDeckGrid(this: MTGCollectionView) {
 	});
 
 	if (decks.length === 0) {
-		// Une recherche sans résultat n'est pas « aucun deck » : même message
-		// que les galeries Collection/Wantlists dans ce cas.
+		// A search with no results is not "no deck": same message as the
+		// Collection/Wantlists galleries in this case.
 		this.bodyEl.createEl("p", {
 			text:
 				filter && this.plugin.settings.decks.length > 0
@@ -741,7 +733,7 @@ export function renderDeckGrid(this: MTGCollectionView) {
 		return;
 	}
 
-	// Barre "Sort by", sur le même modèle que "My Collection".
+	// "Sort by" bar, on the same model as "My Collection".
 	const sortRow = this.bodyEl.createDiv({ cls: "mtg-groupsort-row" });
 
 	const sortCluster = sortRow.createDiv({ cls: "mtg-groupsort-cluster" });
@@ -788,27 +780,27 @@ export function renderDeckGrid(this: MTGCollectionView) {
 		this.deckGalleryBulkBarWasVisible = false;
 	}
 
-	// Petit titre « Decks: … » avec le nombre de decks, « x of y decks match »
-	// pendant une recherche — même titre (et même classe) que « Lists » dans
-	// renderListGrid, demandé explicitement pour les 3 galeries.
+	// Small "Decks: …" title with the number of decks, "x of y decks match"
+	// during a search — same title (and same class) as "Lists" in
+	// renderListGrid, explicitly requested for the 3 galleries.
 	this.bodyEl.createDiv({
 		cls: "mtg-list-grid-section-title",
 		text: formatCountTitle("deck", decks.length, this.plugin.settings.decks.length, filter !== ""),
 	});
 
-	// Nombre de colonnes automatique (1/2/4 selon la largeur du panneau) —
-	// voir renderListGrid et .mtg-set-grid-wrap dans styles.css.
+	// Automatic number of columns (1/2/4 depending on the panel's width) — see
+	// renderListGrid and .mtg-set-grid-wrap in styles.css.
 	const gridWrap = this.bodyEl.createDiv({ cls: "mtg-set-grid-wrap" });
 	const grid = gridWrap.createDiv({
 		cls: `mtg-set-grid${this.deckGallerySelectMode ? " mtg-gallery-selecting" : ""}`,
 	});
 	decks.forEach((deck) => {
 		const tile = grid.createDiv({ cls: "mtg-set-tile" });
-		// Choix manuel (Deck.coverCardId, "Choose cover image" de
-		// DeckSettingsModal harmonisé sur ListSettingsModal) sinon repli
-		// automatique (Commander du deck, sinon 1ʳᵉ carte — voir
-		// resolveDeckCoverImage/pickDeckCoverImage, core/price.ts) plutôt
-		// que la simple 1ʳᵉ carte avec une image trouvée dans deck.cards.
+		// Manual choice (Deck.coverCardId, "Choose cover image" of
+		// DeckSettingsModal harmonized on ListSettingsModal) otherwise automatic
+		// fallback (the deck's Commander, otherwise the 1st card — see
+		// resolveDeckCoverImage/pickDeckCoverImage, core/price.ts) rather than
+		// just the 1st card with an image found in deck.cards.
 		const cover = resolveDeckCoverImage(deck.cards, deck.coverCardId);
 		if (cover) {
 			const bg = tile.createDiv({ cls: "mtg-set-tile-bg" });
@@ -816,12 +808,11 @@ export function renderDeckGrid(this: MTGCollectionView) {
 		}
 		const content = tile.createDiv({ cls: "mtg-set-tile-content" });
 
-		// Pictogramme choisi manuellement (Deck.deckIcon, "Choose icon" de
-		// DeckSettingsModal) — même recette que renderListTile (voir son
-		// propre commentaire pour le raisonnement complet, transposé tel
-		// quel : rangée imbriquée plutôt que centrage vertical de toute
-		// la tuile, puisqu'un deck garde son dégradé de fond assombri vers
-		// le bas comme une liste normale).
+		// Pictogram chosen manually (Deck.deckIcon, "Choose icon" of
+		// DeckSettingsModal) — same recipe as renderListTile (see its own comment
+		// for the full reasoning, transposed as is: nested row rather than
+		// vertical centering of the whole tile, since a deck keeps its background
+		// gradient darkened toward the bottom like a normal list).
 		let textParent: HTMLElement = content;
 		if (deck.deckIcon) {
 			const iconRow = content.createDiv({ cls: "mtg-set-tile-icon-row" });
@@ -840,9 +831,9 @@ export function renderDeckGrid(this: MTGCollectionView) {
 
 		const totalQty = deck.cards.reduce((s, c) => s + c.count, 0);
 		textParent.createDiv({ cls: "mtg-set-tile-name", text: deck.name });
-		// Format en tête de la ligne de stats, quand choisi (voir Deck.format
-		// et NewDeckModal/DeckSettingsModal) — même liste LEGALITY_SEARCH_FORMATS
-		// que partout ailleurs dans le plugin pour résoudre le libellé.
+		// Format at the head of the stats line, when chosen (see Deck.format and
+		// NewDeckModal/DeckSettingsModal) — same LEGALITY_SEARCH_FORMATS list as
+		// everywhere else in the plugin to resolve the label.
 		const formatLabel = deck.format
 			? LEGALITY_SEARCH_FORMATS.find((f) => f.key === deck.format)?.label
 			: undefined;
@@ -850,10 +841,10 @@ export function renderDeckGrid(this: MTGCollectionView) {
 			cls: "mtg-set-tile-meta",
 			text: `${formatLabel ? formatLabel + " · " : ""}${deck.cards.length} unique · ${totalQty} cards`,
 		});
-		// Pastilles de couleur du deck (union des couleurs de ses cartes, voir
-		// deckColorIdentity) — même symboles officiels Scryfall que partout
-		// ailleurs dans le plugin (getManaSymbolSvg), sur le modèle des
-		// pastilles affichées par Moxfield sur ses propres vignettes de deck.
+		// Color pips of the deck (union of the colors of its cards, see
+		// deckColorIdentity) — same official Scryfall symbols as everywhere else
+		// in the plugin (getManaSymbolSvg), modeled on the pips Moxfield displays
+		// on its own deck thumbnails.
 		const deckColors = deckColorIdentity(deck.cards);
 		if (deckColors.length > 0) {
 			const colorsEl = textParent.createDiv({ cls: "mtg-deck-tile-colors" });
@@ -906,8 +897,8 @@ export function renderDeckGrid(this: MTGCollectionView) {
 	});
 }
 
-// Barre d'actions groupées de la grille "My Decks" — même structure que
-// renderListGalleryBulkActionsBar, adaptée à Deck/DeckCard.
+// Bulk actions bar of the "My Decks" grid — same structure as
+// renderListGalleryBulkActionsBar, adapted to Deck/DeckCard.
 
 export function renderDeckGalleryBulkActionsBar(this: MTGCollectionView, container: HTMLElement, animate: boolean, visibleDeckIds: string[]) {
 	const bar = createBulkActionsBar(this, "deck-gallery", container, animate);
@@ -1055,22 +1046,20 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 		return;
 	}
 
-	// Échafaudage flex-colonne (voir .mtg-collection-body-detail,
-	// styles.css) : stickyHeader (hauteur naturelle) puis
-	// .mtg-detail-scroll-area (le reste de la hauteur disponible, avec sa
-	// propre scrollbar — voir plus bas) se partagent ainsi toute la
-	// hauteur de this.bodyEl, qui prend lui-même toute la hauteur de
-	// this.mainEl dans ce mode. Retiré à chaque render() (voir plus haut
-	// dans render()) avant d'être potentiellement rajouté ici — jamais
-	// hérité tel quel via cloneNode(false).
+	// Flex-column scaffolding (see .mtg-collection-body-detail, styles.css):
+	// stickyHeader (natural height) then .mtg-detail-scroll-area (the rest of
+	// the available height, with its own scrollbar — see further down) thus
+	// share the whole height of this.bodyEl, which itself takes the whole
+	// height of this.mainEl in this mode. Removed on every render() (see
+	// higher up in render()) before potentially being added back here — never
+	// inherited as is via cloneNode(false).
 	this.bodyEl.addClass("mtg-collection-body-detail");
 	const stickyHeader = this.bodyEl.createDiv({ cls: "mtg-detail-sticky-header" });
 
-	// Voir renderListDetail pour le raisonnement complet — le bouton
-	// "← Back to X" et la rangée titre partagent maintenant un seul
-	// conteneur (.mtg-detail-header-banner). resolveDeckCoverImage, déjà
-	// utilisée par renderDeckGrid pour la tuile de ce deck, réutilisée
-	// ici pour obtenir la même image.
+	// See renderListDetail for the full reasoning — the "← Back to X" button
+	// and the title row now share a single container
+	// (.mtg-detail-header-banner). resolveDeckCoverImage, already used by
+	// renderDeckGrid for this deck's tile, reused here to get the same image.
 	const headerBanner = stickyHeader.createDiv({ cls: "mtg-detail-header-banner" });
 	const coverImage = resolveDeckCoverImage(deck.cards, deck.coverCardId);
 	if (coverImage) {
@@ -1096,11 +1085,11 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 
 	const titleRow = headerBanner.createDiv({ cls: "mtg-deck-title-row" });
 	const titleInfo = titleRow.createDiv({ cls: "mtg-title-info" });
-	// Ouvre les settings (DeckSettingsModal) au clic sur le titre, au lieu du
-	// renommage en ligne d'origine — demandé explicitement, le renommage
-	// reste accessible depuis cette même fenêtre. openDeckSettings est
-	// réutilisé plus bas par menuBtn (le bouton "...") pour ne pas dupliquer
-	// la construction de la modale.
+	// Opens the settings (DeckSettingsModal) on clicking the title, instead of
+	// the original inline rename — explicitly requested, renaming remains
+	// accessible from this same window. openDeckSettings is reused further
+	// down by menuBtn (the "..." button) to avoid duplicating the construction
+	// of the modal.
 	const openDeckSettings = () => new DeckSettingsModal(this.app, this.plugin, this, deck.id).open();
 	const nameRow = titleInfo.createDiv({ cls: "mtg-detail-title-row" });
 	nameRow.createEl("h3", { cls: "mtg-detail-title", text: deck.name });
@@ -1115,11 +1104,10 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 		text: `${deckFormatLabel ? deckFormatLabel + " · " : ""}${deck.cards.length} unique · ${totalDeckQty} cards`,
 	});
 
-	// "+ Add cards"/"Deck stats"/"Select cards"/"..." vivaient auparavant
-	// sur la rangée du titre, tout en haut — déplacés ici, à droite de la
-	// barre de recherche, pour gagner de la hauteur verticale (demandé
-	// explicitement, capture d'écran annotée à l'appui, même changement
-	// que My Collection/My Wantlists).
+	// "+ Add cards"/"Deck stats"/"Select cards"/"..." used to live on the
+	// title row, at the very top — moved here, to the right of the search bar,
+	// to gain vertical height (explicitly requested, annotated screenshot in
+	// support, same change as My Collection/My Wantlists).
 	const searchActionsRow = stickyHeader.createDiv({ cls: "mtg-detail-search-actions-row" });
 	const filterRow = searchActionsRow.createDiv({ cls: "mtg-collection-toolbar mtg-inline-filter-row" });
 	const actionsRow = searchActionsRow.createDiv({ cls: "mtg-detail-search-actions" });
@@ -1130,13 +1118,13 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 	});
 	addBtn.addEventListener("click", () => {
 		const modal = new AddCardsModal(this.app, this.plugin, {
-			// DeckCard n'a pas de champ id propre (voir data-model.ts) —
-			// scryfallId sert de clé partout ailleurs pour un deck donné
-			// (changeDeckCardCount/removeDeckCard/undoAddToDeck), reprise ici
-			// pour satisfaire la forme { id, count, listId } attendue par
-			// AddCardsModalOptions.onAdd (uniformisation avec Collection/
-			// Wantlist demandée explicitement — le flux Deck n'avait jusqu'ici
-			// ni stepper, ni tuile cliquable, ni panneau d'historique).
+			// DeckCard has no id field of its own (see data-model.ts) — scryfallId
+			// serves as the key everywhere else for a given deck
+			// (changeDeckCardCount/removeDeckCard/undoAddToDeck), reused here to
+			// satisfy the { id, count, listId } shape expected by
+			// AddCardsModalOptions.onAdd (harmonization with Collection/Wantlist
+			// explicitly requested — the Deck flow until now had neither a stepper,
+			// nor a clickable tile, nor a history panel).
 			onAdd: (card) => {
 				const row = this.plugin.addCardToDeck(deck.id, card);
 				return row ? { id: row.scryfallId, count: row.count, listId: deck.id } : undefined;
@@ -1145,27 +1133,24 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 				this.plugin.changeDeckCardCount(deck.id, entryId, delta, onDone),
 			onOpenDetail: (entryId, onDetailClosed) =>
 				this.openDeckCardDetailById(deck.id, entryId, onDetailClosed),
-			// Même raisonnement que undoAddToCollection/undoAddToWantlist
-			// (onUndoAdd, shared-search-ui.ts) — reshape { id, count } depuis
-			// DeckCard (scryfallId, pas id) pour la même raison que onAdd
-			// ci-dessus.
+			// Same reasoning as undoAddToCollection/undoAddToWantlist (onUndoAdd,
+			// shared-search-ui.ts) — reshapes { id, count } from DeckCard (scryfallId,
+			// not id) for the same reason as onAdd above.
 			onUndoAdd: (card, _options, undoListId, delta) => {
 				const row = this.plugin.undoAddToDeck(card.id, undoListId, delta);
 				return row ? { id: row.scryfallId, count: row.count } : undefined;
 			},
 			destinationName: deck.name,
-			// "deck" : ChangePrintingModal/CopyCardModal n'acceptent ni l'un
-			// ni l'autre "deck" comme source (voir sourceKind, shared-
-			// search-ui.ts) — les liens "Change printing"/"Move card" du
-			// panneau "Add history" ne s'affichent donc jamais ici,
-			// cohérent avec l'absence déjà établie de tout concept de
-			// déplacement pour une carte de deck.
+			// "deck": ChangePrintingModal/CopyCardModal accept neither one "deck" as a
+			// source (see sourceKind, shared-search-ui.ts) — the "Change
+			// printing"/"Move card" links of the "Add history" panel therefore never
+			// display here, consistent with the already established absence of any
+			// move concept for a deck card.
 			sourceKind: "deck",
-			// DeckCard n'a toujours pas de champ finish (voir "Data model
-			// notes" dans CLAUDE.md — asymétrie établie, hors périmètre de
-			// cette harmonisation) : aucun sélecteur Finish/Language/
-			// Condition n'existe plus dans cette modale de toute façon (le
-			// dernier, propre au flux Wantlist, a été retiré à son tour).
+			// DeckCard still has no finish field (see "Data model notes" in CLAUDE.md
+			// — established asymmetry, out of scope of this harmonization): no
+			// Finish/Language/Condition selector exists anymore in this modal anyway
+			// (the last one, specific to the Wantlist flow, was removed in turn).
 			titleText: `Add cards to "${deck.name}"`,
 		});
 		modal.onClose = () => {
@@ -1175,11 +1160,11 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 		modal.open();
 	});
 
-	// "Deck Stats" (2026-09-02) — mana curve/couleurs/types de CE deck, voir
-	// DeckStatsModal. Un premier essai en 5e mode d'affichage (à côté de
-	// Liste/Grille/Tableau/Carte) a été demandé explicitement en retour à
-	// une modale — ce bouton d'en-tête est le point d'entrée à la place du
-	// 5e bouton du cluster liste/grille/tableau/carte (renderGroupSortBar).
+	// "Deck Stats" (2026-09-02) — mana curve/colors/types of THIS deck, see
+	// DeckStatsModal. A first attempt as a 5th display mode (next to
+	// List/Grid/Table/Card) was explicitly asked to be returned to a modal —
+	// this header button is the entry point in place of the 5th button of the
+	// list/grid/table/card cluster (renderGroupSortBar).
 	const statsBtn = actionsRow.createDiv({
 		cls: "mtg-tile-menu-btn mtg-tile-menu-btn-large",
 	});
@@ -1211,9 +1196,9 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 	menuBtn.setAttribute("title", "Deck settings");
 	menuBtn.addEventListener("click", openDeckSettings);
 
-	// Cartes du deck limitées à l'onglet actif (voir renderDeckBoardTabs
-	// plus haut) — le filtre texte/Group by/Sort by habituels s'appliquent
-	// ENSUITE, à l'intérieur de ce sous-ensemble seulement.
+	// Deck cards limited to the active tab (see renderDeckBoardTabs higher up)
+	// — the usual text filter/Group by/Sort by apply AFTERWARDS, only inside
+	// this subset.
 	const boardCards = deck.cards.filter((c) => deckBoardTabMatches(c, this.deckActiveBoard));
 	const filteredCards = boardCards.filter((c) =>
 		cardMatchesTokens(c, this.deckCardFilterTokens, this.deckCardFilterDraft)
@@ -1233,25 +1218,23 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 		boardCards
 	);
 
-	// Le prix d'une carte de deck est désormais un vrai champ persisté sur
-	// DeckCard (voir "Data model notes", CLAUDE.md, 2026-09-02) plutôt
-	// qu'un cache session à pré-remplir ici à chaque ouverture — plus
-	// aucun aller-retour réseau nécessaire à ce stade : une carte pas
-	// encore rattrapée (deck créé avant cette fonctionnalité) se voit déjà
-	// rattrapée une fois pour toutes par MTGCollectionPlugin.
-	// backfillDeckCardPrices() au démarrage du plugin, qui redessine
-	// lui-même les vues ouvertes une fois terminé.
+	// The price of a deck card is now a real persisted field on DeckCard (see
+	// "Data model notes", CLAUDE.md, 2026-09-02) rather than a session cache
+	// to pre-fill here on every opening — no more network round trip needed at
+	// this stage: a card not yet caught up (deck created before this feature)
+	// is already caught up once and for all by
+	// MTGCollectionPlugin.backfillDeckCardPrices() at plugin startup, which
+	// itself redraws the open views once finished.
 
-	// Pré-remplissage en bloc de legalitiesCache pour tout le deck ouvert,
-	// dès qu'un format est choisi (Deck.format) — alimente le petit badge de
-	// légalité par carte (voir buildDeckCardRow/buildDeckCardTile plus bas,
-	// deckLegalityBadge) sans attendre qu'un filtre "legal:" quelconque soit
-	// tapé (contrairement à renderListDetail, où ce même fetch groupé
-	// n'est déclenché QUE par un filtre actif — ici c'est le format du deck
-	// lui-même qui joue ce rôle). bulkFetchLegalities est déjà générique
-	// sur n'importe quel ensemble d'ids (pas seulement Collection/
-	// Wantlist), et no-op instantanément si tout est déjà en cache/en vol
-	// — sûr à rappeler à chaque render().
+	// Bulk pre-filling of legalitiesCache for the whole open deck, as soon as
+	// a format is chosen (Deck.format) — feeds the small per-card legality
+	// badge (see buildDeckCardRow/buildDeckCardTile further down,
+	// deckLegalityBadge) without waiting for any "legal:" filter to be typed
+	// (unlike renderListDetail, where this same grouped fetch is triggered
+	// ONLY by an active filter — here it is the deck's own format that plays
+	// this role). bulkFetchLegalities is already generic over any set of ids
+	// (not just Collection/Wantlist), and is an instant no-op if everything is
+	// already cached/in flight — safe to call again on every render().
 	if (deck.format) {
 		void this.plugin.bulkFetchLegalities(deck.cards.map((c) => c.scryfallId)).then((fetchedSomething) => {
 			if (fetchedSomething) this.plugin.refreshOpenViews();
@@ -1260,10 +1243,10 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 
 	this.renderGroupSortBar("deck", stickyHeader);
 
-	// Mainboard/Sideboard/Maybeboard — sous la barre Group by/Sort by/
-	// modes d'affichage plutôt qu'au-dessus (déplacé sur demande explicite,
-	// capture d'écran annotée à l'appui, 2026-09-07) ; ordre DOM ici direct
-	// puisque cet appel n'a besoin d'aucune donnée calculée plus bas.
+	// Mainboard/Sideboard/Maybeboard — under the Group by/Sort by/display
+	// modes bar rather than above (moved on explicit request, annotated
+	// screenshot in support, 2026-09-07); DOM order direct here since this
+	// call needs no data computed further down.
 	this.renderDeckBoardTabs(deck, stickyHeader);
 
 	const renderSignature = JSON.stringify([
@@ -1303,15 +1286,16 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 	const navOrder = cardGroups.flatMap((g) => g.cards);
 	this.navOrderForDeckClick = navOrder;
 
-	// Voir le commentaire équivalent dans renderListDetail — même
-	// raisonnement, la vue Stacks (renderDeckStacksView) construit son
-	// propre contenu à l'intérieur de CE même `list`, donc en hérite aussi.
+	// See the equivalent comment in renderListDetail — same reasoning, the
+	// Stacks view (renderDeckStacksView) builds its own content inside THIS
+	// same `list`, so it inherits it too.
 	const scrollArea = this.bodyEl.createDiv({ cls: "mtg-detail-scroll-area" });
 	scrollArea.addEventListener("scroll", () => this.handleScrollAreaScroll(scrollArea));
-	// Voir le commentaire équivalent dans renderListDetail.
+	// See the equivalent comment in renderListDetail.
 	setupPanelScrollFade(scrollArea);
-	// Titre "Cards: …" — porte sur l'onglet actif (Mainboard/Sideboard/
-	// Maybeboard), comme le filtre lui-même : voir renderCardsCountTitle.
+	// "Cards: …" title — applies to the active tab
+	// (Mainboard/Sideboard/Maybeboard), like the filter itself: see
+	// renderCardsCountTitle.
 	renderCardsCountTitle(
 		scrollArea,
 		boardCards,
@@ -1331,13 +1315,13 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 	this.lastRenderedDeckGroupLabels = cardGroups.filter((g) => g.label).map((g) => g.label);
 
 	if (filteredCards.length === 0) {
-		// Distingue "le deck entier est vide" de "cet onglet est vide" (ex.
-		// pas de Sideboard) et de "le filtre de recherche ne matche rien" —
-		// sans quoi une simple recherche vide sur un deck bien rempli, ou un
-		// onglet Sideboard/Maybeboard sans carte, affichait à tort "Ce deck
-		// est vide" (message resté correct seulement pour le tout premier
-		// cas avant l'ajout des onglets, jamais un problème tant que
-		// filteredCards === deck.cards.length === 0 étaient équivalents).
+		// Distinguishes "the whole deck is empty" from "this tab is empty" (e.g.
+		// no Sideboard) and from "the search filter matches nothing" — without
+		// which a simple empty search on a well-filled deck, or a
+		// Sideboard/Maybeboard tab with no cards, wrongly displayed "This deck is
+		// empty" (a message that remained correct only for the very first case
+		// before the tabs were added, never a problem as long as filteredCards ===
+		// deck.cards.length === 0 were equivalent).
 		const boardLabel = DECK_BOARD_TABS.find((t) => t.value === this.deckActiveBoard)?.label ?? "";
 		list.createEl("p", {
 			text:
@@ -1362,12 +1346,11 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 		this.deckBulkBarWasVisible = false;
 	}
 
-	// Vue Stacks (Archidekt) : une structure de colonnes entièrement à
-	// part, sans rapport avec les lignes/tuiles empilées verticalement
-	// (.mtg-card-row-outer) des 4 autres modes — cardGroups (pas
-	// visibleGroups/deckRenderLimit) : un deck reste de taille modeste
-	// (quelques dizaines à ~200 cartes), la pagination par lots n'a pas
-	// été jugée nécessaire pour cette 1ère version.
+	// Stacks view (Archidekt): an entirely separate column structure,
+	// unrelated to the vertically stacked rows/tiles (.mtg-card-row-outer) of
+	// the 4 other modes — cardGroups (not visibleGroups/deckRenderLimit): a
+	// deck stays modest in size (a few dozen to ~200 cards), batch pagination
+	// was not judged necessary for this 1st version.
 	if (phoneAwareViewMode(this.deckViewMode) === "stacks" && filteredCards.length > 0) {
 		this.renderDeckStacksView(list, deck, cardGroups);
 		return;
@@ -1462,9 +1445,9 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 			}
 
 			const rightEl = headerEl.createDiv({ cls: "mtg-group-header-right" });
-			// Comme les tuiles de deck (deck.cards.length unique · totalQty cards) :
-			// fullGroupCards.length compte les cartes distinctes, totalQty somme
-			// leurs exemplaires (DeckCard.count).
+			// Like the deck tiles (deck.cards.length unique · totalQty cards):
+			// fullGroupCards.length counts the distinct cards, totalQty sums their
+			// copies (DeckCard.count).
 			const totalQty = fullGroupCards.reduce((s, c) => s + c.count, 0);
 			rightEl.createSpan({
 				cls: "mtg-group-header-count",
@@ -1541,52 +1524,50 @@ function resolveDraggedStackCard(
 export function renderDeckStacksView(this: MTGCollectionView, container: HTMLElement, deck: Deck, cardGroups: CardGroup<DeckCard>[]) {
 	const currency = this.plugin.settings.priceCurrency;
 	const canDragFunction = this.deckGroupBy === "function" && !this.deckSelectMode;
-	// Colonne actuellement survolée pendant un drag (mise à jour uniquement
-	// sur CHANGEMENT dans le handler dragover container-level plus bas,
-	// jamais dans dragenter/dragleave par colonne — ces deux événements
-	// bullent depuis les enfants et scintillent sinon à chaque carte
-	// traversée à l'intérieur d'une même colonne).
+	// Column currently hovered during a drag (updated only on CHANGE in the
+	// container-level dragover handler further down, never in per-column
+	// dragenter/dragleave — those two events bubble up from the children and
+	// otherwise flicker on every card crossed inside a same column).
 	let dragHighlightedColumn: HTMLElement | null = null;
-	// Carte actuellement "prise" (voir plus bas, resolveDraggedStackCard) —
-	// distincte de dragHighlightedColumn, même raison d'être : le nettoyage
-	// dans dragend doit retirer la classe de la carte réellement résolue,
-	// pas d'une carte capturée par fermeture au moment de la construction.
+	// Card currently "picked up" (see further down, resolveDraggedStackCard) —
+	// distinct from dragHighlightedColumn, same purpose: the cleanup in
+	// dragend must remove the class from the card actually resolved, not from
+	// a card captured by closure at construction time.
 	let draggingCardEl: HTMLElement | null = null;
 	cardGroups.forEach((cardGroup, groupIndex) => {
 		const column = container.createDiv({ cls: "mtg-deck-stack-column" });
-		// Lus par updateDeckStacksLayout (plus bas) une fois cette pile
-		// attachée au document — stackOrder préserve l'ordre d'origine des
-		// groupes à travers plusieurs répartitions successives (la pile n'est
-		// alors plus forcément un enfant DIRECT de `container`, voir cette
-		// fonction), stackCardCount est cardGroup.cards.length (nombre de
-		// LIGNES distinctes, pas la quantité totale — voir
-		// estimateStackColumnHeight, card-sorting.ts) pour estimer sa hauteur
-		// sans avoir besoin de la mesurer dans le DOM.
+		// Read by updateDeckStacksLayout (further down) once this pile is attached
+		// to the document — stackOrder preserves the original order of the groups
+		// across several successive distributions (the pile is then not
+		// necessarily a DIRECT child of `container`, see that function),
+		// stackCardCount is cardGroup.cards.length (number of distinct ROWS, not
+		// the total quantity — see estimateStackColumnHeight, card-sorting.ts) to
+		// estimate its height without having to measure it in the DOM.
 		column.dataset.stackOrder = String(groupIndex);
 		column.dataset.stackCardCount = String(cardGroup.cards.length);
 		if (canDragFunction) column.dataset.stackFunctionLabel = cardGroup.label;
 		const header = column.createDiv({ cls: "mtg-deck-stack-header" });
 		const titleRow = header.createDiv({ cls: "mtg-deck-stack-header-title" });
-		// Couronne d'en-tête de groupe retirée (2026-09-07) : dépendait de
-		// "Group by Category", qui n'existe plus (Commander est devenu une
-		// Function, voir DeckCardCategory dans data-model.ts) — le Commander
-		// est désormais repéré sur CHAQUE carte via .mtg-thumb-commander-
-		// badge (renderThumbWithBadge, isDeckCommander), pas via un en-tête
-		// de groupe qui n'a plus de sens pour ce concept.
+		// Group header crown removed (2026-09-07): it depended on "Group by
+		// Category", which no longer exists (Commander became a Function, see
+		// DeckCardCategory in data-model.ts) — the Commander is now spotted on
+		// EACH card via .mtg-thumb-commander-badge (renderThumbWithBadge,
+		// isDeckCommander), not via a group header that no longer makes sense for
+		// this concept.
 		titleRow.createSpan({ cls: "mtg-deck-stack-header-label", text: cardGroup.label || "Cards" });
 
-		// "Qty" (exemplaires physiques, DeckCard.count) et "Price" (somme des
-		// valeurs de la colonne) — même deux informations que l'en-tête de
-		// groupe des 4 autres vues (mtg-group-header-count), condensées ici
-		// sur 2 lignes courtes plutôt qu'une seule phrase, à la Archidekt.
+		// "Qty" (physical copies, DeckCard.count) and "Price" (sum of the column's
+		// values) — the same two pieces of information as the group header of the
+		// 4 other views (mtg-group-header-count), condensed here into 2 short
+		// lines rather than a single sentence, Archidekt style.
 		const statsRow = header.createDiv({ cls: "mtg-deck-stack-header-stats" });
 		const totalQty = cardGroup.cards.reduce((s, c) => s + c.count, 0);
 		statsRow.createSpan({ text: `Qty: ${totalQty}` });
 		const priceEl = statsRow.createSpan();
-		// Prix : vrai champ persisté sur DeckCard (voir "Data model notes",
-		// CLAUDE.md, 2026-09-02) — undefined = pas encore rattrapé par
-		// MTGCollectionPlugin.backfillDeckCardPrices(), même état de
-		// chargement que buildDeckCardRow/buildDeckCardTile pour une carte isolée.
+		// Price: real persisted field on DeckCard (see "Data model notes",
+		// CLAUDE.md, 2026-09-02) — undefined = not yet caught up by
+		// MTGCollectionPlugin.backfillDeckCardPrices(), same loading state as
+		// buildDeckCardRow/buildDeckCardTile for an isolated card.
 		if (cardGroup.cards.some((c) => c.priceUsd === undefined)) {
 			renderLoadingDots(priceEl);
 		} else {
@@ -1595,13 +1576,24 @@ export function renderDeckStacksView(this: MTGCollectionView, container: HTMLEle
 		}
 
 		const body = column.createDiv({ cls: "mtg-deck-stack-body" });
-		// Parallèle à cardGroup.cards (même ordre, même index) — seul moyen de
-		// remonter d'un index géométrique (resolveDraggedStackCard plus bas) à
-		// l'élément DOM réel de la carte visée.
+		// Parallel to cardGroup.cards (same order, same index) — the only way to
+		// go back up from a geometric index (resolveDraggedStackCard further down)
+		// to the real DOM element of the targeted card.
 		const cardEls: HTMLElement[] = [];
-		cardGroup.cards.forEach((card) => {
+		cardGroup.cards.forEach((card, cardIndex) => {
 			const cardWrap = body.createDiv({ cls: "mtg-deck-stack-card" });
 			cardEls.push(cardWrap);
+			// Marks the pile while a card OTHER than its last one is hovered: that hover pushes the following cards
+			// down (the `~` rule in styles.css) and the last one can overflow the pile, which is when the bottom fade
+			// applies (.mtg-deck-stack-column-pushing). It used to be pure CSS, `.mtg-deck-stack-column:has(
+			// .mtg-deck-stack-card:not(:last-child):hover)`; the directory's scanner warns about every `:has` (broad
+			// selector invalidation), so the hover is followed here instead. mouseenter/mouseleave have :hover's
+			// semantics (the card's descendants and its ::after hover bridge count as the card), and a move from one
+			// card to the next fires the leave before the enter, so the class never shows for a frame in between.
+			if (cardIndex < cardGroup.cards.length - 1) {
+				cardWrap.addEventListener("mouseenter", () => column.addClass("mtg-deck-stack-column-pushing"));
+				cardWrap.addEventListener("mouseleave", () => column.removeClass("mtg-deck-stack-column-pushing"));
+			}
 			const finish = getDeckCardFinish(card);
 			this.renderThumbWithBadge(
 				cardWrap,
@@ -1624,10 +1616,9 @@ export function renderDeckStacksView(this: MTGCollectionView, container: HTMLEle
 				});
 				setIcon(indicator, isSelected ? "check-circle-2" : "circle");
 				if (isSelected) indicator.addClass("is-selected");
-				// Anneau d'accent autour de la carte elle-même (voir styles.css)
-				// — le seul autre indice visuel de sélection sur une carte de
-				// pile serait cette petite pastille en coin, trop discrète une
-				// fois la carte recouverte par sa suivante.
+				// Accent ring around the card itself (see styles.css) — the only other
+				// visual cue of selection on a pile card would be this small corner dot,
+				// too discreet once the card is covered by its successor.
 				if (isSelected) cardWrap.addClass("mtg-deck-stack-card-selected");
 			}
 			cardWrap.addEventListener("click", () => {
@@ -1650,18 +1641,17 @@ export function renderDeckStacksView(this: MTGCollectionView, container: HTMLEle
 				draggingCardEl = targetEl;
 				targetEl.addClass("mtg-deck-stack-card-dragging");
 				container.addClass("mtg-deck-stack-dragging-active");
-				// setData nécessaire pour que certains navigateurs acceptent de
-				// démarrer le drag du tout — la valeur elle-même n'est pas
-				// relue ailleurs (voir draggingDeckStackCardId, view.ts).
+				// setData needed for some browsers to agree to start the drag at all — the
+				// value itself isn't read back elsewhere (see draggingDeckStackCardId,
+				// view.ts).
 				event.dataTransfer?.setData("text/plain", targetCard.scryfallId);
 				if (event.dataTransfer) {
 					event.dataTransfer.effectAllowed = "move";
-					// Ghost par défaut = l'élément qui a reçu le mousedown natif,
-					// presque jamais targetEl une fois résolu géométriquement
-					// (voir resolveDraggedStackCard) — sans ce setDragImage
-					// explicite, l'aperçu suivant le curseur montrerait
-					// systématiquement une autre carte que celle réellement
-					// déplacée.
+					// Default ghost = the element that received the native mousedown, almost
+					// never targetEl once resolved geometrically (see resolveDraggedStackCard)
+					// — without this explicit setDragImage, the preview following the cursor
+					// would systematically show a different card from the one actually being
+					// moved.
 					const targetRect = targetEl.getBoundingClientRect();
 					event.dataTransfer.setDragImage(targetEl, targetRect.width / 2, targetRect.height / 2);
 				}
@@ -1673,6 +1663,9 @@ export function renderDeckStacksView(this: MTGCollectionView, container: HTMLEle
 				draggingCardEl?.removeClass("mtg-deck-stack-card-dragging");
 				draggingCardEl = null;
 				container.removeClass("mtg-deck-stack-dragging-active");
+				// No mouseenter/mouseleave during a native drag: the pile the drag started from may still carry the
+				// class although the pointer is elsewhere (the next real hover sets it again).
+				container.querySelectorAll(".mtg-deck-stack-column-pushing").forEach((el) => el.removeClass("mtg-deck-stack-column-pushing"));
 			});
 		}
 	});
@@ -1712,39 +1705,37 @@ export function updateDeckStacksLayout(this: MTGCollectionView) {
 	);
 	if (columns.length === 0) return;
 
-	// clientWidth exclut la bordure mais pas le padding, d'où la soustraction
-	// explicite ci-dessous — .mtg-collection-list n'a aucun padding
-	// horizontal aujourd'hui, mais mieux vaut rester correct si ça change un
-	// jour plutôt que de supposer silencieusement zéro.
+	// clientWidth excludes the border but not the padding, hence the explicit
+	// subtraction below — .mtg-collection-list has no horizontal padding
+	// today, but better to stay correct if that changes one day than to
+	// silently assume zero.
 	const style = getComputedStyle(container);
 	const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
 	const availableWidth = container.clientWidth - paddingX;
 	const maxTracksFromWidth = Math.floor(
 		(availableWidth + STACK_TRACK_GAP_PX) / (STACK_TRACK_MIN_WIDTH_PX + STACK_TRACK_GAP_PX)
 	);
-	// Jamais plus de pistes que de groupes — inutile de créer des pistes
-	// vides pour un regroupement épars (ex. Group by Rarity à 4 groupes sur
-	// un panneau très large) alors qu'une piste par groupe suffit déjà à
-	// remplir toute la largeur disponible.
+	// Never more tracks than groups — no point creating empty tracks for a
+	// sparse grouping (e.g. Group by Rarity with 4 groups on a very wide
+	// panel) when one track per group is already enough to fill the whole
+	// available width.
 	const trackCount = Math.max(1, Math.min(columns.length, maxTracksFromWidth));
 
 	if (trackCount < maxTracksFromWidth) {
 		const maxTrackWidthPx = Math.max(STACK_TRACK_MIN_WIDTH_PX, (availableWidth - 3 * STACK_TRACK_GAP_PX) / 4);
 		container.setCssProps({ "--mtg-stack-track-max-width": `${maxTrackWidthPx}px` });
 	} else {
-		// "none" explicite (pas juste "ne pas poser la propriété") : le
-		// fallback CSS de var(--mtg-stack-track-max-width, ...) doit rester
-		// un filet de sécurité pour l'tout premier appel seulement (voir son
-		// propre commentaire dans styles.css), jamais une valeur dont CETTE
-		// branche dépendrait pour rester correcte à une largeur de panneau
-		// qu'un futur changement du fallback pourrait un jour rendre trop
-		// petite.
+		// Explicit "none" (not just "don't set the property"): the CSS fallback of
+		// var(--mtg-stack-track-max-width, ...) must remain a safety net for the
+		// very first call only (see its own comment in styles.css), never a value
+		// on which THIS branch would depend to stay correct at a panel width that
+		// a future change of the fallback could one day make too small.
 		container.setCssProps({ "--mtg-stack-track-max-width": "none" });
 	}
 
-	// .remove() ne détruit jamais les descendants en mémoire, seulement leur
-	// attache au document — les références déjà capturées dans `columns`
-	// ci-dessus restent utilisables juste après pour les rattacher ailleurs.
+	// .remove() never destroys the descendants in memory, only their
+	// attachment to the document — the references already captured in
+	// `columns` above remain usable right after to attach them elsewhere.
 	container.querySelectorAll(".mtg-deck-stack-track").forEach((track) => track.remove());
 
 	const tracks: HTMLElement[] = [];
@@ -1761,49 +1752,49 @@ export function updateDeckStacksLayout(this: MTGCollectionView) {
 			if (trackHeights[i] < trackHeights[shortestIndex]) shortestIndex = i;
 		}
 		tracks[shortestIndex].appendChild(column);
+		// Re-attaching a hovered pile fires no mouseleave: do not let a stale hover mark outlive the move.
+		column.removeClass("mtg-deck-stack-column-pushing");
 		trackHeights[shortestIndex] += estimatedHeight;
 	});
 
-	// Re-échantillonne le radius responsive de la vue Carte APRÈS avoir
-	// réparti ces piles dans leurs pistes définitives — nécessaire ici, pas
-	// seulement dans render() (voir son propre commentaire), parce que
-	// setupCardTileRadiusObserver (shared-render-helpers.ts) et
-	// setupDeckStacksLayoutObserver ci-dessous sont deux ResizeObserver
-	// INDÉPENDANTS sur le même this.mainEl : rien ne garantit l'ordre dans
-	// lequel deux observers indépendants livrent leurs callbacks respectifs
-	// pour un même redimensionnement, donc un appel isolé côté render()
-	// suffirait pour CE cas précis mais pas pour un redimensionnement de
-	// panneau seul. updateCardTileRadius échantillonne la PREMIÈRE
-	// .mtg-card-tile-thumb-shadow-wrap trouvée dans le document — y compris
-	// une carte de cette vue Stacks (renderThumbWithBadge y est appelé en
-	// variante "tile", la même que la vue Carte) — donc sans ce ré-appel ICI,
-	// un redimensionnement pourrait re-mesurer une pile juste avant qu'elle
-	// soit replacée dans sa piste, pas juste après.
+	// Re-samples the Card view's responsive radius AFTER having distributed
+	// these piles into their final tracks — necessary here, not only in
+	// render() (see its own comment), because setupCardTileRadiusObserver
+	// (shared-render-helpers.ts) and setupDeckStacksLayoutObserver below are
+	// two INDEPENDENT ResizeObservers on the same this.mainEl: nothing
+	// guarantees the order in which two independent observers deliver their
+	// respective callbacks for a same resize, so a lone call on the render()
+	// side would suffice for THIS particular case but not for a panel resize
+	// alone. updateCardTileRadius samples the FIRST
+	// .mtg-card-tile-thumb-shadow-wrap found in the document — including a
+	// card of this Stacks view (renderThumbWithBadge is called there in "tile"
+	// variant, the same as the Card view) — so without this re-call HERE, a
+	// resize could re-measure a pile just before it is put back into its
+	// track, not just after.
 	this.updateCardTileRadius();
 }
 
-// Séparé de setupCardTileRadiusObserver (src/view/shared-render-helpers.ts)
-// plutôt qu'ajouté à son unique callback existant : préoccupation
-// entièrement différente (Stacks/My Decks contre le radius responsive de la
-// vue Carte), donc un changement confiné à ce fichier sans toucher un
-// mécanisme déjà éprouvé et sans rapport. Un 2e ResizeObserver indépendant
-// sur this.mainEl (même élément persistant, même raisonnement que le
-// commentaire de setupCardTileRadiusObserver) reste négligeable en coût —
-// le panneau ne se redimensionne que sur un geste utilisateur explicite,
-// jamais en boucle.
+// Separate from setupCardTileRadiusObserver
+// (src/view/shared-render-helpers.ts) rather than added to its single
+// existing callback: an entirely different concern (Stacks/My Decks versus
+// the Card view's responsive radius), so a change confined to this file
+// without touching an already proven and unrelated mechanism. A 2nd
+// independent ResizeObserver on this.mainEl (same persistent element, same
+// reasoning as the comment of setupCardTileRadiusObserver) remains
+// negligible in cost — the panel only resizes on an explicit user gesture,
+// never in a loop.
 export function setupDeckStacksLayoutObserver(this: MTGCollectionView) {
 	const observer = new ResizeObserver(() => this.updateDeckStacksLayout());
 	observer.observe(this.mainEl);
 }
 
-// Voir collectionCardRowSignature (My Collection) pour le principe général.
+// See collectionCardRowSignature (My Collection) for the general principle.
 
 export function deckCardRowSignature(this: MTGCollectionView, deck: Deck, card: DeckCard, isSelected: boolean): string {
-	// Légalité du format du deck (badge, voir buildDeckCardRow/buildDeckCardTile)
-	// — même raison d'être que les champs de prix ci-dessous : n'est PAS un champ de
-	// DeckCard, une ligne construite avant que legalitiesCache soit rempli
-	// (voir bulkFetchLegalities, renderDeckDetail) resterait sinon figée sans
-	// badge pour toujours.
+	// Legality of the deck's format (badge, see buildDeckCardRow/buildDeckCardTile)
+	// — same purpose as the price fields below: is NOT a field of DeckCard, a row
+	// built before legalitiesCache is filled (see bulkFetchLegalities,
+	// renderDeckDetail) would otherwise stay frozen without a badge forever.
 	const legalityStatus = deck.format
 		? this.plugin.getCachedLegalities(card.scryfallId)?.[deck.format]
 		: undefined;
@@ -1817,21 +1808,20 @@ export function deckCardRowSignature(this: MTGCollectionView, deck: Deck, card: 
 		card.collectorNumber,
 		card.count,
 		isDeckCardOwned(card),
-		// Harmonisation My Decks/My Collection (2026-08-25) — mêmes 3
-		// champs que collectionCardRowSignature (collection-render.ts), même raison d'être.
+		// My Decks/My Collection harmonization (2026-08-25) — same 3 fields as
+		// collectionCardRowSignature (collection-render.ts), same purpose.
 		getDeckCardFinish(card),
 		getDeckCardLanguage(card),
 		getDeckCardCondition(card),
 		isSelected,
 		this.deckSelectMode,
-		// Voir collectionCardRowSignature — même raison d'être pour deckViewMode.
+		// See collectionCardRowSignature — same purpose for deckViewMode.
 		phoneAwareViewMode(this.deckViewMode),
-		// Prix : vrai champ persisté sur DeckCard depuis 2026-09-02 (voir
-		// "Data model notes", CLAUDE.md), inclus ici pour la même raison
-		// que sur collectionCardRowSignature (collection-render.ts) — une ligne construite avant
-		// que backfillDeckCardPrices() ait rattrapé cette carte
-		// resterait sinon figée sur son placeholder de chargement pour
-		// toujours (voir buildDeckCardRow/buildDeckCardTile).
+		// Price: real persisted field on DeckCard since 2026-09-02 (see "Data model notes",
+		// CLAUDE.md), included here for the same reason as in collectionCardRowSignature
+		// (collection-render.ts) — a row built before backfillDeckCardPrices() caught up this
+		// card would otherwise stay frozen on its loading placeholder forever (see
+		// buildDeckCardRow/buildDeckCardTile).
 		card.priceUsd,
 		card.priceUsdFoil,
 		card.priceEur,
@@ -1844,17 +1834,17 @@ export function deckCardRowSignature(this: MTGCollectionView, deck: Deck, card: 
 	].join("|");
 }
 
-// Petit badge de légalité par carte (voir deckLegalityBadge, card-search.ts)
-// — rendu seulement quand deck.format est choisi ET que la légalité de
-// cette carte est déjà en cache (bulkFetchLegalities, renderDeckDetail) ;
-// rien tant que ce n'est pas encore chargé, plutôt qu'un badge neutre
-// trompeur (un futur render() une fois le cache rempli le fera apparaître,
-// voir deckCardRowSignature). Masqué en mode Tableau via CSS
-// (.mtg-collection-list-table .mtg-deck-legality-badge) plutôt qu'omis
-// ici — même précédent déjà établi pour .mtg-wantlist-acquired-btn (voir
-// styles.css) : un enfant display:none à l'intérieur d'un ancêtre
-// display:contents ne devient pas lui-même une cellule de grille, donc
-// n'a aucun effet sur l'alignement des colonnes du tableau.
+// Small per-card legality badge (see deckLegalityBadge, card-search.ts) —
+// rendered only when deck.format is chosen AND this card's legality is
+// already in the cache (bulkFetchLegalities, renderDeckDetail); nothing as
+// long as it is not loaded yet, rather than a misleading neutral badge (a
+// future render() once the cache is filled will make it appear, see
+// deckCardRowSignature). Hidden in Table mode via CSS
+// (.mtg-collection-list-table .mtg-deck-legality-badge) rather than omitted
+// here — same precedent already established for .mtg-wantlist-acquired-btn
+// (see styles.css): a display:none child inside a display:contents ancestor
+// does not itself become a grid cell, so has no effect on the alignment of
+// the table's columns.
 
 export function renderDeckLegalityBadge(this: MTGCollectionView, container: HTMLElement, deck: Deck, card: DeckCard) {
 	if (!deck.format) return;
@@ -1866,8 +1856,8 @@ export function renderDeckLegalityBadge(this: MTGCollectionView, container: HTML
 	el.setAttribute("title", badge.title);
 }
 
-// Voir buildCollectionCardRow (My Collection) pour le principe général — le clic
-// principal référence this.navOrderForDeckClick plutôt que navOrder.
+// See buildCollectionCardRow (My Collection) for the general principle — the
+// main click references this.navOrderForDeckClick rather than navOrder.
 
 export function buildDeckCardRow(this: MTGCollectionView, deck: Deck, card: DeckCard, isSelected: boolean): HTMLElement {
 	const row = createDiv();
@@ -1893,21 +1883,21 @@ export function buildDeckCardRow(this: MTGCollectionView, deck: Deck, card: Deck
 	);
 
 	const body = row.createDiv({ cls: "mtg-card-row-body" });
-	// Même structure que buildCollectionCardRow/buildWantlistCardRow (harmonisation
-	// My Decks/My Collection, 2026-08-25) — nameLine EST la cellule (déjà
-	// stretchée en mode Tableau par la grille, voir .mtg-collection-list-
-	// table), nameTextSpan (le <span> interne, seul à recevoir les
-	// écouteurs de survol de l'aperçu — sinon "toute la cellule provoque
-	// l'apparition de la carte", bug déjà rapporté une fois pour cette
-	// même colonne côté My Collection) ne porte que la largeur du texte
-	// rendu, un éventuel foil-pill vient s'ajouter à côté sans l'étirer.
+	// Same structure as buildCollectionCardRow/buildWantlistCardRow (My Decks/My
+	// Collection harmonization, 2026-08-25) — nameLine IS the cell (already
+	// stretched in Table mode by the grid, see .mtg-collection-list-table),
+	// nameTextSpan (the inner <span>, the only one to receive the preview hover
+	// listeners — otherwise "the whole cell makes the card appear", a bug already
+	// reported once for this same column on the My Collection side) only carries
+	// the width of the rendered text, a possible foil-pill is added next to it
+	// without stretching it.
 	const nameLine = body.createDiv({ cls: "mtg-card-row-name-line" });
 	const nameTextSpan = nameLine.createSpan({ cls: "mtg-card-row-name", text: card.name });
 	if (finish !== "regular") {
 		nameLine.createSpan({ cls: "mtg-foil-pill", text: getFinishLabel(finish) });
 	}
-	// Voir buildCollectionCardRow (My Collection) pour le principe général de cette
-	// colonne/de cet aperçu.
+	// See buildCollectionCardRow (My Collection) for the general principle of this
+	// column/this preview.
 	if (phoneAwareViewMode(this.deckViewMode) === "table") {
 		const manaValueCell = body.createDiv({ cls: "mtg-table-mana-value-cell" });
 		if (card.manaCost) {
@@ -1928,10 +1918,10 @@ export function buildDeckCardRow(this: MTGCollectionView, deck: Deck, card: Deck
 		cls: "mtg-card-row-set-number",
 		text: `${card.setCode.toUpperCase()} #${card.collectorNumber}`,
 	});
-	// Même clic-pour-changer-d'impression que buildCollectionCardRow/buildWantlistCardRow
-	// — n'existait pas ici jusqu'ici (DeckCard n'a pas de champ id propre,
-	// voir "Data model notes" dans CLAUDE.md) ; changeDeckCardPrinting
-	// (plugin.ts) retrouve la ligne par scryfallId + catégorie à la place.
+	// Same click-to-change-printing as buildCollectionCardRow/buildWantlistCardRow — did
+	// not exist here until now (DeckCard has no id field of its own, see "Data model
+	// notes" in CLAUDE.md); changeDeckCardPrinting (plugin.ts) finds the row by
+	// scryfallId + category instead.
 	const openPrintingPicker = (evt: MouseEvent) => {
 		if (this.deckSelectMode) return;
 		evt.stopPropagation();
@@ -1950,12 +1940,12 @@ export function buildDeckCardRow(this: MTGCollectionView, deck: Deck, card: Deck
 	});
 	this.renderDeckLegalityBadge(setLine, deck, card);
 
-	// Langue/état — même structure/mêmes classes que buildCollectionCardRow (My
-	// Collection), harmonisation 2026-08-25. En mode Tableau,
-	// .mtg-card-row-tags s'aplatit déjà (règle générique, partagée avec
-	// Collection — voir .mtg-collection-list-table plus haut dans
-	// styles.css) : les 2 colonnes "Language"/"Condition" correspondantes
-	// existent déjà dans TABLE_COLUMNS_DECK (card-sorting.ts).
+	// Language/condition — same structure/same classes as
+	// buildCollectionCardRow (My Collection), harmonization 2026-08-25. In
+	// Table mode, .mtg-card-row-tags already flattens (generic rule, shared
+	// with Collection — see .mtg-collection-list-table higher up in
+	// styles.css): the 2 corresponding "Language"/"Condition" columns already
+	// exist in TABLE_COLUMNS_DECK (card-sorting.ts).
 	const tagsLine = body.createDiv({ cls: "mtg-card-row-tags" });
 
 	const langTrigger = tagsLine.createSpan({ cls: "mtg-icon-trigger" });
@@ -2020,23 +2010,21 @@ export function buildDeckCardRow(this: MTGCollectionView, deck: Deck, card: Deck
 		this.plugin.changeDeckCardCount(deck.id, card.scryfallId, -1, () => this.render());
 	});
 
-	// Colonne "Legality", mode Tableau uniquement — demandée explicitement
-	// pour voir d'un coup d'œil la légalité de tout le deck, sans passer
-	// par List/Grid/Card. Reprend le même point coloré que
-	// renderDeckLegalityBadge (setLine ci-dessus, masqué en mode Tableau —
-	// voir son propre commentaire sur les colonnes fixes de la grille),
-	// mais dans sa propre cellule dédiée plutôt qu'ajouté à une cellule
-	// existante : setLine devient TROIS cellules distinctes en mode
-	// Tableau (voir "mtg-card-row-set { display: contents }" plus haut
-	// dans ce fichier), un badge ajouté là s'y serait retrouvé comme une
-	// 4ᵉ cellule imprévue et aurait décalé toutes les colonnes suivantes.
-	// Contrairement au badge des 3 autres vues (qui n'affiche RIEN tant
-	// qu'il n'y a pas de format/de statut connu — voir son propre
-	// commentaire), cette cellule affiche toujours quelque chose ("—" par
-	// défaut) pour que la colonne reste correctement alignée avec le
-	// reste du tableau, même sur une ligne sans donnée. deckCardRowSignature
-	// inclut déjà deck.format et le statut en cache — même raisonnement
-	// que pour la colonne Price juste en dessous.
+	// "Legality" column, Table mode only — explicitly requested to see at a
+	// glance the legality of the whole deck, without going through
+	// List/Grid/Card. Takes up the same colored dot as renderDeckLegalityBadge
+	// (setLine above, hidden in Table mode — see its own comment on the fixed
+	// columns of the grid), but in its own dedicated cell rather than added to
+	// an existing cell: setLine becomes THREE distinct cells in Table mode
+	// (see "mtg-card-row-set { display: contents }" higher up in this file), a
+	// badge added there would have ended up as an unexpected 4th cell and
+	// shifted all the following columns. Unlike the badge of the 3 other views
+	// (which displays NOTHING as long as there is no known format/status — see
+	// its own comment), this cell always displays something ("—" by default)
+	// so that the column stays correctly aligned with the rest of the table,
+	// even on a row with no data. deckCardRowSignature already includes
+	// deck.format and the cached status — same reasoning as for the Price
+	// column just below.
 	if (phoneAwareViewMode(this.deckViewMode) === "table") {
 		const legalityCell = row.createDiv({ cls: "mtg-card-row-legality" });
 		if (!deck.format) {
@@ -2059,21 +2047,20 @@ export function buildDeckCardRow(this: MTGCollectionView, deck: Deck, card: Deck
 		}
 	}
 
-	// Colonne "Price" — affichée dans les 4 vues depuis cette demande
-	// explicite ("comme quand nous sommes dans My Collection"), pas
-	// seulement en mode Tableau comme à l'origine ; le total
-	// (.mtg-card-row-price-total) reste masqué en mode Tableau via la
-	// règle CSS partagée existante (.mtg-collection-list-table .mtg-card-
-	// row-price-total), même principe que buildCollectionCardRow (My Collection).
-	// DeckCard porte désormais un vrai prix persisté (voir "Data model
-	// notes", CLAUDE.md, 2026-09-02) — même 6 champs foil-aware que
-	// CollectionCard, plus de repli "regular" forcé : une carte de deck foil
-	// affiche maintenant son vrai prix foil, pas son prix non-foil.
-	// `card.priceUsd === undefined` = pas encore rattrapé (voir
-	// backfillDeckCardPrices, plugin.ts — placeholder de chargement, voir
-	// renderLoadingDots) ; deckCardRowSignature inclut déjà ces 6 champs pour
-	// que la ligne se reconstruise une fois le rattrapage résolu (sans
-	// quoi le cache de ligne la garderait figée sur le placeholder).
+	// "Price" column — displayed in the 4 views since this explicit request
+	// ("like when we're in My Collection"), not only in Table mode as originally;
+	// the total (.mtg-card-row-price-total) stays hidden in Table mode via the
+	// existing shared CSS rule (.mtg-collection-list-table
+	// .mtg-card-row-price-total), same principle as buildCollectionCardRow (My
+	// Collection). DeckCard now carries a real persisted price (see "Data model
+	// notes", CLAUDE.md, 2026-09-02) — same 6 foil-aware fields as
+	// CollectionCard, no more forced "regular" fallback: a foil deck card now
+	// displays its real foil price, not its non-foil price. `card.priceUsd ===
+	// undefined` = not yet caught up (see backfillDeckCardPrices, plugin.ts —
+	// loading placeholder, see renderLoadingDots); deckCardRowSignature already
+	// includes these 6 fields so that the row is rebuilt once the catch-up
+	// resolves (without which the row cache would keep it frozen on the
+	// placeholder).
 	const priceBox = row.createDiv({ cls: "mtg-card-row-price" });
 	if (card.priceUsd === undefined) {
 		const loadingEl = priceBox.createDiv({ cls: "mtg-card-row-price-unit" });
@@ -2107,13 +2094,12 @@ export function buildDeckCardRow(this: MTGCollectionView, deck: Deck, card: Deck
 	return row;
 }
 
-// Vue Carte (My Decks) — voir buildCollectionCardTile (My Collection) pour le principe
-// général. DeckCard porte maintenant les mêmes champs finish/langue/
-// condition (harmonisation My Decks/My Collection, 2026-08-25), et un
-// prix s'affiche aussi désormais (voir priceLine plus bas) — un vrai
-// champ persisté sur DeckCard depuis le 2026-09-02 (voir CLAUDE.md "Data
-// model notes"), foil-aware comme CollectionCard, plus un cache session
-// séparé à interroger.
+// Card view (My Decks) — see buildCollectionCardTile (My Collection) for the general
+// principle. DeckCard now carries the same finish/language/condition fields (My
+// Decks/My Collection harmonization, 2026-08-25), and a price is now displayed too
+// (see priceLine further down) — a real persisted field on DeckCard since 2026-09-02
+// (see CLAUDE.md "Data model notes"), foil-aware like CollectionCard, no more separate
+// session cache to query.
 
 export function buildDeckCardTile(this: MTGCollectionView, deck: Deck, card: DeckCard, isSelected: boolean): HTMLElement {
 	const tile = createDiv();
@@ -2140,9 +2126,9 @@ export function buildDeckCardTile(this: MTGCollectionView, deck: Deck, card: Dec
 
 	const info = tile.createDiv({ cls: "mtg-card-tile-info" });
 
-	// Ligne 1 : icône d'édition + code/numéro à gauche ; langue, état,
-	// foil à droite — même structure que buildCollectionCardTile (My Collection),
-	// harmonisation 2026-08-25.
+	// Row 1: set icon + code/number on the left; language, condition, foil on the
+	// right — same structure as buildCollectionCardTile (My Collection),
+	// harmonization 2026-08-25.
 	const row1 = info.createDiv({ cls: "mtg-card-tile-row1" });
 	const row1Left = row1.createDiv({ cls: "mtg-card-tile-row1-left" });
 	const setIconEl = row1Left.createSpan({ cls: "mtg-card-tile-set-icon" });
@@ -2151,9 +2137,9 @@ export function buildDeckCardTile(this: MTGCollectionView, deck: Deck, card: Dec
 		setSvgMarkup(setIconEl, svg);
 		const svgEl = setIconEl.querySelector("svg");
 		if (svgEl) {
-			// Un peu plus grand que le badge en coin qu'il remplace (13px) —
-			// ici il porte seul l'identification de l'édition, sans logo
-			// redondant sur l'image (voir renderThumbWithBadge).
+			// A bit larger than the corner badge it replaces (13px) — here it alone
+			// carries the identification of the set, without a redundant logo on the
+			// image (see renderThumbWithBadge).
 			svgEl.setAttribute("width", "16");
 			svgEl.setAttribute("height", "16");
 		}
@@ -2163,9 +2149,8 @@ export function buildDeckCardTile(this: MTGCollectionView, deck: Deck, card: Dec
 		cls: "mtg-card-row-set-number",
 		text: `${card.setCode.toUpperCase()} #${card.collectorNumber}`,
 	});
-	// Même clic-pour-changer-d'impression que la vue Liste/Tableau
-	// (buildDeckCardRow) et que buildWantlistCardTile — voir son propre
-	// commentaire.
+	// Same click-to-change-printing as the List/Table view (buildDeckCardRow)
+	// and as buildWantlistCardTile — see its own comment.
 	setNumberSpan.setAttribute("title", "Click to change printing");
 	setNumberSpan.addEventListener("click", (evt) => {
 		if (this.deckSelectMode) return;
@@ -2181,8 +2166,8 @@ export function buildDeckCardTile(this: MTGCollectionView, deck: Deck, card: Dec
 	});
 	this.renderDeckLegalityBadge(row1Left, deck, card);
 
-	// row1Right : langue/état/foil — même structure/mêmes classes que
-	// buildCollectionCardTile (My Collection), harmonisation 2026-08-25.
+	// row1Right: language/condition/foil — same structure/same classes as
+	// buildCollectionCardTile (My Collection), harmonization 2026-08-25.
 	const row1Right = row1.createDiv({ cls: "mtg-card-tile-row1-right" });
 
 	const langTrigger = row1Right.createSpan({ cls: "mtg-icon-trigger" });
@@ -2234,16 +2219,14 @@ export function buildDeckCardTile(this: MTGCollectionView, deck: Deck, card: Dec
 		row1Right.createSpan({ cls: "mtg-foil-pill", text: getFinishLabel(finish) });
 	}
 
-	// Ligne 2 : quantité, flèches horizontales — voir buildCollectionCardTile (My
-	// Collection) pour le principe général. Pas de garde deckSelectMode sur
-	// les clics ici, comme dans buildDeckCardRow d'origine : ce comportement
-	// (contrairement à Collection/Wantlist) n'a jamais bloqué le stepper en
-	// mode sélection.
+	// Row 2: quantity, horizontal arrows — see buildCollectionCardTile (My
+	// Collection) for the general principle. No deckSelectMode guard on the
+	// clicks here, as in the original buildDeckCardRow: this behavior (unlike
+	// Collection/Wantlist) never blocked the stepper in select mode.
 	const qtyRow = info.createDiv({ cls: "mtg-card-tile-qty-row" });
-	// mtg-card-tile-stepper : boutons +/- agrandis, scopés à la vue Carte
-	// uniquement — la fenêtre de détail garde ses propres boutons à leur
-	// taille d'origine (mtg-stepper-horizontal seul), ce modificateur ne
-	// s'applique qu'ici.
+	// mtg-card-tile-stepper: enlarged +/- buttons, scoped to the Card view
+	// only — the detail window keeps its own buttons at their original size
+	// (mtg-stepper-horizontal alone), this modifier only applies here.
 	const stepper = qtyRow.createDiv({ cls: "mtg-stepper mtg-stepper-horizontal mtg-card-tile-stepper" });
 	stepper.addEventListener("click", (evt) => evt.stopPropagation());
 	const controls = stepper.createDiv({ cls: "mtg-stepper-controls" });
@@ -2262,14 +2245,13 @@ export function buildDeckCardTile(this: MTGCollectionView, deck: Deck, card: Dec
 		this.plugin.changeDeckCardCount(deck.id, card.scryfallId, -1, () => this.render());
 	});
 
-	// Ligne prix — même classe/mise en page que buildCollectionCardTile (My
-	// Collection, "toujours créée, min-height réservé en CSS" pour que les
-	// tuiles d'une même rangée gardent toutes la même hauteur), demandé
-	// explicitement le même jour ("affiche le prix... sur les autres
-	// styles de présentation également, comme quand nous sommes dans My
-	// Collection"). Voir buildDeckCardRow ci-dessus pour le raisonnement
-	// complet sur la source du prix (vrai champ persisté, foil-aware) et
-	// l'état de chargement.
+	// Price row — same class/same layout as buildCollectionCardTile (My
+	// Collection, "always created, min-height reserved in CSS" so that the
+	// tiles of a same row all keep the same height), explicitly requested the
+	// same day ("display the price... on the other presentation styles too,
+	// like when we're in My Collection"). See buildDeckCardRow above for the
+	// full reasoning on the price source (real persisted field, foil-aware)
+	// and the loading state.
 	const priceLine = info.createDiv({ cls: "mtg-card-tile-price-line" });
 	if (card.priceUsd === undefined) {
 		renderLoadingDots(priceLine);

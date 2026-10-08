@@ -1,35 +1,35 @@
 import { Platform } from "obsidian";
 import type { WorkspaceLeaf } from "obsidian";
-// Export NOMMÉ (pas `import type MTGCollectionView from`, contrairement à plugin.ts) — voir "Phase 5b"
-// dans CLAUDE.md : la mauvaise syntaxe fait dégrader `this` en `any` et inonde tsc d'erreurs sans rapport.
+// NAMED export (not `import type MTGCollectionView from`, unlike plugin.ts) — see "Phase 5b" in CLAUDE.md:
+// the wrong syntax makes `this` degrade to `any` and floods tsc with unrelated errors.
 import type { MTGCollectionView } from "../view";
 import { VIEW_TYPE_MTG_COLLECTION } from "../core/data-model";
 
 export const HIDE_BARS_CLASS = "mtg-hide-obsidian-bars";
 
-// Posée sur `contentEl` (jamais sur <body> : elle ne peut donc pas survivre à la vue) tant qu'un champ de
-// saisie du plugin a le focus sur téléphone, i.e. tant que le clavier est à l'écran — voir styles.css.
+// Set on `contentEl` (never on <body>: so it cannot outlive the view) as long as one of the plugin's
+// input fields has focus on phone, i.e. as long as the keyboard is on screen — see styles.css.
 export const KEYBOARD_OPEN_CLASS = "mtg-keyboard-open";
 
-// Câble la synchro barres ↔ feuille active. Appelé une fois depuis onOpen ; sans effet hors téléphone
-// (tablette/bureau : pas de barres flottantes).
+// Wires up the bars ↔ active leaf sync. Called once from onOpen; no effect off phone (tablet/desktop:
+// no floating bars).
 export function setupMobileBars(this: MTGCollectionView) {
 	if (!Platform.isPhone) return;
 
 	this.registerEvent(this.app.workspace.on("active-leaf-change", (leaf) => this.syncMobileBars(leaf)));
-	// Quoi qu'il arrive à la vue (onglet fermé, plugin désactivé), les barres doivent revenir.
+	// Whatever happens to the view (tab closed, plugin disabled), the bars must come back.
 	this.register(() => document.body.removeClass(HIDE_BARS_CLASS));
-	// Une vue restaurée au démarrage s'ouvre avant que l'espace de travail sache quelle feuille est active :
-	// on resynchronise une fois qu'il est prêt (l'appel direct ci-dessous couvre l'ouverture à chaud).
+	// A view restored at startup opens before the workspace knows which leaf is active: we resync once it is
+	// ready (the direct call below covers the hot opening).
 	this.app.workspace.onLayoutReady(() => this.syncMobileBars());
 	this.syncMobileBars();
 
-	// Clavier virtuel : Android redimensionne déjà la vue (le contenu remonte une 1ʳᵉ fois), mais les
-	// réservations du bas (pilule de navigation flottante, marge de sécurité du geste système) restaient
-	// appliquées au-dessus du clavier, qui les recouvre pourtant — d'où un grand vide noir (2026-10-01).
-	// `--keyboard-height` d'Obsidian ne bouge pas de façon fiable ici (0px mesuré dans l'émulateur) : le
-	// focus d'un champ de saisie est le signal le plus sûr. `focusout` est différé d'un tick pour ne pas
-	// clignoter quand le focus passe d'un champ à un autre.
+	// Virtual keyboard: Android already resizes the view (the content moves up a first time), but the
+	// bottom reservations (floating navigation pill, system-gesture safety margin) stayed applied above
+	// the keyboard, which nevertheless covers them — hence a big black gap (2026-10-01). Obsidian's
+	// `--keyboard-height` doesn't move reliably here (0px measured in the emulator): the focus of an
+	// input field is the safest signal. `focusout` is deferred by a tick so as not to flicker when focus
+	// passes from one field to another.
 	const isTextField = (el: EventTarget | null) =>
 		el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
 	const syncKeyboard = () => this.contentEl.toggleClass(KEYBOARD_OPEN_CLASS, isTextField(document.activeElement));
@@ -37,9 +37,9 @@ export function setupMobileBars(this: MTGCollectionView) {
 	this.registerDomEvent(this.contentEl, "focusout", () => window.setTimeout(syncKeyboard, 0));
 }
 
-// `leaf` = la feuille devenue active (événement) ; `undefined` = appel direct (utilisé aussi par
-// setting-tab.ts juste après avoir changé le réglage, pour re-synchroniser sans attendre un changement de
-// feuille — voir son propre commentaire).
+// `leaf` = the leaf that became active (event); `undefined` = direct call (also used by setting-tab.ts
+// right after changing the setting, to resync without waiting for a change of leaf — see its own
+// comment).
 export function syncMobileBars(this: MTGCollectionView, leaf?: WorkspaceLeaf | null) {
 	if (!Platform.isPhone) return;
 
@@ -47,10 +47,10 @@ export function syncMobileBars(this: MTGCollectionView, leaf?: WorkspaceLeaf | n
 	if (current === this.leaf) {
 		document.body.toggleClass(HIDE_BARS_CLASS, this.plugin.settings.hideObsidianMobileBars);
 	} else if (current?.view.getViewType() !== VIEW_TYPE_MTG_COLLECTION) {
-		// Une autre vue est active : les barres reviennent, quel que soit le réglage — il ne s'applique
-		// qu'à l'intérieur de ce plugin.
+		// Another view is active: the bars come back, whatever the setting — it only applies inside
+		// this plugin.
 		document.body.removeClass(HIDE_BARS_CLASS);
 	}
-	// Sinon une AUTRE vue du plugin est devenue active (deux onglets du plugin) : c'est à elle de décider —
-	// y toucher ici dépendrait de l'ordre dans lequel les deux écouteurs se déclenchent.
+	// Otherwise ANOTHER view of the plugin became active (two plugin tabs): it is up to it to decide —
+	// touching it here would depend on the order in which the two listeners fire.
 }

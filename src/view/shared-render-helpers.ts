@@ -7,37 +7,37 @@ import type { App } from "obsidian";
 import type { MTGCollectionView } from "../view";
 
 export function openPluginSettings(this: MTGCollectionView) {
-	// API interne d'Obsidian (non typée officiellement) pour ouvrir directement
-	// l'onglet de réglages de ce plugin.
+	// Obsidian internal API (not officially typed) to directly open this
+	// plugin's settings tab.
 	const app = this.app as App & { setting?: { open?: () => void; openTabById?: (id: string) => void } };
 	app.setting?.open?.();
 	app.setting?.openTabById?.(this.plugin.manifest.id);
 }
 
 
-// Champ de filtre reconstruit à chaque rendu (nécessaire pour être placé
-// juste au-dessus de la barre Group by/Sort by), mais qui conserve le focus
-// et la position du curseur d'une frappe à l'autre.
-// Titre "Cards: …" en tête de la zone de défilement d'une liste/deck/wantlist
-// ouvert(e) : "Cards: 95 cards" au repos, "Cards: 14 of 95 cards match" dès
-// qu'un filtre est saisi — même titre (même classe) que "Lists"/"Decks"/
-// "Wantlists" au-dessus des galeries (voir formatCountTitle), à la place de la
-// ligne "x of y cards match" qui s'affichait sous la barre de recherche.
-// Dans la zone de défilement et non dans l'en-tête sticky : au repos il ne dit
-// rien que l'en-tête de titre ne dise déjà, et il ne doit pas rendre la
-// partie fixe de la vue plus haute (voir "Open UI/UX follow-ups", CLAUDE.md).
+// Filter field rebuilt on every render (necessary to be placed just above the
+// Group by/Sort by bar), but which keeps focus and cursor position from one
+// keystroke to the next.
+// "Cards: …" title at the head of the scroll area of an open
+// list/deck/wantlist: "Cards: 95 cards" at rest, "Cards: 14 of 95 cards match"
+// as soon as a filter is typed — same title (same class) as
+// "Lists"/"Decks"/"Wantlists" above the galleries (see formatCountTitle), in
+// place of the "x of y cards match" line that used to be displayed under the
+// search bar. In the scroll area and not in the sticky header: at rest it says
+// nothing that the title header doesn't already say, and it must not make the
+// fixed part of the view taller (see "Open UI/UX follow-ups", CLAUDE.md).
 //
-// Compte des EXEMPLAIRES (somme des `count`), pas des entrées uniques : c'est
-// le "N cards" de l'en-tête de la vue et des en-têtes de groupe ("38 unique ·
-// 95 cards"). Un deck de 60 cartes doit afficher "Cards: 60 cards", pas son
-// nombre d'entrées distinctes.
+// Count of COPIES (sum of `count`), not of unique entries: it is the "N cards"
+// of the view header and of the group headers ("38 unique · 95 cards"). A
+// 60-card deck must display "Cards: 60 cards", not its number of distinct
+// entries.
 //
-// `legalityPending` : un jeton "legal:" est actif mais au moins une carte de
-// la liste ouverte n'a pas encore sa légalité en cache (voir
-// MTGCollectionPlugin.bulkFetchLegalities, déclenché depuis renderListDetail) :
-// sans cet indicateur, le compte affiché pendant le chargement paraîtrait
-// juste "faux" (des cartes légales mais pas encore résolues comptées comme non-
-// légales), plutôt que lisiblement "en cours".
+// `legalityPending`: a "legal:" token is active but at least one card of the
+// open list doesn't have its legality in the cache yet (see
+// MTGCollectionPlugin.bulkFetchLegalities, triggered from renderListDetail):
+// without this indicator, the count displayed during loading would just seem
+// "wrong" (legal cards not yet resolved counted as not legal), rather than
+// legibly "in progress".
 export function renderCardsCountTitle(
 	parent: HTMLElement,
 	cards: { count: number }[],
@@ -57,17 +57,17 @@ export function renderCardsCountTitle(
 	}
 }
 
-// Rangée d'intitulés de colonnes en mode Tableau. Grâce au flux naturel de
-// la grille CSS, ces cellules occupent simplement les N premières colonnes
-// de la grille, avant que les lignes de cartes ne continuent le flux.
+// Row of column headings in Table mode. Thanks to the natural flow of the
+// CSS grid, these cells simply occupy the first N columns of the grid,
+// before the card rows continue the flow.
 
 export function renderTableHeader(this: MTGCollectionView, list: HTMLElement, columns: string[]) {
 	columns.forEach((label) => {
 		const cell = list.createDiv({ cls: "mtg-table-header-cell", text: label });
-		// "QTY" centré, "Price" aligné à droite (demandé explicitement,
-		// les deux seuls intitulés concernés à l'origine) — voir
-		// .mtg-table-header-cell-qty/-price, styles.css. "Legality"
-		// (colonne Deck uniquement) suit le même traitement centré que QTY.
+		// "QTY" centered, "Price" right-aligned (explicitly requested, the only
+		// two headings concerned originally) — see
+		// .mtg-table-header-cell-qty/-price, styles.css. "Legality" (Deck column
+		// only) follows the same centered treatment as QTY.
 		if (label === "Qty") cell.addClass("mtg-table-header-cell-qty");
 		if (label === "Price") cell.addClass("mtg-table-header-cell-price");
 		if (label === "Legality") cell.addClass("mtg-table-header-cell-legality");
@@ -82,12 +82,12 @@ export function isDetailViewOpen(this: MTGCollectionView): boolean {
 	);
 }
 
-// L'élément qui défile RÉELLEMENT en ce moment — this.mainEl pour la
-// grille d'ensemble, .mtg-detail-scroll-area (voir styles.css) une fois
-// une liste/un deck/une wantlist ouvert(e), puisque ce dernier prend
-// alors seul en charge le défilement (this.mainEl ne déborde plus jamais
-// dans ce mode). Résolu à chaque appel plutôt que mis en cache : cette
-// zone est reconstruite à chaque render(), contrairement à this.mainEl.
+// The element that ACTUALLY scrolls at the moment — this.mainEl for the
+// overview grid, .mtg-detail-scroll-area (see styles.css) once a
+// list/deck/wantlist is open, since the latter then takes charge of
+// scrolling alone (this.mainEl never overflows in this mode). Resolved on
+// each call rather than cached: this area is rebuilt on every render(),
+// unlike this.mainEl.
 
 export function getActiveScrollEl(this: MTGCollectionView): HTMLElement {
 	if (this.isDetailViewOpen()) {
@@ -97,30 +97,29 @@ export function getActiveScrollEl(this: MTGCollectionView): HTMLElement {
 	return this.mainEl;
 }
 
-// Logique déjà utilisée par le listener posé une fois sur this.mainEl
-// dans onOpen() (bouton "Back to top" + masquage de l'aperçu de nom de
-// carte) — reprise ici pour être rattachée fraîchement à
-// .mtg-detail-scroll-area à chaque fois qu'elle est reconstruite (voir
-// renderListDetail/renderDeckDetail/renderWantlistDetail) : cet élément
-// n'est PAS persistant comme this.mainEl, donc pas de "un seul listener
-// pour toute la durée de vie de la vue" possible ici — un nouveau
-// listener à chaque render() plutôt qu'un retrait explicite de l'ancien,
-// qui part de toute façon avec le nœud détaché (garbage collecté avec
-// lui, sans fuite).
+// Logic already used by the listener set once on this.mainEl in onOpen()
+// ("Back to top" button + hiding the card name preview) — taken up here to
+// be freshly attached to .mtg-detail-scroll-area each time it is rebuilt
+// (see renderListDetail/renderDeckDetail/renderWantlistDetail): this
+// element is NOT persistent like this.mainEl, so no "a single listener for
+// the whole lifetime of the view" is possible here — a new listener on
+// every render() rather than an explicit removal of the old one, which
+// leaves anyway with the detached node (garbage collected with it, no
+// leak).
 
 export function handleScrollAreaScroll(this: MTGCollectionView, scrollEl: HTMLElement) {
 	this.backToTopBtn.toggleClass("is-visible", scrollEl.scrollTop > 400);
 	this.hideCardNamePreview();
 }
 
-// Resynchronise l'icône/l'état actif d'un des 3 boutons "Select"
-// persistants de la grille (listGallerySelectBtn/deckGallerySelectBtn/
-// wantlistGallerySelectBtn) — contrairement à selectModeBtn (sélection de
-// cartes, reconstruit à neuf à chaque render() puisqu'il vit dans le
-// stickyHeader d'une liste ouverte), ces 3 boutons sont des éléments
-// persistants (comme newListBtn) jamais recréés, donc leur icône doit
-// être mise à jour explicitement ici plutôt que réappliquée par un
-// createDiv/setIcon initial qui ne rejouerait qu'une fois.
+// Resynchronizes the icon/active state of one of the 3 persistent "Select"
+// buttons of the grid
+// (listGallerySelectBtn/deckGallerySelectBtn/wantlistGallerySelectBtn) —
+// unlike selectModeBtn (card selection, rebuilt from scratch on every
+// render() since it lives in the stickyHeader of an open list), these 3
+// buttons are persistent elements (like newListBtn) never recreated, so
+// their icon must be updated explicitly here rather than reapplied by an
+// initial createDiv/setIcon that would only replay once.
 
 export function syncGallerySelectBtn(this: MTGCollectionView, btn: HTMLElement, active: boolean, label: string) {
 	btn.toggleClass("is-active", active);
@@ -128,18 +127,18 @@ export function syncGallerySelectBtn(this: MTGCollectionView, btn: HTMLElement, 
 	btn.setAttribute("title", active ? "Exit select mode" : label);
 }
 
-// Placé en fin de liste tant qu'il reste des cartes non encore rendues
-// (voir sliceGroupsForRender) : dès qu'il approche du bas de la zone
-// visible, on agrandit la limite de rendu et on relance un render()
-// complet, qui inclut alors ce lot de plus. root: list.parentElement (et
-// non le viewport ni this.mainEl) — depuis .mtg-detail-scroll-area (voir
-// styles.css), c'est CETTE zone-là, parent direct de list, qui défile
-// réellement ici, pas this.mainEl ; rootMargin déclenche le chargement un
-// peu avant que la sentinelle soit visible, pour éviter tout à-coup
-// perceptible pendant le défilement. La préservation de scrollTop après
-// onLoadMore() (déclenche un render()) n'a plus besoin d'être refaite ici
-// à la main — render() s'en charge désormais lui-même, génériquement,
-// pour tout appelant (voir son propre commentaire sur preservedScrollTop).
+// Placed at the end of the list as long as there are cards not yet
+// rendered (see sliceGroupsForRender): as soon as it approaches the bottom
+// of the visible area, we enlarge the render limit and trigger a full
+// render() again, which then includes this extra batch. root:
+// list.parentElement (and not the viewport nor this.mainEl) — since
+// .mtg-detail-scroll-area (see styles.css), it is THIS area, the direct
+// parent of list, that actually scrolls here, not this.mainEl; rootMargin
+// triggers the loading a little before the sentinel is visible, to avoid
+// any perceptible jolt during scrolling. The preservation of scrollTop
+// after onLoadMore() (triggers a render()) no longer needs to be redone
+// here by hand — render() now takes care of it itself, generically, for
+// any caller (see its own comment on preservedScrollTop).
 
 export function renderLoadMoreSentinel(this: MTGCollectionView, list: HTMLElement, onLoadMore: () => void) {
 	const sentinel = list.createDiv({ cls: "mtg-load-more-sentinel" });
@@ -153,14 +152,14 @@ export function renderLoadMoreSentinel(this: MTGCollectionView, list: HTMLElemen
 		},
 		{ root, rootMargin: "600px" }
 	);
-	// list (et donc sentinel) est construit hors DOM à cet instant précis —
-	// render() assemble tout dans un clone détaché avant de l'échanger d'un
-	// coup avec l'ancien contenu (voir render()). Observer un nœud encore
-	// détaché ne capte pas fiablement son intersection une fois attaché :
-	// certains moteurs ne recalculent alors plus jamais l'état de la
-	// sentinelle, et "Loading more…" reste affiché indéfiniment sans que
-	// rien ne charge. On diffère donc l'appel à observe() au tick suivant,
-	// une fois l'échange terminé et sentinel réellement dans le document.
+	// list (and hence sentinel) is built off-DOM at this precise moment —
+	// render() assembles everything in a detached clone before swapping it in
+	// at once with the old content (see render()). Observing a still-detached
+	// node doesn't reliably capture its intersection once attached: some
+	// engines then never recompute the sentinel's state again, and "Loading
+	// more…" stays displayed indefinitely with nothing loading. We therefore
+	// defer the observe() call to the next tick, once the swap is finished and
+	// sentinel is really in the document.
 	window.setTimeout(() => observer.observe(sentinel), 0);
 }
 

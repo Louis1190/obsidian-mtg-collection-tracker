@@ -1,22 +1,22 @@
 /* -------------------------------------------------------------------------- */
-/*  Les deux gestes de la technique FLIP (First-Last-Invert-Play)             */
+/* The two gestures of the FLIP technique (First-Last-Invert-Play) */
 /* -------------------------------------------------------------------------- */
 
-// Partagés par le repli des groupes de cartes (view/group-collapse.ts) et par l'historique de la fenêtre
-// d'ajout (modals/add-cards-modal.ts), qui écrivaient chacun les mêmes affectations en ligne. Le principe :
-// APRÈS le vrai changement de mise en page, on remet l'élément visuellement à sa place d'AVANT (holdAtOffset :
-// pas de transition, décalage en Y), puis on le relâche (releaseOffset : transition sur transform seule) — il
-// glisse alors vers sa vraie place. Seul "transform" anime, donc aucun recalcul de mise en page pendant le glissement.
+// Shared by the collapse of the card groups (view/group-collapse.ts) and by the history of the add window
+// (modals/add-cards-modal.ts), which each wrote the same assignments inline. The principle: AFTER the real
+// layout change, the element is visually put back at its place from BEFORE (holdAtOffset: no transition, offset
+// in Y), then released (releaseOffset: transition on transform only) — it then glides toward its real place.
+// Only "transform" animates, so no layout recalculation during the glide.
 //
-// Les styles vivent dans styles.css (.mtg-flip-hold / .mtg-flip-play), plus dans des `el.style.…` (le répertoire des
-// plug-ins les refuse). Un style en ligne battait toute règle de la feuille, et la ligne ou la tuile a déjà sa propre
-// transition/transform (.mtg-card-row-outer, .mtg-row-collapsed…) : les deux classes sont donc écrites
-// `:is(.classe, #identifiant)`, qui pèse comme un identifiant (voir .mtg-hidden) — sans !important, que le répertoire
-// signale. Elles ne sont JAMAIS posées ensemble : ces deux fonctions retirent l'une avant d'ajouter l'autre.
+// The styles live in styles.css (.mtg-flip-hold / .mtg-flip-play), no longer in `el.style.…` (the plugin
+// directory rejects them). An inline style beat any rule of the stylesheet, and the row or tile already has its
+// own transition/transform (.mtg-card-row-outer, .mtg-row-collapsed…): the two classes are therefore written
+// `:is(.class, #identifier)`, which weighs like an identifier (see .mtg-hidden) — without !important, which the
+// directory flags. They are NEVER set together: these two functions remove one before adding the other.
 //
-// Comme avant, l'élément GARDE la classe de relâchement ensuite : sa transition reste « transform seule » (l'ancien
-// code laissait de même `transition: transform …` en ligne, jamais retiré) — à ne pas « nettoyer » sans avoir regardé
-// ce que ça change pour l'opacité et la marge des lignes qui se replient.
+// As before, the element KEEPS the release class afterwards: its transition stays "transform only" (the old code
+// likewise left `transition: transform …` inline, never removed) — not to be "cleaned up" without looking at
+// what that changes for the opacity and margin of the rows that collapse.
 
 export function holdAtOffset(el: HTMLElement, deltaY: number): void {
 	el.removeClass("mtg-flip-play");

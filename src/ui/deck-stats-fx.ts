@@ -2,32 +2,30 @@ import { ColorSlice, ManaCurveBucket, TypeSlice } from "../core/deck-stats";
 import { setSvgMarkup } from "./svg-markup";
 
 /* -------------------------------------------------------------------------- */
-/*  Vue "Stats" de My Decks (2026-09-02) — 3 graphiques dessinés à la main,  */
-/*  aucune librairie de charting (même posture déjà établie pour le graphique */
-/*  "Price History", voir card-detail-fx.ts/CLAUDE.md : rien de ce plugin ne */
-/*  dépend d'une librairie externe pour un besoin de cette taille). Coloré   */
-/*  via des classes CSS (styles.css), jamais du texte SVG en fill direct —  */
-/*  même convention que le reste de ce plugin pour un <text> intégré en SVG. */
-/*  Contrairement au graphique "Price History", pas de preserveAspectRatio=  */
-/*  "none" ici (rien à étirer indépendamment en X/Y comme une série          */
-/*  temporelle) : le viewBox par défaut (xMidYMid meet) suffit, donc du      */
-/*  texte SVG classique reste correctement proportionné à toute taille — pas */
-/*  besoin du repli "labels en HTML par-dessus" que ce graphique-là a dû     */
-/*  utiliser pour cette même raison.                                        */
+/* My Decks "Stats" view (2026-09-02) — 3 hand-drawn charts, no charting */
+/* library (same stance already established for the "Price history" chart, */
+/* see card-detail-fx.ts/CLAUDE.md: nothing in this plugin depends on an */
+/* external library for a need of this size). Colored via CSS classes */
+/* (styles.css), never SVG text with a direct fill — same convention as the */
+/* rest of this plugin for a <text> embedded in SVG. Unlike the "Price */
+/* history" chart, no preserveAspectRatio="none" here (nothing to stretch */
+/* independently in X/Y like a time series): the default viewBox (xMidYMid */
+/* meet) is enough, so classic SVG text stays correctly proportioned at any */
+/* size — no need for the "labels in HTML on top" fallback that that chart */
+/* had to use for this same reason. */
 /* -------------------------------------------------------------------------- */
 
 const CURVE_WIDTH = 400;
 const CURVE_HEIGHT = 190;
 const CURVE_BAR_GAP = 8;
-const CURVE_BOTTOM_RESERVE = 22; // hauteur réservée en bas pour les libellés de CMC
-// Hauteur réservée en HAUT pour le libellé de compte de la barre la plus
-// haute — un bug réel trouvé en vérifiant dans le navigateur, pas seulement
-// en relisant le code : sans cette réserve, une barre atteignant 100% de
-// plotHeight place son <text> à `y - 5`, donc AU-DESSUS de y=0 (hors du
-// viewBox) — un <svg> racine clippe silencieusement tout ce qui dépasse son
-// viewBox par défaut (pas d'overflow:visible), donc ce libellé disparaissait
-// purement et simplement pour le bac le plus haut, précisément celui où le
-// nombre est le plus important à lire.
+const CURVE_BOTTOM_RESERVE = 22; // height reserved at the bottom for the CMC labels
+// Height reserved at the TOP for the count label of the tallest bar — a real
+// bug found by checking in the browser, not just by re-reading the code:
+// without this reserve, a bar reaching 100% of plotHeight places its <text>
+// at `y - 5`, hence ABOVE y=0 (outside the viewBox) — a root <svg> silently
+// clips everything that exceeds its viewBox by default (no
+// overflow:visible), so this label simply vanished for the tallest bin,
+// precisely the one where the number is most important to read.
 const CURVE_TOP_RESERVE = 16;
 
 export function renderManaCurveChart(container: HTMLElement, buckets: ManaCurveBucket[]) {
@@ -45,10 +43,9 @@ export function renderManaCurveChart(container: HTMLElement, buckets: ManaCurveB
 	const bars = buckets
 		.map((b, i) => {
 			const x = i * (barWidth + CURVE_BAR_GAP);
-			// Une hauteur plancher de 2px pour un bac non-vide : une barre à
-			// 1px ou moins devient visuellement indiscernable d'une barre
-			// vide, alors que le compte au-dessus (voir countLabel) montre
-			// bien qu'il y a réellement au moins une carte.
+			// A floor height of 2px for a non-empty bin: a bar at 1px or less becomes
+			// visually indistinguishable from an empty bar, whereas the count above
+			// (see countLabel) does show that there really is at least one card.
 			const h = b.count > 0 ? Math.max((b.count / maxCount) * plotHeight, 2) : 0;
 			const y = baseline - h;
 			const countLabel =
@@ -71,9 +68,9 @@ function polarToCartesian(angleDeg: number): { x: number; y: number } {
 	return { x: PIE_CENTER + PIE_RADIUS * Math.cos(rad), y: PIE_CENTER + PIE_RADIUS * Math.sin(rad) };
 }
 
-// Une seule tranche à 100% ne peut pas se dessiner comme UN arc classique
-// (point de départ === point d'arrivée, l'arc SVG dégénère) — un cercle
-// complet, dessiné en 2 demi-arcs, plutôt qu'un cas particulier séparé.
+// A single slice at 100% can't be drawn as ONE classic arc (start point
+// === end point, the SVG arc degenerates) — a full circle, drawn as 2
+// half-arcs, rather than a separate special case.
 function describeSlice(startAngle: number, endAngle: number): string {
 	if (endAngle - startAngle >= 359.99) {
 		return `M ${PIE_CENTER - PIE_RADIUS} ${PIE_CENTER} A ${PIE_RADIUS} ${PIE_RADIUS} 0 1 0 ${PIE_CENTER + PIE_RADIUS} ${PIE_CENTER} A ${PIE_RADIUS} ${PIE_RADIUS} 0 1 0 ${PIE_CENTER - PIE_RADIUS} ${PIE_CENTER} Z`;
@@ -102,11 +99,11 @@ export function renderColorPieChart(container: HTMLElement, slices: ColorSlice[]
 			const sweep = (s.count / total) * 360;
 			const d = describeSlice(angle, angle + sweep);
 			angle += sweep;
-			// Couleur réelle (GROUP_LABEL_HEX, core/card-sorting.ts) directement
-			// en fill — pas une valeur dépendante du thème comme le reste de ce
-			// fichier (var(--...)) : ces 5 couleurs de mana/Multicolor/Land/
-			// Colorless sont des faits sur le deck lui-même, pas une teinte
-			// d'interface qui doit s'adapter au thème clair/sombre.
+			// Real color (GROUP_LABEL_HEX, core/card-sorting.ts) directly as the fill
+			// — not a theme-dependent value like the rest of this file (var(--...)):
+			// these 5 colors of mana/Multicolor/Land/Colorless are facts about the
+			// deck itself, not an interface tint that must adapt to the light/dark
+			// theme.
 			return `<path d="${d}" fill="${s.color}" />`;
 		})
 		.join("");
@@ -125,13 +122,12 @@ export function renderColorPieChart(container: HTMLElement, slices: ColorSlice[]
 	});
 }
 
-// Barres horizontales en HTML/CSS plutôt qu'en SVG (contrairement aux deux
-// graphiques ci-dessus) — une barre horizontale à largeur variable se fait
-// aussi simplement (et plus lisiblement, pas de calcul de coordonnées) avec
-// un simple `width: X%` en CSS qu'avec un <rect> SVG, pour un vrai bénéfice
-// ici : les libellés de type (ex. "Planeswalker") sont de longueur très
-// inégale, un texte HTML normal les gère nativement sans réserver une
-// largeur fixe comme le ferait un <text> SVG.
+// Horizontal bars in HTML/CSS rather than SVG (unlike the two charts above)
+// — a horizontal bar of variable width is done as simply (and more
+// readably, no coordinate calculation) with a plain `width: X%` in CSS as
+// with an SVG <rect>, for a real benefit here: the type labels (e.g.
+// "Planeswalker") are of very unequal length, normal HTML text handles them
+// natively without reserving a fixed width as an SVG <text> would.
 export function renderTypeBarChart(container: HTMLElement, slices: TypeSlice[]) {
 	container.createDiv({ cls: "mtg-deck-stats-title", text: "Card types" });
 	if (slices.length === 0) {

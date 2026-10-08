@@ -11,8 +11,8 @@ const FORMAT_KEY = "_shard";
 
 export type ShardKind = "list" | "wantlist" | "deck";
 
-// Les nombres d'octets d'un nom de fichier : tout ce qui n'est pas [A-Za-z0-9_-] est codé ~xxxx (réversible,
-// donc deux identifiants distincts ne peuvent jamais donner le même nom).
+// The byte values of a file name: everything that isn't [A-Za-z0-9_-] is encoded ~xxxx (reversible, so two
+// distinct identifiers can never give the same name).
 function safeId(id: string): string {
 	return id.replace(/[^A-Za-z0-9_-]/g, (c) => `~${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
@@ -26,7 +26,7 @@ export function isShardFileName(name: string): boolean {
 	return /^(list|wantlist|deck)-[A-Za-z0-9_~-]+\.json\.gz$/.test(name);
 }
 
-/* --------------------------------- découpage ------------------------------- */
+/* --------------------------------- splitting ------------------------------- */
 
 const UNASSIGNED = "_";
 
@@ -38,7 +38,7 @@ function cardId(c: Obj): string {
 	return typeof c.id === "string" ? c.id : "";
 }
 
-// Même identité que la fusion (settings-merge.ts, deckCardKey) : sert seulement à rendre l'ordre déterministe.
+// Same identity as the merge (settings-merge.ts, deckCardKey): only serves to make the order deterministic.
 function deckCardKey(e: Obj): string {
 	return `${String(e.scryfallId ?? "")}|${typeof e.category === "string" ? e.category : "mainboard"}|${
 		e.deckFunctionOverride === "Commander" ? "C" : ""
@@ -46,7 +46,7 @@ function deckCardKey(e: Obj): string {
 }
 
 function sortedBy(items: Obj[], keyOf: (e: Obj) => string): Obj[] {
-	// Le tri est stable : deux entités de même clé gardent leur ordre d'origine.
+	// The sort is stable: two entities with the same key keep their original order.
 	return [...items].sort((a, b) => {
 		const ka = keyOf(a);
 		const kb = keyOf(b);
@@ -58,9 +58,9 @@ function objectsOf(value: unknown): Obj[] {
 	return Array.isArray(value) ? (value.filter((e) => e !== null && typeof e === "object") as Obj[]) : [];
 }
 
-// L'état partagé (déjà sans clés propres à l'appareil ni secrets) → un objet par fichier, le contenu de chaque
-// fragment étant déterministe (entités triées par identifiant) pour que deux appareils qui ont le même état
-// produisent les mêmes octets.
+// The shared state (already without device-specific keys or secrets) → one object per file, the content of
+// each shard being deterministic (entities sorted by id) so that two devices with the same state produce the
+// same bytes.
 export function encodeShards(shared: Obj): Map<string, ShardObj> {
 	const out = new Map<string, ShardObj>();
 
@@ -69,8 +69,8 @@ export function encodeShards(shared: Obj): Map<string, ShardObj> {
 		if (k === "collection" || k === "wantlist") continue;
 		core[k] = shared[k];
 	}
-	// Les decks restent dans le fragment commun SANS leurs cartes : leurs propres champs (nom, format, dates)
-	// se tranchent à la date, leurs cartes voyagent dans le fragment du deck.
+	// Decks stay in the common shard WITHOUT their cards: their own fields (name, format, dates) are settled
+	// by date, their cards travel in the deck's shard.
 	if (Array.isArray(shared.decks)) core.decks = objectsOf(shared.decks).map((d) => ({ ...d, cards: [] }));
 
 	const files: [string, ShardObj][] = [[CORE_SHARD, core]];
@@ -113,10 +113,10 @@ function timeOf(c: Obj): number {
 	return t;
 }
 
-// Une carte déplacée d'une liste à l'autre existe un instant dans DEUX fragments (l'ancien n'est réécrit
-// qu'ensuite) : la version la plus récente l'emporte, à égalité le fragment au nom le plus grand — le même
-// choix sur tous les appareils, sinon ils ne convergeraient pas. Sans cela la fusion verrait deux entités
-// distinctes (même clé, suffixe #2) et dupliquerait la carte.
+// A card moved from one list to another exists for an instant in TWO shards (the old one is only rewritten
+// afterwards): the most recent version wins, on a tie the shard with the greatest name — the same choice
+// on all devices, otherwise they wouldn't converge. Without this, the merge would see two distinct
+// entities (same key, suffix #2) and duplicate the card.
 function dedupeById(cards: { card: Obj; shard: string }[]): Obj[] {
 	const byId = new Map<string, { card: Obj; shard: string }>();
 	const noId: Obj[] = [];
@@ -138,8 +138,8 @@ function dedupeById(cards: { card: Obj; shard: string }[]): Obj[] {
 	return [...[...byId.values()].map((e) => e.card), ...noId];
 }
 
-// L'inverse d'encodeShards : tout ce que GitHub porte → un état complet, prêt à être fusionné. Un fragment
-// absent ou arrivé en retard donne un état plus petit, jamais un état faux.
+// The inverse of encodeShards: everything GitHub holds → a complete state, ready to be merged. A missing
+// or late shard gives a smaller state, never a wrong one.
 export function assembleShards(shards: ReadonlyMap<string, ShardObj>): Obj {
 	const out: Obj = {};
 	const core = shards.get(CORE_SHARD) ?? {};
@@ -169,10 +169,10 @@ export function assembleShards(shards: ReadonlyMap<string, ShardObj>): Obj {
 	return out;
 }
 
-/* ---------------------------------- égalité -------------------------------- */
+/* ---------------------------------- equality -------------------------------- */
 
-// Ce qu'aucun autre appareil ne tire de ces dates : chacun rafraîchit les siennes (prix, sauvegardes). Un
-// changement qui ne touche QUE cela n'est pas envoyé.
+// What no other device gets from these dates: each refreshes its own (prices, backups). A change that
+// touches ONLY this is not sent.
 const PUSH_IGNORED_SCALARS = ["lastPriceRefresh", "lastAutoBackup"];
 
 function comparable(shard: ShardObj | undefined): Obj {
@@ -184,15 +184,15 @@ function comparable(shard: ShardObj | undefined): Obj {
 	if (stamps !== null && typeof stamps === "object" && !Array.isArray(stamps)) {
 		const kept = { ...(stamps as Obj) };
 		for (const k of PUSH_IGNORED_SCALARS) delete kept[k];
-		// Vide = absent : le premier horodatage d'un rafraîchissement ne doit rien changer.
+		// Empty = absent: the first timestamp of a refresh must not change anything.
 		if (Object.keys(kept).length === 0) delete copy.syncStamps;
 		else copy.syncStamps = kept;
 	}
 	return copy;
 }
 
-// Un fragment (hors fragment commun) sans aucune carte vaut un fragment absent : jamais la peine d'en créer
-// un, mais un fragment distant qui a encore des cartes que nous n'avons plus doit être vidé.
+// A shard (other than the common shard) with no card at all is equivalent to a missing shard: never worth
+// creating one, but a remote shard that still has cards we no longer have must be emptied.
 export function isEmptyShard(shard: ShardObj | undefined): boolean {
 	if (!shard) return true;
 	if (Array.isArray(shard.collection)) return shard.collection.length === 0;
@@ -201,10 +201,10 @@ export function isEmptyShard(shard: ShardObj | undefined): boolean {
 	return false;
 }
 
-// Deux versions du fragment `name` disent-elles la même chose ? Ordre des entités, ordre des clés et prix
-// mis à part — la même égalité que celle de la fusion (settingsEqual), faute de quoi deux appareils se
-// réécriraient l'un à l'autre un fragment équivalent à l'infini. Le fragment commun n'est jamais "vide" :
-// absent, il diffère de tout fragment commun existant.
+// Do two versions of shard `name` say the same thing? Entity order, key order and prices aside — the same
+// equality as the merge's (settingsEqual), otherwise two devices would endlessly rewrite an equivalent
+// shard to each other. The common shard is never "empty": absent, it differs from any existing common
+// shard.
 export function shardsEqual(name: string, a: ShardObj | undefined, b: ShardObj | undefined): boolean {
 	if (name !== CORE_SHARD) {
 		const ea = isEmptyShard(a);

@@ -2,35 +2,35 @@ import type { DeckCardCategory } from "./data-model";
 
 
 export interface ParsedDecklistLine {
-	// Ligne brute d'origine (nettoyée des espaces de début/fin) — reprise
-	// telle quelle dans le rapport d'import en cas d'échec de résolution
-	// Scryfall, pour que l'utilisateur puisse comparer avec sa source.
+	// Original raw line (trimmed of leading/trailing whitespace) — carried
+	// over as is into the import report in case of Scryfall resolution
+	// failure, so that the user can compare with their source.
 	raw: string;
 	quantity: number;
 	name: string;
 	setCode?: string;
 	collectorNumber?: string;
 	category: DeckCardCategory;
-	// Voir le commentaire d'en-tête ci-dessus — jamais vrai en même temps
-	// qu'une catégorie autre que "mainboard" (aucun marqueur Commander
-	// reconnu ici ne pose jamais une autre catégorie).
+	// See the header comment above — never true at the same time as a category
+	// other than "mainboard" (no Commander marker recognized here ever sets
+	// another category).
 	isCommander: boolean;
 }
 
 export interface ParsedDecklist {
 	lines: ParsedDecklistLine[];
-	// Lignes non vides dont le nom de carte est resté vide après extraction
-	// (ex. une ligne composée uniquement d'un tag) — distinct des lignes dont
-	// le NOM ne correspond à aucune carte Scryfall, qui ne peut être su qu'
-	// après la résolution réseau (voir MTGCollectionPlugin.importDecklistToDeck).
+	// Non-empty lines whose card name remained empty after extraction (e.g. a
+	// line made up only of a tag) — distinct from the lines whose NAME matches no
+	// Scryfall card, which can only be known after the network resolution (see
+	// MTGCollectionPlugin.importDecklistToDeck).
 	unparsedLines: string[];
 }
 
-// Un "rôle de board" reconnu par un marqueur (en-tête de section, préfixe
-// inline, crochet Archidekt) — la catégorie réelle qu'il pose PLUS s'il
-// s'agit spécifiquement du Commander (voir le commentaire d'en-tête sur
-// ParsedDecklistLine.isCommander). Un seul type partagé par les 3 tables de
-// marqueurs ci-dessous plutôt que 3 paires de champs parallèles.
+// A "board role" recognized by a marker (section header, inline prefix,
+// Archidekt bracket) — the real category it sets PLUS whether it is
+// specifically the Commander (see the header comment on
+// ParsedDecklistLine.isCommander). A single type shared by the 3 marker
+// tables below rather than 3 parallel pairs of fields.
 interface BoardRole {
 	category: DeckCardCategory;
 	isCommander: boolean;
@@ -43,19 +43,19 @@ const SECTION_HEADERS: { pattern: RegExp; role: BoardRole }[] = [
 	{ pattern: /^(deck|mainboard|main deck|maindeck|main|library)$/i, role: { category: "mainboard", isCommander: false } },
 ];
 
-// "Commander: Korvold…"/"SB: 1 Some Card" — une carte isolée hors bloc, sans
-// changer la section en cours pour les lignes suivantes (contrairement à un
-// en-tête sur sa propre ligne, voir SECTION_HEADERS ci-dessus).
+// "Commander: Korvold…"/"SB: 1 Some Card" — a single card outside a block,
+// without changing the current section for the following lines (unlike a
+// header on its own line, see SECTION_HEADERS above).
 const INLINE_PREFIXES: { pattern: RegExp; role: BoardRole }[] = [
 	{ pattern: /^(commander|commanders)\s*:\s*/i, role: { category: "mainboard", isCommander: true } },
 	{ pattern: /^(sb|sideboard)\s*:\s*/i, role: { category: "sideboard", isCommander: false } },
 	{ pattern: /^(maybe|maybeboard)\s*:\s*/i, role: { category: "maybeboard", isCommander: false } },
 ];
 
-// Catégories Archidekt "[Category]" reconnues comme un vrai rôle de board —
-// toute autre valeur (ex. "[Ramp]", une étiquette de construction de deck
-// perso) est un tag Archidekt légitime mais qu'aucun rôle ci-dessous ne sait
-// représenter : simplement retirée de la ligne sans changer sa catégorie.
+// Archidekt "[Category]" categories recognized as a real board role — any
+// other value (e.g. "[Ramp]", a custom deck-building label) is a legitimate
+// Archidekt tag but one that no role below can represent: simply removed
+// from the line without changing its category.
 const BRACKET_ROLE: Record<string, BoardRole> = {
 	commander: { category: "mainboard", isCommander: true },
 	commanders: { category: "mainboard", isCommander: true },
@@ -75,11 +75,11 @@ interface ParsedCardLine {
 function parseDecklistCardLine(line: string): ParsedCardLine | null {
 	let rest = line;
 
-	// Étiquette Archidekt "^Label,#hex^" en fin de ligne — purement
-	// cosmétique côté Archidekt, simplement retirée.
+	// Archidekt "^Label,#hex^" label at the end of the line — purely cosmetic
+	// on Archidekt's side, simply removed.
 	rest = rest.replace(/\s*\^[^^]*\^\s*$/, "").trim();
 
-	// Catégorie Archidekt "[Category]" en fin de ligne.
+	// Archidekt "[Category]" at the end of the line.
 	let bracketRole: BoardRole | undefined;
 	const bracketMatch = rest.match(/\s*\[([^\]]+)\]\s*$/);
 	if (bracketMatch) {
@@ -88,14 +88,14 @@ function parseDecklistCardLine(line: string): ParsedCardLine | null {
 		if (BRACKET_ROLE[key]) bracketRole = BRACKET_ROLE[key];
 	}
 
-	// Marqueur foil/etched Archidekt ("*F*", "*E*"…) — DeckCard n'a pas de
-	// champ finish (voir "Data model notes" dans CLAUDE.md), simplement
-	// ignoré plutôt qu'interprété.
+	// Archidekt foil/etched marker ("*F*", "*E*"…) — DeckCard has no finish
+	// field (see "Data model notes" in CLAUDE.md), simply ignored rather than
+	// interpreted.
 	rest = rest.replace(/\s*\*[A-Za-z]+\*\s*$/, "").trim();
 
-	// Quantité en tête ("1x", "4 "…) — 1 par défaut si absente (une ligne
-	// sans quantité explicite, ex. un simple export "carte par ligne" sans
-	// compteur, reste une carte unique).
+	// Leading quantity ("1x", "4 "…) — 1 by default if absent (a line with no
+	// explicit quantity, e.g. a simple "one card per line" export without a
+	// counter, remains a single card).
 	let quantity = 1;
 	const qtyMatch = rest.match(/^(\d+)\s*[xX]?\s+(.+)$/);
 	if (qtyMatch) {
@@ -103,13 +103,13 @@ function parseDecklistCardLine(line: string): ParsedCardLine | null {
 		rest = qtyMatch[2].trim();
 	}
 
-	// Édition + numéro de collection en fin de ligne, ex. "(C21) 263" — un
-	// code d'édition Scryfall fait 2 à 5 caractères alphanumériques ; le
-	// numéro qui suit peut contenir des lettres/symboles (variantes, ★…),
-	// volontairement permissif plutôt que \d+ strict. Le nom de carte lui-même
-	// n'est jamais confondu avec ceci : un nom réel contenant des parenthèses
-	// (ex. "Erase (Not the Urza's Legacy One)") a toujours plus qu'un simple
-	// token alphanumérique court entre les parenthèses, donc ne matche pas ce
+	// Set + collector number at the end of the line, e.g. "(C21) 263" — a
+	// Scryfall set code is 2 to 5 alphanumeric characters; the number that
+	// follows can contain letters/symbols (variants, ★…), deliberately
+	// permissive rather than a strict \d+. The card name itself is never
+	// confused with this: a real name containing parentheses (e.g. "Erase (Not
+	// the Urza's Legacy One)") always has more than a simple short
+	// alphanumeric token between the parentheses, so it doesn't match this
 	// pattern.
 	let setCode: string | undefined;
 	let collectorNumber: string | undefined;
@@ -126,15 +126,15 @@ function parseDecklistCardLine(line: string): ParsedCardLine | null {
 	return { quantity, name, setCode, collectorNumber, bracketRole };
 }
 
-// Une ligne interne de travail, avant que la dernière passe ("dernier bloc =
-// Commander" ci-dessous) et le nettoyage final n'en fassent un
-// ParsedDecklistLine public. `blockIndex` identifie le groupe de lignes
-// séparé des autres par au moins une ligne vide (0 pour le tout premier) ;
-// `categoryExplicit` distingue "mainboard/pas Commander parce que rien ne
-// dit le contraire" (candidate à l'heuristique) de "un vrai marqueur a posé
-// cette catégorie/ce statut Commander explicitement" (jamais retaguée après
-// coup) — couvre category ET isCommander à la fois, un marqueur pose
-// toujours les deux ensemble (voir BoardRole).
+// An internal working line, before the final pass ("last block = Commander"
+// below) and the final cleanup turn it into a public ParsedDecklistLine.
+// `blockIndex` identifies the group of lines separated from the others by at
+// least one blank line (0 for the very first); `categoryExplicit`
+// distinguishes "mainboard/not Commander because nothing says otherwise"
+// (candidate for the heuristic) from "a real marker set this category/this
+// Commander status explicitly" (never re-tagged afterwards) — covers
+// category AND isCommander at once, a marker always sets both together (see
+// BoardRole).
 interface InternalLine extends ParsedDecklistLine {
 	blockIndex: number;
 	categoryExplicit: boolean;
@@ -154,9 +154,8 @@ export function parseDecklistText(text: string): ParsedDecklist {
 		let line = rawLine.trim();
 		if (!line) {
 			justSawAboutHeader = false;
-			// Ignore une ligne vide tant qu'aucun contenu réel n'a encore été vu
-			// (des lignes vides en tête de texte ne doivent jamais compter comme
-			// une frontière de bloc).
+			// Ignores a blank line as long as no real content has been seen yet (blank
+			// lines at the top of the text must never count as a block boundary).
 			if (sawAnyContent) pendingBlockBreak = true;
 			continue;
 		}
@@ -176,17 +175,17 @@ export function parseDecklistText(text: string): ParsedDecklist {
 		}
 		justSawAboutHeader = false;
 
-		// Un commentaire "// …" peut aussi servir d'en-tête de section (une
-		// convention vue dans plusieurs exports/import de decklists) — traité
-		// exactement comme la ligne qu'il commente une fois "//" retiré.
+		// A "// …" comment can also serve as a section header (a convention seen
+		// in several decklist exports/imports) — handled exactly like the line it
+		// comments once the "//" is removed.
 		if (line.startsWith("//")) {
 			line = line.slice(2).trim();
 			if (!line) continue;
 		}
 
-		// En-tête de section sur sa propre ligne ("Commander", "Deck (99)",
-		// "Sideboard:"…) — jamais ajouté comme carte, change juste le rôle
-		// appliqué aux lignes suivantes jusqu'au prochain en-tête.
+		// Section header on its own line ("Commander", "Deck (99)", "Sideboard:"…)
+		// — never added as a card, just changes the role applied to the following
+		// lines until the next header.
 		const headerCandidate = line
 			.replace(/\s*\(\d+\)\s*$/, "")
 			.replace(/:$/, "")
@@ -231,10 +230,10 @@ export function parseDecklistText(text: string): ParsedDecklist {
 
 	if (!sawAnyHeader && internalLines.length > 0) {
 		const lastBlockIndex = internalLines[internalLines.length - 1].blockIndex;
-		// lastBlockIndex > 0 : il existe un bloc précédent séparé par une
-		// ligne vide — un texte qui n'a jamais eu de ligne vide du tout (donc
-		// un seul bloc, blockIndex 0 partout) n'active jamais cette
-		// heuristique, même s'il ne contient que 1-2 cartes au total.
+		// lastBlockIndex > 0: there is a previous block separated by a blank line
+		// — a text that never had a blank line at all (hence a single block,
+		// blockIndex 0 everywhere) never activates this heuristic, even if it
+		// contains only 1-2 cards in total.
 		if (lastBlockIndex > 0) {
 			const lastBlockLines = internalLines.filter((l) => l.blockIndex === lastBlockIndex);
 			const eligible =

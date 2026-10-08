@@ -15,9 +15,9 @@ import {
 import { MTGCollectionView } from "../view";
 import type MTGCollectionPlugin from "../plugin";
 
-// Des lignes telles qu'une version ANTÉRIEURE du plugin les a écrites : les champs qu'une migration ajoute ou convertit
-// peuvent manquer (d'où Partial), et certains n'existent plus dans les types actuels (foilCount, foil, category "commander").
-// Plutôt que `any` : une faute de frappe sur un nom de champ reste une erreur de compilation.
+// Rows as an EARLIER version of the plugin wrote them: the fields that a migration adds or converts may be
+// missing (hence Partial), and some no longer exist in the current types (foilCount, foil, category
+// "commander"). Rather than `any`: a typo in a field name remains a compile error.
 type LegacyCard = Partial<CollectionCard> & { foilCount?: number; foil?: boolean };
 type LegacyDeckCard = Partial<Omit<DeckCard, "category">> & { category?: DeckCard["category"] | "commander" };
 
@@ -38,7 +38,7 @@ export function migrateListDateCreated(this: MTGCollectionPlugin) {
 	if (changed) void this.saveSettings();
 }
 
-// Même principe que migrateListDateCreated, pour les decks.
+// Same principle as migrateListDateCreated, for decks.
 
 export function migrateDeckDateCreated(this: MTGCollectionPlugin) {
 	let changed = false;
@@ -51,39 +51,36 @@ export function migrateDeckDateCreated(this: MTGCollectionPlugin) {
 	if (changed) void this.saveSettings();
 }
 
-// saveSettings() est appelée à chaque petite interaction (incrémenter une
-// quantité, cocher foil...) — sur une grosse collection, réécrire tout le
-// JSON sur disque à chaque clic peut devenir sensible. On regroupe donc
-// les appels rapprochés en une seule écriture différée de courte durée ;
-// flushPendingSave() garantit qu'un appel isolé (ou la fermeture du
-// plugin) n'attend jamais indéfiniment.
+// saveSettings() is called on each small interaction (incrementing a
+// quantity, ticking foil...) — on a big collection, rewriting the whole
+// JSON to disk on every click can become noticeable. We therefore group
+// close calls into a single deferred write of short duration;
+// flushPendingSave() guarantees that an isolated call (or the plugin
+// closing) never waits indefinitely.
 
-// Incrémenté à chaque appel de saveSettings() (donc à chaque mutation,
-// indépendamment du debounce de l'écriture sur disque elle-même) : sert
-// de repère pour MTGCollectionView, qui met en cache le résultat du
-// tri/groupement d'une liste (coûteux sur une grosse collection) et doit
-// savoir quand l'invalider — un changement de ce compteur signifie "les
-// données ont bougé depuis le dernier calcul", indépendamment d'un
-// changement de filtre/tri/groupement.
+// Incremented on every call to saveSettings() (hence on every mutation,
+// independently of the debounce of the disk write itself): serves as a
+// marker for MTGCollectionView, which caches the result of a list's
+// sort/grouping (costly on a big collection) and must know when to
+// invalidate it — a change in this counter means "the data has moved since
+// the last computation", independently of a change of
+// filter/sort/grouping.
 
-// Ids de CollectionCard ajoutés cette session via addCardToCollection/importCsv
-// (voir ces méthodes) — jamais persisté (comme legalitiesCache plus haut),
-// donc se vide naturellement à chaque redémarrage d'Obsidian. Un Set
-// (pas une Map par liste) suffit : chaque CollectionCard porte déjà son propre
-// listId, donc le filtrage "par liste" se fait pour gratuitement partout
-// où on affiche déjà une liste précise. L'ordre d'insertion d'un Set JS
-// est garanti stable, ce qui sert à trier le groupe épinglé "Recently
-// Added" du plus récent au plus ancien sans avoir besoin d'un timestamp
-// séparé. Volontairement PAS mis à jour par copyCollectionCardToList/moveCollectionCardToList/
-// copyWantlistCardToList/moveWantlistCardToCollectionNoSave/copyList —
-// ces méthodes déplacent ou dupliquent des cartes déjà existantes dans
-// la collection, ce n'est pas un ajout "neuf" au sens de cette
-// fonctionnalité.
+// Ids of CollectionCards added this session via addCardToCollection/importCsv (see these
+// methods) — never persisted (like legalitiesCache above), so it empties naturally at every
+// restart of Obsidian. A Set (not a Map per list) is enough: each CollectionCard already
+// carries its own listId, so the "per list" filtering is done for free everywhere a specific
+// list is already displayed. The insertion order of a JS Set is guaranteed stable, which
+// serves to sort the pinned "Recently Added" group from most recent to oldest without needing
+// a separate timestamp. Deliberately NOT updated by
+// copyCollectionCardToList/moveCollectionCardToList/copyWantlistCardToList/moveWantlistCardToCollectionNoSave/copyList
+// — these methods move or duplicate cards already existing in the collection, which is not a
+// "brand-new" addition in the sense of this feature.
 
-// Même principe que recentlyAddedCollectionCardIds ci-dessus, côté wantlist :
-// alimenté uniquement par addCardToWantlist/importWantlistCsv, jamais par
-// copyWantlistCardToList/moveWantlistCardToCollectionNoSave (déplacement/
-// duplication, pas un ajout neuf).
+// Same principle as recentlyAddedCollectionCardIds above, on the wantlist
+// side: fed only by addCardToWantlist/importWantlistCsv, never by
+// copyWantlistCardToList/moveWantlistCardToCollectionNoSave
+// (move/duplication, not a brand-new addition).
 
 
 export function migrateFoilSplit(this: MTGCollectionPlugin) {
@@ -147,21 +144,20 @@ export function migrateFoilSplit(this: MTGCollectionPlugin) {
 	void this.saveSettings();
 }
 
-// "foil" (booléen) devient "finish" (Regular/Foiled/Etched/Proxy) : Etched
-// et Proxy sont de nouvelles valeurs qu'aucune carte existante ne peut déjà
-// avoir, donc la conversion est une simple bascule foil ? "foiled" :
-// "regular". S'applique à la collection ET à la wantlist (même champ dans
-// Garantit qu'exactement une liste "Inbox" (isInbox: true, voir
-// CollectionList) existe toujours — appelée depuis runSettingsMigrations,
-// donc aussi bien au chargement normal qu'après une restauration de
-// sauvegarde (un fichier de sauvegarde plus ancien n'a jamais ce flag,
-// tout comme une toute première installation). No-op dès qu'une liste le
-// porte déjà, qu'importe laquelle — ce flag n'est posé nulle part
-// ailleurs dans le code, donc une fois créée elle ne peut être dupliquée
-// que par une modification manuelle de data.json, non gérée ici.
-// unshift (pas push) : purement cosmétique, place la liste en tête du
-// tableau brut — le vrai épinglage visuel vient de renderListGrid, qui
-// l'extrait et l'affiche séparément, indépendamment de sa position ici.
+// "foil" (boolean) becomes "finish" (Regular/Foiled/Etched/Proxy): Etched
+// and Proxy are new values that no existing card can already have, so the
+// conversion is a simple switch foil ? "foiled" : "regular". Applies to the
+// collection AND the wantlist (same field in
+// Guarantees that exactly one "Inbox" list (isInbox: true, see
+// CollectionList) always exists — called from runSettingsMigrations, hence
+// both at normal load and after a backup restore (an older backup file
+// never has this flag, just like a very first installation). No-op as soon
+// as a list already carries it, whichever — this flag is set nowhere else
+// in the code, so once created it can only be duplicated by a manual edit
+// of data.json, not handled here. unshift (not push): purely cosmetic,
+// places the list at the head of the raw array — the real visual pinning
+// comes from renderListGrid, which extracts it and displays it separately,
+// independently of its position here.
 
 export function ensureInboxList(this: MTGCollectionPlugin) {
 	if (this.settings.lists.some((l) => l.isInbox)) return;
@@ -173,7 +169,7 @@ export function ensureInboxList(this: MTGCollectionPlugin) {
 	});
 }
 
-// les deux, migrateFoilSplit ne traite que la collection).
+// both, migrateFoilSplit only handles the collection).
 
 export function migrateFoilToFinish(this: MTGCollectionPlugin) {
 	let changed = false;
@@ -217,31 +213,25 @@ export function migrateDeckCommanderCategory(this: MTGCollectionPlugin) {
 	if (changed) void this.saveSettings();
 }
 
-// Rattrapage ponctuel de borderColor/frame/frameEffects (filtre "border:",
-// card-search.ts) pour toute entrée créée avant cette fonctionnalité —
-// contrairement à legalitiesCache/bulkFetchLegalities (voir leur
-// commentaire dans src/plugin/scryfall-cache.ts), cette donnée n'est PAS un cache à part avec TTL :
-// elle est persistée directement sur chaque CollectionCard/WantlistCard/
-// DeckCard (voir leur commentaire dans types.ts/data-model.ts), parce
-// qu'une bordure/un cadre de carte imprimée ne change jamais — une fois
-// rattrapée pour un scryfallId donné, plus jamais besoin de la
-// redemander. Une nouvelle carte l'obtient déjà directement à l'ajout
-// (addCardToCollection, addCardToWantlist, addCardToDeck,
-// changeCollectionCardPrinting/changeWantlistCardPrinting, importCsv/
-// importWantlistCsv) — cette méthode ne rattrape donc que les entrées
-// plus anciennes, ou importées depuis un data.json antérieur à cette
-// fonctionnalité. Appelée une fois au démarrage (voir onload), SANS
-// intervalle horaire contrairement à maybeAutoRefreshLegalities : une
-// fois toute la collection couverte, targets ci-dessous est
-// systématiquement vide et l'appel devient un no-op immédiat pour le
-// reste de la vie du plugin — pas besoin de revérifier périodiquement
-// une donnée qui ne périme jamais.
+// One-off catch-up of borderColor/frame/frameEffects ("border:" filter, card-search.ts) for every
+// entry created before this feature — unlike legalitiesCache/bulkFetchLegalities (see their comment
+// in src/plugin/scryfall-cache.ts), this data is NOT a separate cache with a TTL: it is persisted
+// directly on each CollectionCard/WantlistCard/DeckCard (see their comment in
+// types.ts/data-model.ts), because a printed card's border/frame never changes — once caught up for
+// a given scryfallId, never any need to ask for it again. A new card already gets it directly when
+// added (addCardToCollection, addCardToWantlist, addCardToDeck,
+// changeCollectionCardPrinting/changeWantlistCardPrinting, importCsv/importWantlistCsv) — this
+// method therefore only catches up older entries, or ones imported from a data.json predating this
+// feature. Called once at startup (see onload), WITHOUT an hourly interval unlike
+// maybeAutoRefreshLegalities: once the whole collection is covered, targets below is systematically
+// empty and the call becomes an immediate no-op for the rest of the plugin's life — no need to
+// periodically re-check data that never goes stale.
 
 export async function backfillBorderData(this: MTGCollectionPlugin): Promise<void> {
-	// scryfallId → TOUTES les entrées qui le partagent (pas une seule) :
-	// une même impression peut apparaître plusieurs fois à la fois (deux
-	// lignes de collection en états différents, un deck ET la collection,
-	// etc.), et chacune doit recevoir la donnée une fois son lot résolu.
+	// scryfallId → ALL the entries that share it (not just one): a same
+	// printing can appear several times at once (two collection rows in
+	// different conditions, a deck AND the collection, etc.), and each must
+	// receive the data once its batch is resolved.
 	const targets = new Map<string, { borderColor?: string; frame?: string; frameEffects?: string[] }[]>();
 	const register = (id: string, entry: { borderColor?: string; frame?: string; frameEffects?: string[] }) => {
 		if (!id || entry.borderColor !== undefined) return;
@@ -256,13 +246,11 @@ export async function backfillBorderData(this: MTGCollectionPlugin): Promise<voi
 	const missingIds = Array.from(targets.keys());
 	if (missingIds.length === 0) return;
 
-	// Même mécanisme onChunkResolved que bulkFetchLegalities (voir
-	// src/plugin/scryfall-cache.ts) — résout chaque lot de 75 dès qu'il revient, pas seulement le
-	// tout dernier. Moins critique ici qu'une réponse "instantanée" au
-	// clavier puisque rien n'attend cette donnée en synchrone, mais
-	// applique quand même les résultats progressivement plutôt que
-	// d'attendre la toute fin d'une collection de 10k cartes avant le
-	// premier octet écrit.
+	// Same onChunkResolved mechanism as bulkFetchLegalities (see src/plugin/scryfall-cache.ts) —
+	// resolves each batch of 75 as soon as it comes back, not only the very last one. Less
+	// critical here than an "instant" keyboard response since nothing waits synchronously for
+	// this data, but still applies results progressively rather than waiting for the very end of
+	// a 10k-card collection before the first byte written.
 	let changed = false;
 	await fetchScryfallCollection(missingIds, undefined, (chunkResults) => {
 		chunkResults.forEach((card, id) => {
@@ -279,27 +267,26 @@ export async function backfillBorderData(this: MTGCollectionPlugin): Promise<voi
 
 	if (!changed) return;
 	void this.saveSettings();
-	// Même geste que maybeAutoRefreshLegalities/maybeAutoRefreshPrices :
-	// une vue déjà ouverte (restaurée par Obsidian au démarrage) doit
-	// refléter la donnée fraîchement rattrapée.
+	// Same gesture as maybeAutoRefreshLegalities/maybeAutoRefreshPrices: a
+	// view already open (restored by Obsidian at startup) must reflect the
+	// freshly caught-up data.
 	this.app.workspace.getLeavesOfType(VIEW_TYPE_MTG_COLLECTION).forEach((leaf) => {
 		if (leaf.view instanceof MTGCollectionView) leaf.view.render();
 	});
 }
 
-// Rattrapage ponctuel d'oracleText (filtre "oracle:", card-search.ts),
-// même conception que backfillBorderData juste au-dessus — donnée
-// intrinsèque IMMUABLE (le texte de règles d'une impression ne change
-// jamais, sauf erratum), donc un simple rattrapage une fois suffit,
-// pas de TTL comme les légalités. Fonction séparée plutôt que fusionnée
-// dans backfillBorderData : une entrée déjà rattrapée par une version
-// antérieure du plugin (avant l'ajout de ce champ) a déjà borderColor
-// !== undefined, donc ne serait jamais réenregistrée si le filtre
-// "manquant" de cette fonction réutilisait le même test — chaque champ
-// immuable ajouté après coup a besoin de son propre passage. Une
-// nouvelle carte l'obtient déjà directement à l'ajout (mêmes 14 sites
-// que borderColor/frame/frameEffects — voir leur propre commentaire) ;
-// cette méthode ne rattrape donc que les entrées plus anciennes.
+// One-off catch-up of oracleText ("oracle:" filter, card-search.ts), same
+// design as backfillBorderData just above — intrinsic IMMUTABLE data (a
+// printing's rules text never changes, barring errata), so a single
+// catch-up is enough, no TTL like the legalities. A separate function
+// rather than merged into backfillBorderData: an entry already caught up
+// by an earlier plugin version (before this field was added) already has
+// borderColor !== undefined, so would never be re-recorded if this
+// function's "missing" filter reused the same test — each immutable field
+// added after the fact needs its own pass. A new card already gets it
+// directly when added (same 14 sites as borderColor/frame/frameEffects —
+// see their own comment); this method therefore only catches up older
+// entries.
 
 export async function backfillOracleTextData(this: MTGCollectionPlugin): Promise<void> {
 	const targets = new Map<string, { oracleText?: string }[]>();
@@ -316,8 +303,8 @@ export async function backfillOracleTextData(this: MTGCollectionPlugin): Promise
 	const missingIds = Array.from(targets.keys());
 	if (missingIds.length === 0) return;
 
-	// Même mécanisme onChunkResolved que backfillBorderData ci-dessus/
-	// bulkFetchLegalities (src/plugin/scryfall-cache.ts).
+	// Same onChunkResolved mechanism as backfillBorderData
+	// above/bulkFetchLegalities (src/plugin/scryfall-cache.ts).
 	let changed = false;
 	await fetchScryfallCollection(missingIds, undefined, (chunkResults) => {
 		chunkResults.forEach((card, id) => {
@@ -338,18 +325,18 @@ export async function backfillOracleTextData(this: MTGCollectionPlugin): Promise
 	});
 }
 
-// Rattrapage ponctuel du prix (voir DeckCard.priceUsd/etc., data-model.ts)
-// pour les decks créés avant cette fonctionnalité — scopé aux decks
-// SEULEMENT, contrairement à backfillBorderData/backfillOracleTextData
-// juste au-dessus : une CollectionCard/WantlistCard a toujours ce prix
-// dès sa création (champ non-optionnel, jamais absent), seul DeckCard en
-// a besoin. Même mécanisme onChunkResolved que ses deux voisins — mais
-// contrairement à eux, le prix N'EST PAS immuable : ce rattrapage ne
-// couvre que "jamais encore rattrapé une seule fois" (comme border/
-// oracleText), la fraîcheur continue est assurée séparément par
-// refreshAllPrices/maybeAutoRefreshPrices (qui incluent déjà les decks,
-// voir leur propre commentaire) — un deck déjà rattrapé une fois ne
-// repasse jamais par ici, mais reste tenu à jour par ce mécanisme-là.
+// One-off catch-up of the price (see DeckCard.priceUsd/etc.,
+// data-model.ts) for decks created before this feature — scoped to decks
+// ONLY, unlike backfillBorderData/backfillOracleTextData just above: a
+// CollectionCard/WantlistCard always has this price from its creation
+// (non-optional field, never absent), only DeckCard needs it. Same
+// onChunkResolved mechanism as its two neighbors — but unlike them, the
+// price is NOT immutable: this catch-up only covers "never yet caught up
+// even once" (like border/oracleText), continuous freshness is ensured
+// separately by refreshAllPrices/maybeAutoRefreshPrices (which already
+// include decks, see their own comment) — a deck already caught up once
+// never comes back through here, but stays kept up to date by that
+// mechanism.
 
 export async function backfillDeckCardPrices(this: MTGCollectionPlugin): Promise<void> {
 	interface PriceTarget {
@@ -396,9 +383,9 @@ export async function backfillDeckCardPrices(this: MTGCollectionPlugin): Promise
 	});
 }
 
-// Anciennes versions du plugin regroupaient automatiquement par édition.
-// On convertit une fois pour toutes ces regroupements en vraies "Lists"
-// nommées d'après l'édition, pour que les données existantes restent visibles.
+// Old versions of the plugin automatically grouped by set. We convert these
+// groupings once and for all into real "Lists" named after the set, so that
+// existing data stays visible.
 
 export function migrateCollectionToLists(this: MTGCollectionPlugin) {
 	const orphans = this.settings.collection.filter((c) => !c.listId);
@@ -438,9 +425,9 @@ export async function migrateEnrichMetadata(this: MTGCollectionPlugin) {
 	await this.saveSettings();
 }
 
-// Récupère la vraie illustration seule (art_crop) et les capacités-clés
-// (keywords) pour les cartes qui n'en ont pas encore (créées avant
-// l'introduction de ces champs).
+// Fetches the real artwork alone (art_crop) and the keyword abilities
+// (keywords) for cards that don't have them yet (created before these
+// fields were introduced).
 
 export async function migrateArtCropUrls(this: MTGCollectionPlugin) {
 	const missing = this.settings.collection.filter(
@@ -471,8 +458,8 @@ export async function migrateArtCropUrls(this: MTGCollectionPlugin) {
 	await this.saveSettings();
 }
 
-// Complète les cartes de deck créées avant l'introduction du tri/groupement
-// avec des valeurs par défaut sûres (avant l'enrichissement via Scryfall).
+// Fills in deck cards created before the introduction of sorting/grouping
+// with safe default values (before the enrichment via Scryfall).
 
 export function migrateDeckCardDefaults(this: MTGCollectionPlugin) {
 	let changed = false;
@@ -516,9 +503,9 @@ export function migrateDeckCardDefaults(this: MTGCollectionPlugin) {
 	if (changed) void this.saveSettings();
 }
 
-// Récupère l'artiste, les couleurs, la valeur de mana, l'illustration seule
-// et les capacités-clés manquants pour les cartes de deck existantes, en
-// une poignée de requêtes groupées.
+// Fetches the artist, colors, mana value, artwork alone and keyword
+// abilities missing for existing deck cards, in a handful of grouped
+// requests.
 
 export async function migrateEnrichDeckMetadata(this: MTGCollectionPlugin) {
 	const allDeckCards = this.settings.decks.flatMap((d) => d.cards);

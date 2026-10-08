@@ -11,8 +11,8 @@ import {
 } from "./github";
 import { FakeGithub } from "../plugin/__tests__/sync-test-harness";
 
-// api/github.ts importe requestUrl/arrayBufferToBase64 depuis "obsidian" (types seulement côté npm,
-// voir scryfall.test.ts) : requestUrl est redirigé vers un faux serveur GitHub en mémoire.
+// api/github.ts imports requestUrl/arrayBufferToBase64 from "obsidian" (types only on the npm side,
+// see scryfall.test.ts): requestUrl is redirected to an in-memory fake GitHub server.
 const mocks = vi.hoisted(() => ({ gh: null as unknown as FakeGithub }));
 
 vi.mock("obsidian", () => ({

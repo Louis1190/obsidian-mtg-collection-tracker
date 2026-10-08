@@ -8,8 +8,8 @@ function run(chunks: string[], key = "data"): { rows: string[]; prefix: string; 
 	return { rows, prefix: stream.prefix, failed: stream.failed };
 }
 
-// Un document qui cherche à faire trébucher le lecteur : accolades, guillemets, crochets et antislashs DANS des chaînes, objets
-// imbriqués, espaces, une valeur non-objet absente, un échappement unicode.
+// A document designed to trip up the reader: braces, quotes, brackets and backslashes INSIDE strings, nested
+// objects, whitespace, a missing non-object value, a unicode escape.
 const ROWS = [
 	{ id: 1, name: "plain", n: { a: 1 } },
 	{ id: 2, name: 'quote " inside', note: "brace } and { and ] and [ inside" },
@@ -62,7 +62,7 @@ describe("JsonArrayRowStream", () => {
 	it("reads another key (a regex-looking one is taken literally)", () => {
 		expect(run(['{"rows":[{"a":1},{"a":2}]}'], "rows").rows).toEqual(['{"a":1}', '{"a":2}']);
 		expect(run(['{"da.a":[{"a":1}]}'], "da.a").rows).toEqual(['{"a":1}']);
-		expect(run(['{"daxa":[{"a":1}]}'], "da.a").failed).toBe(false); // pas (encore) trouvé : un court document n'est pas un échec
+		expect(run(['{"daxa":[{"a":1}]}'], "da.a").failed).toBe(false); // not (yet) found: a short document is not a failure
 	});
 
 	it("is fast enough for a 150 000-row pricelist", () => {

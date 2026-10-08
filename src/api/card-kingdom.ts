@@ -2,21 +2,22 @@ import { requestUrlOrNull } from "./safe-request";
 import { JsonArrayRowStream } from "../core/json-array-stream";
 
 /* -------------------------------------------------------------------------- */
-/*  Card Kingdom pricelist — complète Scryfall avec un vrai prix "magasin"    */
+/* Card Kingdom pricelist — complements Scryfall with a real "store" price */
 /* -------------------------------------------------------------------------- */
 
-// Endpoint public confirmé (curl direct) : pas de clé, pas de compte, JSON
-// complet (~67 Mo, tout le catalogue Card Kingdom en un seul fichier) sous
-// {"meta":{"base_url":...},"data":[{scryfall_id, is_foil, price_retail,
-// url, ...}]}. Contrairement à /cards/collection chez Scryfall (75 cartes
-// par requête), il n'y a pas de version "par carte" — un seul aller-retour
-// pour tout le catalogue, indexé une fois en mémoire (voir
-// fetchCardKingdomPricelist) plutôt que re-parcouru à chaque carte affichée.
+// Public endpoint, confirmed (direct curl): no key, no account, complete
+// JSON (~67 MB, the whole Card Kingdom catalog in one file) under
+// {"meta":{"base_url":...},"data":[{scryfall_id, is_foil, price_retail, url,
+// ...}]}. Unlike Scryfall's /cards/collection (75 cards per request), there
+// is no "per card" version — one round trip for the whole catalog, indexed
+// once in memory (see fetchCardKingdomPricelist) rather than re-scanned for
+// each card displayed.
 const CARD_KINGDOM_PRICELIST_URL = "https://api.cardkingdom.com/api/v2/pricelist";
 
 const CARD_KINGDOM_HEADERS = {
-	// Même identifiant + contact que SCRYFALL_HEADERS (scryfall.ts) — cohérence
-	// entre toutes les APIs de ce plugin, pas une exigence propre à Card Kingdom.
+	// Same identifier + contact as SCRYFALL_HEADERS (scryfall.ts) — consistency
+	// across all of this plugin's APIs, not a requirement specific to Card
+	// Kingdom.
 	"User-Agent": "ObsidianMTGCollectionTracker/1.0 (+https://github.com/Louis1190/obsidian-mtg-collection-tracker)",
 	Accept: "application/json",
 };
@@ -33,45 +34,45 @@ interface CardKingdomRawEntry {
 	url?: string;
 }
 
-// Corps du pricelist (`res.json` est `any` : on le type ici, une fois).
+// Pricelist body (`res.json` is `any`: we type it here, once).
 interface CardKingdomPricelistBody {
 	meta?: { base_url?: string };
 	data?: CardKingdomRawEntry[];
 }
 
-// Clé composite scryfall_id+foil : Card Kingdom donne une ligne séparée par
-// finition (comme Scryfall lui-même sépare usd/usd_foil), donc une carte non-
-// foil et sa version foil ont deux prix distincts à retrouver indépendamment.
+// Composite key scryfall_id+foil: Card Kingdom gives a separate row per
+// finish (just as Scryfall itself separates usd/usd_foil), so a non-foil card
+// and its foil version have two distinct prices to look up independently.
 export function cardKingdomKey(scryfallId: string, isFoil: boolean): string {
 	return `${scryfallId}:${isFoil ? "foil" : "nonfoil"}`;
 }
 
-// Un seul aller-retour pour tout le catalogue, indexé en Map pour une
-// recherche en O(1) par carte ensuite — voir plugin.ts getCardKingdomPrices
-// pour le cache par session (jamais persisté, comme allSetsCache/
-// symbologyCache/legalitiesCache : un objet volumineux, en lecture seule,
-// vite périmé, n'a rien à faire dans le blob JSON des réglages).
+// A single round trip for the whole catalog, indexed into a Map for O(1)
+// lookup per card afterwards — see plugin.ts getCardKingdomPrices for the
+// per-session cache (never persisted, like
+// allSetsCache/symbologyCache/legalitiesCache: a bulky, read-only object
+// that goes stale quickly has no business in the settings JSON blob).
 export async function fetchCardKingdomPricelist(options: { stream?: boolean } = {}): Promise<Map<string, CardKingdomPriceEntry>> {
 	return options.stream ? fetchPricelistStreamed() : fetchPricelistWhole();
 }
 
 const DEFAULT_BASE_URL = "https://www.cardkingdom.com/";
 
-// Une ligne du tarif -> une entrée de la Map (ou rien). Partagée par les deux façons de lire le tarif, pour qu'elles retiennent
-// exactement les mêmes lignes.
+// One pricelist row -> one Map entry (or nothing). Shared by both ways of reading the pricelist, so that they
+// keep exactly the same rows.
 function addRow(map: Map<string, CardKingdomPriceEntry>, baseUrl: string, row: CardKingdomRawEntry): void {
 	if (!row.scryfall_id || !row.url) return;
 	const price = Number(row.price_retail);
-	// Un prix à 0 (ou absent/invalide) n'est pas un vrai prix de marché à
-	// afficher — Scryfall lui-même ne montre jamais "$0.00" pour une carte
-	// sans donnée de prix, même traitement ici.
+	// A price of 0 (or missing/invalid) is not a real market price to display
+	// — Scryfall itself never shows "$0.00" for a card with no price data,
+	// same treatment here.
 	if (!Number.isFinite(price) || price <= 0) return;
 
 	const key = cardKingdomKey(row.scryfall_id, row.is_foil === "true");
-	// Plusieurs lignes peuvent partager le même scryfall_id+finition
-	// (variantes/SKUs différents chez Card Kingdom pour la même
-	// impression) — on garde la première rencontrée plutôt que de
-	// résoudre ces doublons, hors scope pour un simple prix de vente.
+	// Several rows can share the same scryfall_id+finish (different
+	// variants/SKUs at Card Kingdom for the same printing) — we keep the first
+	// one encountered rather than resolving these duplicates, out of scope for
+	// a simple selling price.
 	if (map.has(key)) return;
 
 	map.set(key, {
@@ -80,7 +81,7 @@ function addRow(map: Map<string, CardKingdomPriceEntry>, baseUrl: string, row: C
 	});
 }
 
-// Ordinateur : toute la réponse d'un coup par requestUrl (65 Mo décompressés, sans souci de mémoire sur un ordinateur).
+// Computer: the whole response at once through requestUrl (65 MB decompressed, no memory concern on a computer).
 async function fetchPricelistWhole(): Promise<Map<string, CardKingdomPriceEntry>> {
 	const map = new Map<string, CardKingdomPriceEntry>();
 	const res = await requestUrlOrNull({
@@ -95,21 +96,24 @@ async function fetchPricelistWhole(): Promise<Map<string, CardKingdomPriceEntry>
 	return map;
 }
 
-// Téléphone / tablette : EN FLUX. requestUrl y encode toute la réponse en base64 avant de la rendre (65 Mo -> 86 Mo de texte, soit une
-// allocation de ~90 Mo) et l'application Obsidian plante (OutOfMemoryError, vu dans l'émulateur Android ; sur iOS le système tue
-// l'application pour la même raison de mémoire) à l'ouverture de la fiche d'une carte. fetch() lit la réponse morceau par morceau
-// (≤ 1 Mo chacun) et JsonArrayRowStream n'en garde que la ligne en cours : la mémoire reste bornée, seule la Map finale (~40 Mo de
-// petites entrées) est conservée. L'api Card Kingdom répond avec `access-control-allow-origin: *`, ce que fetch exige ; Mana Pool, lui,
-// ne l'envoie pas (voir manapool.ts, manaPoolPricesSupported). En-têtes : un navigateur interdit de fixer User-Agent, seul Accept passe.
-// Mesuré dans l'application Android réelle (émulateur) : 67,8 Mo lus en 665 morceaux, 4,6 s, tas JavaScript 48 Mo, sans plantage.
-// Toute erreur (réseau coupé à mi-réponse comprise) rend une Map vide, jamais une Map partielle : un tarif incomplet serait gardé pour
-// la session (une Map non vide est mise en cache) et ferait croire à tort que des cartes n'ont pas de prix.
+// Phone / tablet: STREAMED. requestUrl encodes the whole response as base64 before returning it (65 MB -> 86 MB
+// of text, i.e. an allocation of ~90 MB) and the Obsidian app crashes (OutOfMemoryError, seen in the Android
+// emulator; on iOS the system kills the app for the same memory reason) when a card's detail window opens.
+// fetch() reads the response chunk by chunk (≤ 1 MB each) and JsonArrayRowStream keeps only the current row:
+// memory stays bounded, only the final Map (~40 MB of small entries) is kept. The Card Kingdom API answers with
+// `access-control-allow-origin: *`, which fetch requires; Mana Pool does not send it (see manapool.ts,
+// manaPoolPricesSupported). Headers: a browser forbids setting User-Agent, only Accept gets through. Measured in
+// the real Android app (emulator): 67.8 MB read in 665 chunks, 4.6 s, JavaScript heap 48 MB, no crash. Any error
+// (a network cut mid-response included) returns an empty Map, never a partial Map: an incomplete pricelist would
+// be kept for the session (a non-empty Map is cached) and would wrongly make it look as if some cards have no
+// price.
 async function fetchPricelistStreamed(): Promise<Map<string, CardKingdomPriceEntry>> {
 	const map = new Map<string, CardKingdomPriceEntry>();
 	try {
-		// fetch et non requestUrl, volontairement : requestUrl ne sait pas lire en flux (il rend toute la réponse, encodée en base64 sur mobile,
-		// donc le plantage décrit ci-dessus). Le linter d'Obsidian recommande requestUrl (no-restricted-globals, un avertissement) et interdit
-		// de le désactiver : cet avertissement-ci est connu et assumé, voir docs/obsidian-compliance.md.
+		// fetch and not requestUrl, on purpose: requestUrl cannot read as a stream (it returns the whole response,
+		// base64-encoded on mobile, hence the crash described above). Obsidian's linter recommends requestUrl
+		// (no-restricted-globals, a warning) and forbids disabling it: this particular warning is known and accepted,
+		// see docs/obsidian-compliance.md.
 		const res = await fetch(CARD_KINGDOM_PRICELIST_URL, { headers: { Accept: "application/json" } });
 		if (!res.ok || !res.body) return map;
 
@@ -132,7 +136,7 @@ async function fetchPricelistStreamed(): Promise<Map<string, CardKingdomPriceEnt
 	}
 }
 
-// {"meta":{"created_at":"…","base_url":"https:\/\/www.cardkingdom.com\/"}, — le texte qui précède le tableau « data ».
+// {"meta":{"created_at":"…","base_url":"https:\/\/www.cardkingdom.com\/"}, — the text that precedes the "data" array.
 function baseUrlFromPrefix(prefix: string): string {
 	const match = /"base_url"\s*:\s*("(?:[^"\\]|\\.)*")/.exec(prefix);
 	if (!match) return DEFAULT_BASE_URL;

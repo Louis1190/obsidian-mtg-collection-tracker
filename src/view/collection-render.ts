@@ -79,22 +79,21 @@ export function openAddCollectionCardsModal(this: MTGCollectionView, listId: str
 	const modal = new AddCardsModal(this.app, this.plugin, {
 		onAdd: (card, options) => this.plugin.addCardToCollection(card, listId, options),
 		onChangeQuantity: (entryId, delta, onDone) => this.plugin.changeCollectionCardCount(entryId, delta, onDone),
-		// Une fois ajoutée (stepper affiché), la tuile devient cliquable et
-		// ouvre sa fenêtre de détail — demandé explicitement. navCards
-		// n'est que la carte elle-même (pas la liste complète) : ce
-		// contexte n'a pas de "liste de résultats de recherche affichée"
-		// équivalente à naviguer en Cover Flow, donc pas de flèches
-		// précédent/suivant ici (canNavigate exige navCards.length > 1).
+		// Once added (stepper displayed), the tile becomes clickable and opens its
+		// detail window — explicitly requested. navCards is only the card itself
+		// (not the full list): this context has no equivalent "displayed search
+		// results list" to navigate in Cover Flow, so no previous/next arrows here
+		// (canNavigate requires navCards.length > 1).
 		onOpenDetail: (entryId, onDetailClosed) => this.openCollectionCardDetailById(entryId, onDetailClosed),
-		// Panneau "Add history" — annule/rejoue un ajout par sa clé de
-		// dédoublonnage (scryfallId+listId+options), pas par un id de
-		// ligne qui pourrait devenir invalide entre un disable et un
-		// re-enable — voir onUndoAdd, shared-search-ui.ts.
+		// "Add history" panel — undoes/replays an addition by its deduplication
+		// key (scryfallId+listId+options), not by a row id which could become
+		// invalid between a disable and a re-enable — see onUndoAdd,
+		// shared-search-ui.ts.
 		onUndoAdd: (card, options, undoListId, delta) =>
 			this.plugin.undoAddToCollection(card.id, undoListId, options, delta),
 		destinationName: listName,
-		// Pilote les liens "Change printing"/"Move card" du panneau "Add
-		// history" — voir sourceKind, shared-search-ui.ts.
+		// Drives the "Change printing"/"Move card" links of the "Add history"
+		// panel — see sourceKind, shared-search-ui.ts.
 		sourceKind: "collection",
 		titleText: `Add cards to "${listName}"`,
 	});
@@ -105,30 +104,28 @@ export function openAddCollectionCardsModal(this: MTGCollectionView, listId: str
 	modal.open();
 }
 
-// Partagé par les 2 flux d'ajout Collection (avec/sans sélecteur de
-// liste) — voir onOpenDetail ci-dessus/plus bas. Recherche l'entrée par
-// id plutôt que de faire remonter l'objet CollectionCard lui-même depuis
-// AddCardsModal (qui ne connaît que { id, count }, voir
-// AddCardsModalOptions.onAdd) — un lookup de plus, mais garde
-// AddCardsModal générique, sans dépendance sur le modèle de données
-// Collection. `onDetailClosed` (optionnel — bug corrigé : sans lui, la
-// tuile carrousel d'origine restait affichée avec sa valeur périmée
-// après un changement de quantité/une suppression depuis cette fenêtre
-// de détail) est enveloppé autour du onClose EXISTANT de CardDetailModal
-// plutôt que de l'écraser — capturé/lié AVANT d'être remplacé, puis
-// rappelé explicitement en premier, pour ne perdre aucun nettoyage que
-// CardDetailModal fait déjà de son côté (aujourd'hui juste
-// contentEl.empty(), mais pas garanti de le rester). Relit la ligne
-// APRÈS ce nettoyage plutôt que de réutiliser `card` (capturé avant
-// ouverture, donc périmé si la quantité a changé ou si la ligne a été
-// supprimée entre-temps) — undefined si elle n'existe plus.
-// Publique (pas juste appelée depuis AddCardsModalOptions.onOpenDetail
-// ci-dessus) depuis le 2026-09-08 : le bloc "Copies in Lists"
-// cross-section (CardDetailModal/DeckCardDetailModal/
-// WantlistCardDetailModal) l'appelle aussi directement pour ouvrir la
-// bonne fenêtre sur une tuile My Collection cliquée depuis un autre
-// modal — sans callback onDetailClosed dans ce cas (la fenêtre d'origine
-// se ferme, rien à resynchroniser une fois la cible fermée).
+// Shared by the 2 Collection add flows (with/without a list picker) — see
+// onOpenDetail above/below. Looks up the entry by id rather than passing
+// the CollectionCard object itself back up from AddCardsModal (which only
+// knows { id, count }, see AddCardsModalOptions.onAdd) — one more lookup,
+// but keeps AddCardsModal generic, without a dependency on the Collection
+// data model. `onDetailClosed` (optional — bug fixed: without it, the
+// original carousel tile stayed displayed with its stale value after a
+// quantity change/a deletion from this detail window) is wrapped around
+// the EXISTING onClose of CardDetailModal rather than overwriting it —
+// captured/bound BEFORE being replaced, then explicitly called first, so
+// as not to lose any cleanup that CardDetailModal already does on its side
+// (today just contentEl.empty(), but not guaranteed to stay so). Re-reads
+// the row AFTER this cleanup rather than reusing `card` (captured before
+// opening, hence stale if the quantity changed or if the row was deleted
+// in the meantime) — undefined if it no longer exists.
+// Public (not just called from AddCardsModalOptions.onOpenDetail above)
+// since 2026-09-08: the cross-section "Copies in Lists" block
+// (CardDetailModal/DeckCardDetailModal/WantlistCardDetailModal) also calls
+// it directly to open the right window on a My Collection tile clicked
+// from another modal — without an onDetailClosed callback in this case
+// (the original window closes, nothing to resynchronize once the target is
+// closed).
 
 export function openCollectionCardDetailById(this: MTGCollectionView, 
 	entryId: string,
@@ -148,9 +145,9 @@ export function openCollectionCardDetailById(this: MTGCollectionView,
 	modal.open();
 }
 
-// Depuis "All Cards", il n'y a pas de liste cible implicite : la modale
-// affiche elle-même une galerie de listes (image de fond + nom) à choisir
-// avant/pendant la recherche, plutôt qu'un menu texte à part.
+// From "All Cards", there is no implicit target list: the modal itself
+// displays a gallery of lists (background image + name) to choose from
+// before/during the search, rather than a separate text menu.
 
 export function openAddCollectionCardsModalWithListPicker(this: MTGCollectionView) {
 	const lists = this.plugin.settings.lists;
@@ -170,22 +167,21 @@ export function openAddCollectionCardsModalWithListPicker(this: MTGCollectionVie
 		},
 		onChangeQuantity: (entryId, delta, onDone) => this.plugin.changeCollectionCardCount(entryId, delta, onDone),
 		onOpenDetail: (entryId, onDetailClosed) => this.openCollectionCardDetailById(entryId, onDetailClosed),
-		// Pas de destinationName ici — voir onUndoAdd, shared-search-ui.ts :
-		// le flux listGallery résout plutôt le nom par listId depuis
-		// listGallery.summaries, la destination variant tuile par tuile.
+		// No destinationName here — see onUndoAdd, shared-search-ui.ts: the
+		// listGallery flow instead resolves the name by listId from
+		// listGallery.summaries, the destination varying tile by tile.
 		onUndoAdd: (card, options, undoListId, delta) =>
 			this.plugin.undoAddToCollection(card.id, undoListId, options, delta),
 		sourceKind: "collection",
 		titleText: "Add cards",
-		// defaultListId (Inbox) : "Add"/"Add all" ajoutent directement à
-		// Inbox sans ouvrir SelectListModal — demandé explicitement
-		// ("sans choisir explicitement de liste, elle atterrit dans
-		// Inbox"), voir AddCardsModalOptions.listGallery.defaultListId.
-		// Pour choisir une AUTRE destination malgré tout : le panneau
-		// "Add history" de cette même modale sait déjà déplacer une
-		// carte tout juste ajoutée vers une autre liste (lien "Move" sur
-		// la destination) — pas besoin d'un 2e sélecteur à l'ajout, qui
-		// réintroduirait exactement le choix forcé que ceci enlève.
+		// defaultListId (Inbox): "Add"/"Add all" add directly to Inbox without
+		// opening SelectListModal — explicitly requested ("without explicitly
+		// choosing a list, it lands in Inbox"), see
+		// AddCardsModalOptions.listGallery.defaultListId. To choose ANOTHER
+		// destination anyway: the "Add history" panel of this same modal already
+		// knows how to move a card just added to another list ("Move" link on the
+		// destination) — no need for a 2nd picker at add time, which would
+		// reintroduce exactly the forced choice that this removes.
 		listGallery: { summaries, kind: "list", defaultListId: this.plugin.settings.lists.find((l) => l.isInbox)?.id },
 	});
 	modal.onClose = () => {
@@ -207,20 +203,20 @@ export function renderCollectionSection(this: MTGCollectionView) {
 		this.headerStatsEl.setText("");
 	} else {
 		this.headerTitleEl.setText("Collection");
-		// Inbox (liste système, épinglée à part de la grille) n'est pas comptée
-		// comme une liste — demandé explicitement, pour rester cohérent avec le
-		// titre « Lists: N lists » de la grille, qui ne la compte pas non plus.
-		// Ses cartes, elles, restent dans totalCards/totalValue.
+		// Inbox (system list, pinned apart from the grid) is not counted as a list
+		// — explicitly requested, to stay consistent with the "Lists: N lists"
+		// title of the grid, which doesn't count it either. Its cards, for their
+		// part, remain in totalCards/totalValue.
 		const realListCount = this.plugin.settings.lists.filter((l) => !l.isInbox).length;
 		this.headerStatsEl.setText(
 			`${realListCount} lists · ${totalCards} cards · ${formatMoney(totalValue, currency)}`
 		);
 	}
 
-	// Plus de garde "0 liste" ici : Inbox (voir CollectionList.isInbox/
-	// ensureInboxList) est désormais garantie présente dès le chargement
-	// des settings, donc this.plugin.settings.lists.length === 0 ne peut
-	// plus jamais se produire une fois le plugin chargé.
+	// No more "0 lists" guard here: Inbox (see
+	// CollectionList.isInbox/ensureInboxList) is now guaranteed to be present
+	// from the loading of the settings, so this.plugin.settings.lists.length
+	// === 0 can no longer ever happen once the plugin is loaded.
 	if (this.openListId) {
 		this.renderListDetail(this.openListId);
 	} else {
@@ -231,10 +227,10 @@ export function renderCollectionSection(this: MTGCollectionView) {
 
 export function renderListGrid(this: MTGCollectionView) {
 	const filter = this.filterEl.value.trim().toLowerCase();
-	// Inbox (liste système, voir CollectionList.isInbox/ensureInboxList)
-	// est retirée du tableau trié/filtré par l'utilisateur puis réinjectée à
-	// part, dans la rangée épinglée avec "All Cards" (plus bas), pour qu'elle
-	// reste toujours en tête quel que soit le tri/la recherche choisis.
+	// Inbox (system list, see CollectionList.isInbox/ensureInboxList) is
+	// removed from the array sorted/filtered by the user then reinjected
+	// separately, in the pinned row with "All Cards" (further down), so that
+	// it always stays at the top whatever sort/search is chosen.
 	const inboxList = this.plugin.settings.lists.find((l) => l.isInbox);
 	const allGroups = groupByList(
 		this.plugin.settings.lists,
@@ -242,8 +238,8 @@ export function renderListGrid(this: MTGCollectionView) {
 		this.plugin.settings.priceCurrency
 	);
 	const inboxGroup = inboxList ? allGroups.find((g) => g.id === inboxList.id) : undefined;
-	// Les vraies listes, Inbox exclue : c'est exactement ce que la grille
-	// affiche sous le titre « Lists: … » (voir plus bas), donc son « total ».
+	// The real lists, Inbox excluded: this is exactly what the grid displays
+	// under the "Lists: …" title (see further down), hence its "total".
 	const realGroups = allGroups.filter((g) => g.id !== inboxList?.id);
 	let groups = realGroups.filter((g) => !filter || g.name.toLowerCase().includes(filter));
 
@@ -269,31 +265,28 @@ export function renderListGrid(this: MTGCollectionView) {
 		return sortReverse ? -cmp : cmp;
 	});
 
-	// Rangée épinglée "Inbox"/"All Cards" — au plus 2 colonnes à elles deux,
-	// jamais 4 comme la grille des vraies listes plus bas (demandé
-	// explicitement), mais une seule (les deux tuiles l'une sous l'autre)
-	// tant que le panneau est étroit, soit un téléphone en portrait : côte à
-	// côte elles n'y faisaient plus qu'~135px chacune (~90px à 300px de
-	// panneau), leur texte écrasé sur plusieurs lignes (demandé explicitement
-	// aussi). Un .mtg-set-grid séparé plutôt que ces 2 tuiles en
-	// tête de la grille principale : dans celle-ci leur largeur aurait suivi
-	// le nombre de colonnes du moment (jusqu'à 4) au lieu de plafonner à 2.
-	// Dans son PROPRE .mtg-set-grid-wrap — même conteneur de requête, donc
-	// mêmes seuils que la grille principale : elle passe de 1 à 2 colonnes à
-	// la même largeur de panneau, par construction, et
-	// .mtg-pinned-tiles-grid neutralise le palier des 4 colonnes (voir
-	// styles.css). Inbox avant "All Cards" — demandé explicitement ("Place
-	// 'Inbox' en première position").
+	// Pinned "Inbox"/"All Cards" row — at most 2 columns between the two, never
+	// 4 like the grid of real lists further down (explicitly requested), but
+	// just one (the two tiles one under the other) as long as the panel is
+	// narrow, i.e. a phone in portrait: side by side they were only ~135px each
+	// there (~90px at a 300px panel), their text squashed over several lines
+	// (also explicitly requested). A separate .mtg-set-grid rather than these 2
+	// tiles at the head of the main grid: in the latter their width would have
+	// followed the current number of columns (up to 4) instead of capping at 2.
+	// In its OWN .mtg-set-grid-wrap — same query container, so same thresholds
+	// as the main grid: it goes from 1 to 2 columns at the same panel width, by
+	// construction, and .mtg-pinned-tiles-grid neutralizes the 4-column step
+	// (see styles.css). Inbox before "All Cards" — explicitly requested ("Put
+	// 'Inbox' in first position").
 	//
-	// Construite dans this.collectionPinnedEl (élément persistant du
-	// squelette, voir onOpen) et non dans this.bodyEl : la rangée est AU-DESSUS
-	// de la barre de filtre, qui est elle-même persistante et donc hors de
-	// this.bodyEl — demandé explicitement (la recherche et le tri passent
-	// après ces deux tuiles). Conséquence voulue : la recherche ne les
-	// filtre plus (avant, "inbox"/"all cards" les masquait quand la saisie ne
-	// leur correspondait pas). Sous la rangée, une tuile qui disparaîtrait au
-	// fil de la frappe ferait sauter la barre de recherche elle-même vers le
-	// haut pendant qu'on y écrit ; le tri, lui, ne les a jamais concernées.
+	// Built in this.collectionPinnedEl (persistent element of the skeleton, see
+	// onOpen) and not in this.bodyEl: the row is ABOVE the filter bar, which is
+	// itself persistent and therefore outside this.bodyEl — explicitly
+	// requested (search and sort come after these two tiles). Intended
+	// consequence: the search no longer filters them (before, "inbox"/"all
+	// cards" hid them when the input didn't match them). Under the row, a tile
+	// that disappeared as you type would make the search bar itself jump upward
+	// while you write in it; the sort, for its part, never concerned them.
 	const hasAllCardsTile = this.plugin.settings.lists.length > 0;
 	if (inboxGroup || hasAllCardsTile) {
 		const pinnedWrap = this.collectionPinnedEl.createDiv({ cls: "mtg-set-grid-wrap" });
@@ -318,10 +311,9 @@ export function renderListGrid(this: MTGCollectionView) {
 		}
 	}
 
-	// La recherche ne porte que sur les vraies listes (la rangée épinglée
-	// ci-dessus reste affichée quoi qu'il arrive) : sans saisie, une galerie
-	// qui n'a que ses deux tuiles épinglées s'affiche normalement, avec sa
-	// grille vide en dessous.
+	// The search only applies to the real lists (the pinned row above stays
+	// displayed no matter what): with no input, a gallery that only has its
+	// two pinned tiles displays normally, with its empty grid below.
 	if (filter && groups.length === 0) {
 		this.bodyEl.createEl("p", {
 			text: "No list matches your filter.",
@@ -330,7 +322,7 @@ export function renderListGrid(this: MTGCollectionView) {
 		return;
 	}
 
-	// Barre "Sort by" (comme à l'intérieur d'une liste).
+	// "Sort by" bar (as inside a list).
 	const sortRow = this.bodyEl.createDiv({ cls: "mtg-groupsort-row" });
 
 	const sortCluster = sortRow.createDiv({ cls: "mtg-groupsort-cluster" });
@@ -377,20 +369,20 @@ export function renderListGrid(this: MTGCollectionView) {
 		this.listGalleryBulkBarWasVisible = false;
 	}
 
-	// Petit titre "Lists" au-dessus de la grille des vraies listes juste en
-	// dessous — demandé explicitement, à l'origine pour la séparer de la
-	// rangée épinglée qui la précédait immédiatement ; désormais sous la
-	// barre de tri, la rangée épinglée étant passée au-dessus de la barre de
-	// recherche (voir plus haut). Porte aussi le nombre de listes, qui passe
-	// à « x of y lists match » pendant une recherche (demandé explicitement).
+	// Small "Lists" title above the grid of real lists just below — explicitly
+	// requested, originally to separate it from the pinned row that
+	// immediately preceded it; now under the sort bar, the pinned row having
+	// moved above the search bar (see above). Also carries the number of
+	// lists, which becomes "x of y lists match" during a search (explicitly
+	// requested).
 	this.bodyEl.createDiv({
 		cls: "mtg-list-grid-section-title",
 		text: formatCountTitle("list", groups.length, realGroups.length, filter !== ""),
 	});
 
-	// Nombre de colonnes automatique (1/2/4 selon la largeur du panneau, plus
-	// de choix utilisateur) : .mtg-set-grid-wrap est le conteneur de requête
-	// dont dépend .mtg-set-grid — voir son commentaire dans styles.css.
+	// Automatic number of columns (1/2/4 depending on the panel's width, no
+	// more user choice): .mtg-set-grid-wrap is the query container that
+	// .mtg-set-grid depends on — see its comment in styles.css.
 	const gridWrap = this.bodyEl.createDiv({ cls: "mtg-set-grid-wrap" });
 	const grid = gridWrap.createDiv({
 		cls: `mtg-set-grid${this.listGallerySelectMode ? " mtg-gallery-selecting" : ""}`,
@@ -399,17 +391,17 @@ export function renderListGrid(this: MTGCollectionView) {
 	groups.forEach((group) => this.renderListTile(grid, group));
 }
 
-// isInbox : tuile de la liste système "Inbox" (voir CollectionList.isInbox
-// /ensureInboxList) — rendue en couleur d'accent pleine, sans image/
-// dégradé de fond, avec un petit pictogramme "inbox" (demandé
-// explicitement), et jamais sélectionnable en mode sélection galerie
-// (même traitement qu'isVirtual/"All Cards" ci-dessous : rien à
-// supprimer/fusionner n'y correspond, voir aussi les garde-fous côté
-// MTGCollectionPlugin.deleteList/renameList/bulkDeleteLists/mergeLists).
-// Contrairement à "All Cards", le menu "..." reste affiché — mais ouvre
-// InboxSettingsModal (Move + Export/Import CSV) plutôt que ListActions-
-// Modal, qui exposerait à tort un renommage/une suppression — voir le
-// routage isInbox plus bas.
+// isInbox: tile of the "Inbox" system list (see
+// CollectionList.isInbox/ensureInboxList) — rendered in full accent color,
+// without a background image/gradient, with a small "inbox" pictogram
+// (explicitly requested), and never selectable in gallery selection mode
+// (same treatment as isVirtual/"All Cards" below: nothing to delete/merge
+// corresponds to it, see also the safeguards on the
+// MTGCollectionPlugin.deleteList/renameList/bulkDeleteLists/mergeLists
+// side). Unlike "All Cards", the "..." menu stays displayed — but opens
+// InboxSettingsModal (Move + Export/Import CSV) rather than
+// ListActionsModal, which would wrongly expose a rename/a deletion — see
+// the isInbox routing further down.
 
 export function renderListTile(this: MTGCollectionView, grid: HTMLElement, group: ListGroup, isInbox = false) {
 	const isVirtual = group.id === ALL_CARDS_ID;
@@ -417,23 +409,22 @@ export function renderListTile(this: MTGCollectionView, grid: HTMLElement, group
 	const tile = grid.createDiv({
 		cls: `mtg-set-tile${isInbox ? " mtg-set-tile-inbox" : ""}${isVirtual ? " mtg-set-tile-all-cards" : ""}`,
 	});
-	// "All Cards" n'a plus non plus d'image de fond (demandé explicitement,
-	// "Supprime l'image de fond de 'All cards'") — gris foncé fixe à la
-	// place, voir .mtg-set-tile-all-cards, styles.css.
+	// "All Cards" no longer has a background image either (explicitly
+	// requested, "Remove the background image of 'All cards'") — fixed dark
+	// gray instead, see .mtg-set-tile-all-cards, styles.css.
 	if (group.coverImage && !isInbox && !isVirtual) {
 		const bg = tile.createDiv({ cls: "mtg-set-tile-bg" });
 		bg.style.backgroundImage = `linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.85)), url("${group.coverImage}")`;
 	}
 	const content = tile.createDiv({ cls: "mtg-set-tile-content" });
 
-	// Rangée épinglée (Inbox/"All Cards") : layout horizontal — un
-	// pictogramme dans un cercle à gauche (fond plus sombre/légèrement
-	// opaque, taille pensée pour les 3 lignes de texte), le texte à
-	// droite — au lieu du layout vertical/ancré en bas des tuiles de
-	// liste normales. Demandé explicitement avec un croquis ; une classe
-	// modificatrice sur .mtg-set-tile-content (mtg-set-tile-content-
-	// pinned) plutôt que de changer .mtg-set-tile-content lui-même, qui
-	// reste par ailleurs le layout par défaut de toute autre tuile.
+	// Pinned row (Inbox/"All Cards"): horizontal layout — a pictogram in a
+	// circle on the left (darker/slightly opaque background, size designed for
+	// the 3 lines of text), the text on the right — instead of the vertical
+	// layout/anchored at the bottom of normal list tiles. Explicitly requested
+	// with a sketch; a modifier class on .mtg-set-tile-content
+	// (mtg-set-tile-content-pinned) rather than changing .mtg-set-tile-content
+	// itself, which otherwise remains the default layout of any other tile.
 	let textParent = content;
 	if (isInbox || isVirtual) {
 		content.addClass("mtg-set-tile-content-pinned");
@@ -442,26 +433,25 @@ export function renderListTile(this: MTGCollectionView, grid: HTMLElement, group
 		textParent = content.createDiv({ cls: "mtg-set-tile-pinned-text" });
 	}
 
-	// Pictogramme choisi manuellement (ListSettingsModal, "Choose icon")
-	// pour une liste normale — même cercle à légère opacité que ci-dessus
-	// (.mtg-set-tile-pictogram-circle, réutilisé tel quel), mais posé dans
-	// une simple rangée imbriquée (mtg-set-tile-icon-row) plutôt que sur
-	// .mtg-set-tile-content lui-même comme pour Inbox/"All Cards" : ces
-	// deux-là n'ont pas d'image de fond, donc centrer tout le contenu
-	// verticalement dans la tuile ne coûte rien ; une liste normale, elle,
-	// a son dégradé de fond spécifiquement assombri vers le BAS pour la
-	// lisibilité du texte ancré là (voir plus haut) — y appliquer le même
-	// centrage vertical aurait déplacé le texte loin de la zone la plus
-	// sombre du dégradé. La rangée imbriquée garde donc .mtg-set-tile-
-	// content ancré en bas comme avant, avec juste ce nouveau bloc
-	// (cercle + texte) comme unique enfant.
+	// Pictogram chosen manually (ListSettingsModal, "Choose icon") for a
+	// normal list — same slightly translucent circle as above
+	// (.mtg-set-tile-pictogram-circle, reused as is), but placed in a simple
+	// nested row (mtg-set-tile-icon-row) rather than on .mtg-set-tile-content
+	// itself as for Inbox/"All Cards": those two have no background image, so
+	// vertically centering all the content in the tile costs nothing; a normal
+	// list, on the other hand, has its background gradient specifically
+	// darkened toward the BOTTOM for the legibility of the text anchored there
+	// (see above) — applying the same vertical centering to it would have
+	// moved the text away from the darkest area of the gradient. The nested
+	// row therefore keeps .mtg-set-tile-content anchored at the bottom as
+	// before, with just this new block (circle + text) as its only child.
 	if (group.icon && !isInbox && !isVirtual) {
 		const iconRow = textParent.createDiv({ cls: "mtg-set-tile-icon-row" });
 		const iconCircle = iconRow.createDiv({ cls: "mtg-set-tile-pictogram-circle" });
-		// Mana (déjà coloré par Scryfall, jamais retouché) vs édition
-		// (monochrome, recoloré en blanc pour rester lisible dans ce cercle
-		// sombre — même traitement que les icônes d'en-tête de groupe
-		// ailleurs dans ce fichier, applySvgColor(..., "#ffffff")).
+		// Mana (already colored by Scryfall, never altered) vs set (monochrome,
+		// recolored white to stay legible in this dark circle — same treatment as
+		// the group header icons elsewhere in this file, applySvgColor(...,
+		// "#ffffff")).
 		const fetchIcon =
 			group.icon.kind === "mana"
 				? this.plugin.getManaSymbolSvg(group.icon.value)
@@ -484,9 +474,8 @@ export function renderListTile(this: MTGCollectionView, grid: HTMLElement, group
 		text: formatMoney(group.totalValue, this.plugin.settings.priceCurrency),
 	});
 
-	// Mode sélection galerie : "All Cards" (agrégat virtuel) et "Inbox"
-	// (liste système) ne sont jamais sélectionnables — voir nonSelectable
-	// ci-dessus.
+	// Gallery selection mode: "All Cards" (virtual aggregate) and "Inbox"
+	// (system list) are never selectable — see nonSelectable above.
 	const isSelected = !nonSelectable && this.selectedListIds.has(group.id);
 	if (this.listGallerySelectMode && !nonSelectable) {
 		tile.toggleClass("mtg-set-tile-selected", isSelected);
@@ -513,10 +502,9 @@ export function renderListTile(this: MTGCollectionView, grid: HTMLElement, group
 		this.render();
 	});
 
-	// Menu "..." masqué en mode sélection galerie : ouvrir les réglages
-	// d'une liste au milieu d'une sélection multiple prêterait à
-	// confusion (même raisonnement que le masquage du bouton "+ Add
-	// cards" côté carte en mode select).
+	// "..." menu hidden in gallery selection mode: opening a list's settings
+	// in the middle of a multiple selection would be confusing (same reasoning
+	// as hiding the "+ Add cards" button on the card side in select mode).
 	if (!isVirtual && !this.listGallerySelectMode) {
 		const menuBtn = tile.createDiv({ cls: "mtg-tile-menu-btn" });
 		setIcon(menuBtn, "more-vertical");
@@ -529,12 +517,11 @@ export function renderListTile(this: MTGCollectionView, grid: HTMLElement, group
 	}
 }
 
-// Barre d'actions groupées de la grille "My Collection" (sélection de
-// listes entières, pas de cartes) — même look/structure que
-// renderCollectionBulkActionsBar (cartes), volontairement plus courte : seules les
-// 3 actions demandées ont un sens ici (rien à déplacer/copier/regrouper
-// entre listes elles-mêmes). visibleListIds sert à "Select all", comme
-// visibleCardIds pour renderCollectionBulkActionsBar.
+// Bulk actions bar of the "My Collection" grid (selection of whole lists, not
+// cards) — same look/structure as renderCollectionBulkActionsBar (cards),
+// deliberately shorter: only the 3 requested actions make sense here (nothing to
+// move/copy/regroup between lists themselves). visibleListIds serves "Select all",
+// like visibleCardIds for renderCollectionBulkActionsBar.
 
 export function renderListGalleryBulkActionsBar(this: MTGCollectionView, container: HTMLElement, animate: boolean, visibleListIds: string[]) {
 	const bar = createBulkActionsBar(this, "list-gallery", container, animate);
@@ -641,14 +628,13 @@ export function renderListGalleryBulkActionsBar(this: MTGCollectionView, contain
 		);
 	});
 
-	// Fusionne les listes sélectionnées en une nouvelle — n'a de sens qu'à
-	// partir de 2 listes (fusionner "1 liste" ne changerait rien), donc
-	// désactivé explicitement en dessous de ce seuil, indépendamment du
-	// bascule générique "0 sélectionné → tout désactiver" en bas de
-	// fonction (qui, lui, ne couvre que le cas 0). La modale elle-même sert
-	// de confirmation (nom pré-rempli à relire, listes d'origine listées) —
-	// voir MergeListsModal. My Collection uniquement — pas d'équivalent
-	// pour Decks/Wantlists, non demandé.
+	// Merges the selected lists into a new one — only makes sense from 2 lists
+	// (merging "1 list" would change nothing), so explicitly disabled below
+	// this threshold, independently of the generic "0 selected → disable
+	// everything" toggle at the bottom of the function (which only covers the
+	// 0 case). The modal itself serves as confirmation (pre-filled name to
+	// review, source lists listed) — see MergeListsModal. My Collection only —
+	// no equivalent for Decks/Wantlists, not requested.
 	const mergeBtn = bar.createEl("button", { text: "Merge", cls: "mtg-bulk-action-btn" });
 	actionButtons.push(mergeBtn);
 	mergeBtn.disabled = this.selectedListIds.size < 2;
@@ -693,9 +679,9 @@ export function renderListGalleryBulkActionsBar(this: MTGCollectionView, contain
 
 export function renderListDetail(this: MTGCollectionView, listId: string) {
 	const isVirtual = listId === ALL_CARDS_ID;
-	// Liste système "Inbox" (voir CollectionList.isInbox/ensureInboxList) —
-	// ouvre InboxSettingsModal au lieu de ListSettingsModal depuis le menu
-	// "..." de ce sticky header, même raisonnement que renderListTile.
+	// "Inbox" system list (see CollectionList.isInbox/ensureInboxList) — opens
+	// InboxSettingsModal instead of ListSettingsModal from the "..." menu of
+	// this sticky header, same reasoning as renderListTile.
 	const isInbox = !isVirtual && !!this.plugin.settings.lists.find((l) => l.id === listId)?.isInbox;
 	const group = isVirtual
 		? {
@@ -720,26 +706,25 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		return;
 	}
 
-	// Échafaudage flex-colonne (voir .mtg-collection-body-detail,
-	// styles.css) : stickyHeader (hauteur naturelle) puis
-	// .mtg-detail-scroll-area (le reste de la hauteur disponible, avec sa
-	// propre scrollbar — voir plus bas) se partagent ainsi toute la
-	// hauteur de this.bodyEl, qui prend lui-même toute la hauteur de
-	// this.mainEl dans ce mode. Retiré à chaque render() (voir plus haut
-	// dans render()) avant d'être potentiellement rajouté ici — jamais
-	// hérité tel quel via cloneNode(false).
+	// Flex-column scaffolding (see .mtg-collection-body-detail, styles.css):
+	// stickyHeader (natural height) then .mtg-detail-scroll-area (the rest of
+	// the available height, with its own scrollbar — see further down) thus
+	// share the whole height of this.bodyEl, which itself takes the whole
+	// height of this.mainEl in this mode. Removed on every render() (see
+	// higher up in render()) before potentially being added back here — never
+	// inherited as is via cloneNode(false).
 	this.bodyEl.addClass("mtg-collection-body-detail");
 	const stickyHeader = this.bodyEl.createDiv({ cls: "mtg-detail-sticky-header" });
 
-	// Le bouton "← Back to X" et la rangée titre partagent maintenant UN
-	// SEUL conteneur (.mtg-detail-header-banner, voir styles.css pour le
-	// raisonnement complet) — reconstruit ici à chaque render() comme le
-	// reste de ce header, plus de second élément sticky persistant à
-	// synchroniser (voir l'ancien collectionBackRow, supprimé). C'est ce
-	// qui permet une image de couverture (même source que la tuile de la
-	// grille — groupByList/pickCoverImage, core/price.ts) réellement
-	// UNIQUE derrière le bouton ET le titre à la fois — un seul calque,
-	// pas deux à raccorder — quand la liste a une illustration.
+	// The "← Back to X" button and the title row now share ONE SINGLE
+	// container (.mtg-detail-header-banner, see styles.css for the full
+	// reasoning) — rebuilt here on every render() like the rest of this
+	// header, no second persistent sticky element to synchronize anymore (see
+	// the old collectionBackRow, removed). That is what allows a cover image
+	// (same source as the grid tile — groupByList/pickCoverImage,
+	// core/price.ts) that is truly SINGLE behind the button AND the title at
+	// once — one layer, not two to join together — when the list has an
+	// illustration.
 	const headerBanner = stickyHeader.createDiv({ cls: "mtg-detail-header-banner" });
 	if (group.coverImage) {
 		const bannerBg = headerBanner.createDiv({ cls: "mtg-detail-banner-bg" });
@@ -764,13 +749,13 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 
 	const titleRow = headerBanner.createDiv({ cls: "mtg-deck-title-row" });
 	const titleInfo = titleRow.createDiv({ cls: "mtg-title-info" });
-	// Ouvre les settings (ListSettingsModal/InboxSettingsModal) au clic sur
-	// le titre, au lieu du renommage en ligne d'origine — demandé
-	// explicitement, le renommage reste accessible depuis cette même
-	// fenêtre. openListSettings est réutilisé plus bas par menuBtn (le
-	// bouton "...") pour ne pas dupliquer la construction de la modale.
-	// isVirtual ("All Cards") n'a pas de settings du tout (pas de menuBtn
-	// non plus, voir plus bas) : titre non cliquable, comme avant.
+	// Opens the settings (ListSettingsModal/InboxSettingsModal) on clicking
+	// the title, instead of the original inline rename — explicitly requested,
+	// renaming remains accessible from this same window. openListSettings is
+	// reused further down by menuBtn (the "..." button) to avoid duplicating
+	// the construction of the modal. isVirtual ("All Cards") has no settings
+	// at all (no menuBtn either, see further down): title not clickable, as
+	// before.
 	const openListSettings = () => {
 		if (isInbox) new InboxSettingsModal(this.app, this.plugin, this, group.id).open();
 		else new ListSettingsModal(this.app, this.plugin, this, group.id).open();
@@ -788,12 +773,11 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		text: `${group.cards.length} unique · ${group.totalQty} cards · ${formatMoney(group.totalValue, this.plugin.settings.priceCurrency)}`,
 	});
 
-	// "+ Add cards"/"Select cards"/"..." vivaient auparavant sur la
-	// rangée du titre, juste au-dessus — déplacés ici, à droite de la
-	// barre de recherche, pour gagner de la hauteur verticale (demandé
-	// explicitement, capture d'écran annotée à l'appui). searchActionsRow
-	// (voir styles.css) est la rangée flex englobante ; filterRow grandit
-	// pour occuper l'espace restant, actionsRow garde sa largeur propre.
+	// "+ Add cards"/"Select cards"/"..." used to live on the title row, just
+	// above — moved here, to the right of the search bar, to gain vertical
+	// height (explicitly requested, annotated screenshot in support).
+	// searchActionsRow (see styles.css) is the enclosing flex row; filterRow
+	// grows to take the remaining space, actionsRow keeps its own width.
 	const searchActionsRow = stickyHeader.createDiv({ cls: "mtg-detail-search-actions-row" });
 	const filterRow = searchActionsRow.createDiv({ cls: "mtg-collection-toolbar mtg-inline-filter-row" });
 	const actionsRow = searchActionsRow.createDiv({ cls: "mtg-detail-search-actions" });
@@ -831,9 +815,9 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		menuBtn.setAttribute("title", isInbox ? "Inbox settings" : "List settings");
 		menuBtn.addEventListener("click", openListSettings);
 	}
-	// Snapshot de la Map en cours de session (voir MTGCollectionPlugin.
-	// getLegalitiesCache) — My Collection uniquement, voir renderChipFilter
-	// pour pourquoi Decks/Wantlists ne passent pas cet argument.
+	// Snapshot of the in-session Map (see
+	// MTGCollectionPlugin.getLegalitiesCache) — My Collection only, see
+	// renderChipFilter for why Decks/Wantlists don't pass this argument.
 	const legalitiesByScryfallId = this.plugin.getLegalitiesCache();
 	const filteredCards = group.cards.filter((c) =>
 		cardMatchesTokens(
@@ -861,12 +845,12 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		legalitiesByScryfallId
 	);
 
-	// Pré-fetch en arrière-plan des légalités de TOUTE la liste ouverte
-	// (pas juste des cartes déjà rendues/paginées) dès qu'un jeton
-	// "legal:" est actif — voir MTGCollectionPlugin.bulkFetchLegalities.
-	// Se contente de renvoyer `false` sans rien faire si tout est déjà en
-	// cache/en vol (voir cette méthode) : sûr à rappeler à chaque render()
-	// sans provoquer de boucle ou de doublons réseau.
+	// Background pre-fetch of the legalities of the ENTIRE open list (not just
+	// the cards already rendered/paginated) as soon as a "legal:" token is
+	// active — see MTGCollectionPlugin.bulkFetchLegalities. Just returns
+	// `false` without doing anything if everything is already cached/in flight
+	// (see that method): safe to call again on every render() without causing
+	// a loop or network duplicates.
 	if (tokensNeedLegalityData(this.listCardFilterTokens, this.listCardFilterDraft)) {
 		void this.plugin.bulkFetchLegalities(group.cards.map((c) => c.scryfallId)).then((fetchedSomething) => {
 			if (fetchedSomething) this.plugin.refreshOpenViews();
@@ -921,9 +905,8 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		const recentIds = this.plugin.recentlyAddedCollectionCardIds;
 		if (recentIds.size > 0) {
 			const filteredById = new Map(filteredCards.map((c) => [c.id, c]));
-			// Array.from(...).reverse() : un Set JS garde l'ordre d'insertion,
-			// donc inverser donne "le plus récemment ajouté en premier" sans
-			// avoir besoin de comparer des timestamps.
+			// Array.from(...).reverse(): a JS Set keeps insertion order, so reversing
+			// gives "most recently added first" without needing to compare timestamps.
 			const recentCards = Array.from(recentIds)
 				.reverse()
 				.map((id) => filteredById.get(id))
@@ -937,45 +920,43 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		}
 	}
 	const visibleGroups = sliceGroupsForRender(cardGroups, this.listRenderLimit);
-	// Un groupe tronqué par la pagination (voir sliceGroupsForRender) a un
-	// cardGroup.cards plus court que son vrai contenu : le compteur d'en-tête
-	// et "tout sélectionner ce groupe" doivent rester exacts sur le groupe
-	// COMPLET, pas seulement sur sa portion actuellement rendue.
+	// A group truncated by pagination (see sliceGroupsForRender) has a
+	// cardGroup.cards shorter than its real content: the header counter and
+	// "select all in this group" must stay accurate on the COMPLETE group, not
+	// just on its currently rendered portion.
 	const fullGroupCardsByLabel = new Map(cardGroups.map((g) => [g.label, g.cards]));
-	// Ordre "visuel" complet (tous les groupes, pas seulement la portion
-	// déjà rendue) : sert de base à la navigation précédent/suivant de
-	// CardDetailModal, indépendamment de ce qui est effectivement affiché
-	// dans le DOM à l'instant du clic.
+	// Complete "visual" order (all the groups, not only the portion already
+	// rendered): serves as the basis for the previous/next navigation of
+	// CardDetailModal, independently of what is actually displayed in the DOM
+	// at the moment of the click.
 	const navOrder = cardGroups.flatMap((g) => g.cards);
 	this.navOrderForListClick = navOrder;
 
-	// .mtg-detail-scroll-area (voir styles.css) : c'est CET élément-ci qui
-	// défile réellement pour cette liste, pas this.mainEl (voir
+	// .mtg-detail-scroll-area (see styles.css): it is THIS element that
+	// actually scrolls for this list, not this.mainEl (see
 	// isDetailViewOpen/getActiveScrollEl/handleScrollAreaScroll,
-	// src/view/shared-render-helpers.ts) —
-	// sa propre scrollbar démarre donc exactement là où le contenu
-	// défilable commence, juste sous stickyHeader, plutôt qu'en haut de
-	// toute la fenêtre comme avant. Un nouveau listener de scroll à chaque
-	// render() (élément non persistant, contrairement à this.mainEl) —
-	// voir le commentaire de handleScrollAreaScroll pour pourquoi.
+	// src/view/shared-render-helpers.ts) — its own scrollbar therefore starts
+	// exactly where the scrollable content begins, just under stickyHeader,
+	// rather than at the top of the whole window as before. A new scroll
+	// listener on every render() (non-persistent element, unlike this.mainEl)
+	// — see the comment of handleScrollAreaScroll for why.
 	const scrollArea = this.bodyEl.createDiv({ cls: "mtg-detail-scroll-area" });
 	scrollArea.addEventListener("scroll", () => this.handleScrollAreaScroll(scrollArea));
-	// Fondu haut/bas (voir setupPanelScrollFade, card-detail-fx.ts, déjà
-	// utilisé par les 3 fenêtres de détail carte) : sans lui, une rangée qui
-	// défile sous stickyHeader disparaît net à sa bordure inférieure plutôt
-	// que de s'estomper — demandé explicitement (capture à l'appui). Même
-	// mécanisme ici que là-bas, juste appliqué à un second élément
-	// défilant : mask-image révèle le fond plat de .mtg-detail-scroll-area
-	// (--background-primary, identique à celui de stickyHeader juste
-	// au-dessus, aucune photo de couverture ne descend jusqu'ici — voir
-	// .mtg-detail-header-banner, confiné à son propre overflow: hidden),
-	// donc le raccord reste net sans qu'aucune couleur de fond n'ait
-	// besoin d'être redéclarée ici.
+	// Top/bottom fade (see setupPanelScrollFade, card-detail-fx.ts, already
+	// used by the 3 card detail windows): without it, a row scrolling under
+	// stickyHeader disappears abruptly at its lower border rather than fading
+	// out — explicitly requested (screenshot in support). Same mechanism here
+	// as there, just applied to a second scrolling element: mask-image reveals
+	// the flat background of .mtg-detail-scroll-area (--background-primary,
+	// identical to that of stickyHeader just above, no cover photo comes down
+	// this far — see .mtg-detail-header-banner, confined to its own overflow:
+	// hidden), so the join stays clean without any background color needing to
+	// be redeclared here.
 	setupPanelScrollFade(scrollArea);
-	// Titre "Cards: …" (nombre de cartes, "x of y cards match" pendant une
-	// recherche) — voir renderCardsCountTitle. Un jeton "legal:" actif dont
-	// les légalités ne sont pas toutes encore en cache ajoute "Fetching
-	// legality data" à côté (voir bulkFetchLegalities plus haut).
+	// "Cards: …" title (number of cards, "x of y cards match" during a search)
+	// — see renderCardsCountTitle. An active "legal:" token whose legalities
+	// are not all in the cache yet adds "Fetching legality data" next to it
+	// (see bulkFetchLegalities above).
 	renderCardsCountTitle(
 		scrollArea,
 		group.cards,
@@ -995,9 +976,9 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 	}
 
 	if (filteredCards.length === 0) {
-		// Une recherche sans résultat n'est pas une liste vide (même
-		// distinction que renderDeckDetail) : sans ça le message "empty"
-		// contredisait le titre "Cards: 0 of N cards match" juste au-dessus.
+		// A search with no results is not an empty list (same distinction as
+		// renderDeckDetail): without this, the "empty" message contradicted the
+		// "Cards: 0 of N cards match" title just above.
 		list.createEl("p", {
 			text:
 				group.cards.length > 0
@@ -1028,12 +1009,11 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 				}
 			}
 
-			// Case à cocher réelle : vide par défaut, se coche et prend la
-			// couleur d'accent une fois que TOUTES les cartes du groupe sont
-			// sélectionnées ; sinon (aucune ou seulement une partie), reste
-			// vide. Cliquer bascule entre "tout sélectionner" et "tout
-			// désélectionner" ce groupe précis. Porte sur le groupe complet
-			// (fullGroupCards), pas seulement sur sa portion déjà rendue.
+			// Real checkbox: empty by default, gets checked and takes the accent color
+			// once ALL the cards of the group are selected; otherwise (none or only
+			// some), stays empty. Clicking toggles between "select all" and "deselect
+			// all" for this precise group. Applies to the complete group
+			// (fullGroupCards), not only its already rendered portion.
 			const fullGroupCards = fullGroupCardsByLabel.get(cardGroup.label) ?? cardGroup.cards;
 			const allSelected =
 				fullGroupCards.length > 0 &&
@@ -1058,8 +1038,8 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 
 			const centerEl = headerEl.createDiv({ cls: "mtg-group-header-center" });
 			if (cardGroup.colorKeys) {
-				// Groupement par couleur : les symboles remplacent le nom (ex.
-				// "Blue", "Red/Green"), plus grands et centrés.
+				// Grouping by color: the symbols replace the name (e.g. "Blue",
+				// "Red/Green"), larger and centered.
 				const iconsEl = centerEl.createSpan({ cls: "mtg-group-header-icons" });
 				cardGroup.colorKeys.forEach((letter) => {
 					const iconEl = iconsEl.createSpan({ cls: "mtg-group-header-icon" });
@@ -1074,14 +1054,14 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 					});
 				});
 			} else if (cardGroup.manaValueKey !== undefined) {
-				// Groupement par valeur de mana : le symbole générique Scryfall
-				// (rond gris avec le chiffre) remplace le texte "Mana Value N".
+				// Grouping by mana value: the generic Scryfall symbol (gray circle with
+				// the number) replaces the text "Mana Value N".
 				const iconEl = centerEl.createSpan({ cls: "mtg-group-header-icon" });
 				const labelEl = centerEl.createSpan({ cls: "mtg-group-header-label" });
 				void this.plugin.getManaSymbolSvg(String(Math.round(cardGroup.manaValueKey))).then((svg) => {
 					if (!svg) {
-						// Repli sur le texte si Scryfall n'a pas ce symbole précis
-						// (ex. très grandes valeurs).
+						// Falls back to the text if Scryfall doesn't have this precise symbol
+						// (e.g. very large values).
 						labelEl.setText(cardGroup.label);
 						return;
 					}
@@ -1093,8 +1073,8 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 					}
 				});
 			} else if (cardGroup.setCodeKey) {
-				// Groupement par édition : le symbole officiel du set, en blanc,
-				// juste avant son nom.
+				// Grouping by set: the set's official symbol, in white, just before its
+				// name.
 				const iconEl = centerEl.createSpan({ cls: "mtg-group-header-icon" });
 				centerEl.createSpan({ cls: "mtg-group-header-label", text: cardGroup.label });
 				void this.plugin.getSetIconSvg(cardGroup.setCodeKey).then((svg) => {
@@ -1108,9 +1088,8 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 					}
 				});
 			} else if (cardGroup.isRecentlyAdded) {
-				// Pas de fetch réseau nécessaire ici (contrairement aux symboles
-				// mana/set ci-dessus) : setIcon() rend une icône Lucide déjà
-				// disponible localement dans Obsidian.
+				// No network fetch needed here (unlike the mana/set symbols above):
+				// setIcon() renders a Lucide icon already available locally in Obsidian.
 				const iconEl = centerEl.createSpan({ cls: "mtg-group-header-icon" });
 				setIcon(iconEl, "clock");
 				centerEl.createSpan({ cls: "mtg-group-header-label", text: cardGroup.label });
@@ -1147,18 +1126,16 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 
 			const isSelected = this.selectedListCardIds.has(card.id);
 			const signature = this.collectionCardRowSignature(card, isSelected);
-			// Une carte récemment ajoutée apparaît volontairement à la fois
-			// dans le groupe épinglé "Recently Added" et dans son groupe
-			// normal (voir plus haut) — donc, pour ce SEUL rendu, le même
-			// card.id est traité deux fois dans cette boucle. Un cache
-			// keyé uniquement par card.id ferait alors partager le MÊME
-			// nœud DOM aux deux endroits : comme un nœud n'a qu'un seul
-			// parent possible, le second appendChild() le retirerait
-			// silencieusement du premier (bug observé : la section
-			// épinglée affichait "1 card" dans son en-tête mais restait
-			// visuellement vide, la ligne ayant été déplacée dans le
-			// groupe normal rendu juste après). Un préfixe de clé dédié
-			// pour la copie épinglée donne donc deux nœuds DOM distincts.
+			// A recently added card deliberately appears both in the pinned "Recently
+			// Added" group and in its normal group (see above) — so, for this render
+			// ONLY, the same card.id is processed twice in this loop. A cache keyed
+			// only by card.id would then make the SAME DOM node shared between the two
+			// places: since a node can only have one parent, the second appendChild()
+			// would silently remove it from the first (observed bug: the pinned
+			// section displayed "1 card" in its header but stayed visually empty, the
+			// row having been moved into the normal group rendered right after). A
+			// dedicated key prefix for the pinned copy therefore gives two distinct
+			// DOM nodes.
 			const cacheKey = cardGroup.isRecentlyAdded ? `recent:${card.id}` : card.id;
 			const cached = this.cachedListRowElements.get(cacheKey);
 			const row =
@@ -1174,13 +1151,13 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		});
 	});
 
-	// Purge les lignes mises en cache qui ne correspondent plus au filtre
-	// courant (voir cachedListRowElements) : sans ça, une session avec
-	// beaucoup de filtres différents ferait grossir le cache sans borne.
-	// Les clés de la copie épinglée "Recently Added" (préfixées "recent:",
-	// voir plus haut) doivent être dérivées la même façon ici, sinon elles
-	// ne correspondraient jamais à liveRowIds (qui ne contient que des
-	// card.id nus) et seraient purgées — puis reconstruites — à chaque rendu.
+	// Purges the cached rows that no longer match the current filter (see
+	// cachedListRowElements): without this, a session with many different
+	// filters would make the cache grow without bound. The keys of the pinned
+	// "Recently Added" copy (prefixed "recent:", see above) must be derived
+	// the same way here, otherwise they would never match liveRowIds (which
+	// only contains bare card.id values) and would be purged — then rebuilt —
+	// on every render.
 	const liveRowIds = new Set(
 		cardGroups.flatMap((g) => g.cards.map((c) => (g.isRecentlyAdded ? `recent:${c.id}` : c.id)))
 	);
@@ -1188,17 +1165,16 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		if (!liveRowIds.has(id)) this.cachedListRowElements.delete(id);
 	}
 
-	// navOrder.length (pas filteredCards.length) : le groupe épinglé
-	// "Recently Added" double chaque carte récente (voir plus haut), donc
-	// le nombre RÉEL de lignes à travers cardGroups dépasse le nombre de
-	// cartes uniques de la liste. Comparer à filteredCards.length faisait
-	// arrêter la pagination dès que renderLimit dépassait ce compte non
-	// doublé — alors qu'il restait encore des cartes non rendues plus loin
-	// dans les groupes normaux (bug réel : sur une liste de ~595 cartes
-	// fraîchement ajoutées, renderLimit atteignait 600 en parcourant les
-	// 594 lignes de "Recently Added", 594 > 600 devenait faux, et le
-	// groupe suivant restait figé à 6 cartes rendues sur 90, sans plus
-	// jamais recréer de sentinelle).
+	// navOrder.length (not filteredCards.length): the pinned "Recently Added"
+	// group doubles each recent card (see above), so the REAL number of rows
+	// across cardGroups exceeds the number of unique cards in the list.
+	// Comparing to filteredCards.length made pagination stop as soon as
+	// renderLimit exceeded this undoubled count — while there were still
+	// unrendered cards further along in the normal groups (real bug: on a list
+	// of ~595 freshly added cards, renderLimit reached 600 while going through
+	// the 594 rows of "Recently Added", 594 > 600 became false, and the next
+	// group stayed frozen at 6 cards rendered out of 90, with no sentinel ever
+	// recreated).
 	if (navOrder.length > this.listRenderLimit) {
 		this.renderLoadMoreSentinel(list, () => {
 			this.listRenderLimit += RENDER_BATCH_SIZE;
@@ -1207,10 +1183,10 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 	}
 }
 
-// Signature légère des champs qui influent sur le rendu d'une ligne : si
-// elle n'a pas changé depuis le dernier rendu, la ligne DOM existante est
-// réutilisée telle quelle (voir cachedListRowElements) plutôt que
-// reconstruite (icônes async, écouteurs...).
+// Lightweight signature of the fields that influence the rendering of a
+// row: if it hasn't changed since the last render, the existing DOM row is
+// reused as is (see cachedListRowElements) rather than rebuilt (async
+// icons, listeners...).
 
 export function collectionCardRowSignature(this: MTGCollectionView, card: CollectionCard, isSelected: boolean): string {
 	return [
@@ -1234,21 +1210,21 @@ export function collectionCardRowSignature(this: MTGCollectionView, card: Collec
 		this.plugin.settings.priceCurrency,
 		isSelected,
 		this.listSelectMode,
-		// La vue Carte a une structure DOM différente de Liste/Grille (image
-		// pleine largeur + infos en dessous, pas de titre) — sans ce champ,
-		// basculer de mode réutiliserait telle quelle une ligne déjà en
-		// cache construite pour l'AUTRE mode (voir buildCollectionCardRow).
+		// The Card view has a different DOM structure from List/Grid (full-width
+		// image + info below, no title) — without this field, switching mode would
+		// reuse as is a row already in the cache built for the OTHER mode (see
+		// buildCollectionCardRow).
 		phoneAwareViewMode(this.listViewMode),
 	].join("|");
 }
 
-// Construit le contenu d'une ligne (.mtg-card-row), détaché de tout
-// parent — appelant responsable de l'attacher (voir renderListDetail) et
-// de mettre cachedListRowElements à jour. Le clic principal référence
-// this.navOrderForClick (toujours à jour au moment du clic) plutôt qu'une
-// variable "navOrder" capturée ici : cette ligne peut survivre, réutilisée
-// telle quelle, à plusieurs rendus dont le navOrder aurait changé
-// (tri/groupement/filtre) sans que son propre contenu change.
+// Builds the content of a row (.mtg-card-row), detached from any parent —
+// the caller is responsible for attaching it (see renderListDetail) and
+// for updating cachedListRowElements. The main click references
+// this.navOrderForClick (always up to date at click time) rather than a
+// "navOrder" variable captured here: this row can survive, reused as is,
+// across several renders whose navOrder would have changed
+// (sort/grouping/filter) without its own content changing.
 
 export function buildCollectionCardRow(this: MTGCollectionView, card: CollectionCard, isSelected: boolean): HTMLElement {
 	const row = createDiv();
@@ -1269,11 +1245,11 @@ export function buildCollectionCardRow(this: MTGCollectionView, card: Collection
 	if (card.finish !== "regular") {
 		nameLine.createSpan({ cls: "mtg-foil-pill", text: getFinishLabel(card.finish) });
 	}
-	// Colonne "Mana Value" : uniquement construite en mode Tableau (voir
-	// TABLE_COLUMNS_COLLECTION, card-sorting.ts) — dans les autres modes
-	// cette cellule n'a pas sa place, et this.viewMode fait déjà partie de
-	// collectionCardRowSignature ci-dessus donc un changement de mode reconstruit
-	// cette ligne de toute façon (voir son propre commentaire).
+	// "Mana Value" column: only built in Table mode (see
+	// TABLE_COLUMNS_COLLECTION, card-sorting.ts) — in the other modes this cell
+	// has no place, and this.viewMode is already part of
+	// collectionCardRowSignature above so a mode change rebuilds this row anyway
+	// (see its own comment).
 	if (phoneAwareViewMode(this.listViewMode) === "table") {
 		const manaValueCell = body.createDiv({ cls: "mtg-table-mana-value-cell" });
 		if (card.manaCost) {
@@ -1283,9 +1259,9 @@ export function buildCollectionCardRow(this: MTGCollectionView, card: Collection
 		} else {
 			manaValueCell.createSpan({ cls: "mtg-table-mana-value-empty", text: "—" });
 		}
-		// Survol du NOM seulement (nameSpan), pas de toute la cellule
-		// .mtg-card-row-name-line — demandé explicitement ("le nom
-		// seulement, pas la cellule en entière").
+		// Hover on the NAME only (nameSpan), not on the whole
+		// .mtg-card-row-name-line cell — explicitly requested ("the name only, not
+		// the whole cell").
 		nameSpan.addEventListener("mouseenter", () =>
 			this.showCardNamePreview(nameSpan, card.imageUrl)
 		);
@@ -1338,15 +1314,14 @@ export function buildCollectionCardRow(this: MTGCollectionView, card: Collection
 			});
 	});
 
-	// La badge (bordure colorée) va sur un span interne, jamais sur
-	// condTrigger lui-même : en mode Tableau, .mtg-card-row-tags passe en
-	// display:contents (voir .mtg-collection-list-table plus haut dans
-	// styles.css) et condTrigger devient alors un item de grille à part
-	// entière, étiré par le conteneur pour remplir toute sa colonne — une
-	// bordure posée directement dessus tracerait alors le contour de toute
-	// la cellule au lieu de rester un petit badge (bug rapporté). Même
-	// scission cellule/contenu que langTrigger juste au-dessus, dont le
-	// drapeau <img> est déjà un enfant plutôt que le trigger lui-même.
+	// The badge (colored border) goes on an inner span, never on condTrigger
+	// itself: in Table mode, .mtg-card-row-tags becomes display:contents (see
+	// .mtg-collection-list-table higher up in styles.css) and condTrigger then
+	// becomes a full-fledged grid item, stretched by the container to fill its
+	// whole column — a border placed directly on it would then trace the
+	// outline of the whole cell instead of staying a small badge (reported
+	// bug). Same cell/content split as langTrigger just above, whose <img>
+	// flag is already a child rather than the trigger itself.
 	const condTrigger = tagsLine.createSpan({ cls: "mtg-icon-trigger" });
 	createConditionIcon(condTrigger, card.condition);
 	condTrigger.setAttribute("title", getCondition(card.condition).label);
@@ -1445,18 +1420,16 @@ export function buildCollectionCardRow(this: MTGCollectionView, card: Collection
 	return row;
 }
 
-// Vue Carte (My Collection) : la carte s'affiche en entier (pas de recadrage,
-// voir renderThumbWithBadge variant "tile"), le nom n'est volontairement PAS
-// répété en dessous (déjà lisible sur l'image elle-même — c'est le point de
-// cette vue). Réutilise les mêmes widgets interactifs que buildCollectionCardRow
-// (picker langue/condition, stepper, prix) plutôt que de les réinventer,
-// juste réarrangés dans un empilement vertical au lieu d'une ligne — mais
-// reste une fonction séparée plutôt qu'un paramètre de mise en page sur
-// buildCollectionCardRow, pour suivre le même principe de duplication par variante déjà
-// établi entre buildCollectionCardRow/buildDeckCardRow/buildWantlistCardRow (voir CLAUDE.md).
-// Sur demande explicite, seul le code d'édition (pas son nom complet) est
-// affiché — plus compact, suffisant pour identifier l'impression une fois
-// l'image déjà visible.
+// Card view (My Collection): the card is displayed in full (no cropping, see
+// renderThumbWithBadge variant "tile"), the name is deliberately NOT repeated below (already
+// legible on the image itself — that's the point of this view). Reuses the same interactive
+// widgets as buildCollectionCardRow (language/condition picker, stepper, price) rather than
+// reinventing them, just rearranged in a vertical stack instead of a row — but remains a
+// separate function rather than a layout parameter on buildCollectionCardRow, to follow the
+// same per-variant duplication principle already established between
+// buildCollectionCardRow/buildDeckCardRow/buildWantlistCardRow (see CLAUDE.md). On explicit
+// request, only the set code (not its full name) is displayed — more compact, enough to
+// identify the printing once the image is already visible.
 
 export function buildCollectionCardTile(this: MTGCollectionView, card: CollectionCard, isSelected: boolean): HTMLElement {
 	const tile = createDiv();
@@ -1481,9 +1454,9 @@ export function buildCollectionCardTile(this: MTGCollectionView, card: Collectio
 
 	const info = tile.createDiv({ cls: "mtg-card-tile-info" });
 
-	// Ligne 1 : icône d'édition + code/numéro à gauche ; langue, état, foil
-	// (les infos "secondaires") à droite — même ligne, deux groupes espacés
-	// via justify-content:space-between (voir .mtg-card-tile-row1).
+	// Row 1: set icon + code/number on the left; language, condition, foil
+	// (the "secondary" info) on the right — same row, two groups spaced out
+	// via justify-content:space-between (see .mtg-card-tile-row1).
 	const row1 = info.createDiv({ cls: "mtg-card-tile-row1" });
 	const row1Left = row1.createDiv({ cls: "mtg-card-tile-row1-left" });
 	const setIconEl = row1Left.createSpan({ cls: "mtg-card-tile-set-icon" });
@@ -1492,9 +1465,9 @@ export function buildCollectionCardTile(this: MTGCollectionView, card: Collectio
 		setSvgMarkup(setIconEl, svg);
 		const svgEl = setIconEl.querySelector("svg");
 		if (svgEl) {
-			// Un peu plus grand que le badge en coin qu'il remplace (13px) —
-			// ici il porte seul l'identification de l'édition, sans logo
-			// redondant sur l'image (voir renderThumbWithBadge).
+			// A bit larger than the corner badge it replaces (13px) — here it alone
+			// carries the identification of the set, without a redundant logo on the
+			// image (see renderThumbWithBadge).
 			svgEl.setAttribute("width", "16");
 			svgEl.setAttribute("height", "16");
 		}
@@ -1564,19 +1537,17 @@ export function buildCollectionCardTile(this: MTGCollectionView, card: Collectio
 		row1Right.createSpan({ cls: "mtg-foil-pill", text: getFinishLabel(card.finish) });
 	}
 
-	// Ligne 2 : quantité, flèches horizontales — même widget/mêmes classes
-	// que la fenêtre de détail d'une carte (mtg-stepper-horizontal, boutons
-	// ronds +/-), demandé explicitement plutôt que les chevrons empilés de
-	// la vue Liste. Pas de clic-pour-éditer ici (contrairement à la vue
-	// Liste) : la fenêtre de détail elle-même n'en a pas non plus, donc
-	// reproduire fidèlement "comme dans la fenêtre de détail" veut dire
-	// aussi laisser de côté cette fonctionnalité, pas seulement le style
-	// des boutons.
+	// Row 2: quantity, horizontal arrows — same widget/same classes as a
+	// card's detail window (mtg-stepper-horizontal, round +/- buttons),
+	// explicitly requested rather than the stacked chevrons of the List view.
+	// No click-to-edit here (unlike the List view): the detail window itself
+	// doesn't have it either, so faithfully reproducing "as in the detail
+	// window" also means leaving out this feature, not just the style of the
+	// buttons.
 	const qtyRow = info.createDiv({ cls: "mtg-card-tile-qty-row" });
-	// mtg-card-tile-stepper : boutons +/- agrandis, scopés à la vue Carte
-	// uniquement — la fenêtre de détail garde ses propres boutons à leur
-	// taille d'origine (mtg-stepper-horizontal seul), ce modificateur ne
-	// s'applique qu'ici.
+	// mtg-card-tile-stepper: enlarged +/- buttons, scoped to the Card view
+	// only — the detail window keeps its own buttons at their original size
+	// (mtg-stepper-horizontal alone), this modifier only applies here.
 	const stepper = qtyRow.createDiv({ cls: "mtg-stepper mtg-stepper-horizontal mtg-card-tile-stepper" });
 	stepper.addEventListener("click", (evt) => {
 		if (!this.listSelectMode) evt.stopPropagation();
@@ -1599,11 +1570,11 @@ export function buildCollectionCardTile(this: MTGCollectionView, card: Collectio
 		this.plugin.changeCollectionCardCount(card.id, -1, () => this.render());
 	});
 
-	// Ligne 3 : prix, sur une seule ligne (unité + total, plus le double
-	// empilement de la vue Liste). Toujours créée, même sans prix connu
-	// (min-height réservé en CSS) : sinon les tuiles d'une même rangée
-	// n'ont pas toutes la même hauteur selon qu'un prix Scryfall existe ou
-	// non pour cette impression précise (bug rapporté).
+	// Row 3: price, on a single line (unit + total, instead of the double
+	// stack of the List view). Always created, even without a known price
+	// (min-height reserved in CSS): otherwise the tiles of a same row would
+	// not all have the same height depending on whether or not a Scryfall
+	// price exists for this precise printing (reported bug).
 	const priceLine = info.createDiv({ cls: "mtg-card-tile-price-line" });
 	const currency = this.plugin.settings.priceCurrency;
 	const unitPrice = formatCardPrice(card, currency);
@@ -1636,8 +1607,8 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 		text: `${this.selectedListCardIds.size} selected`,
 	});
 
-	// "Select all" / "Clear" : utilitaires de sélection, pas des actions sur
-	// les cartes elles-mêmes — regroupés et séparés visuellement du reste.
+	// "Select all" / "Clear": selection utilities, not actions on the cards
+	// themselves — grouped together and visually separated from the rest.
 	const selectionUtils = bar.createDiv({ cls: "mtg-bulk-selection-utils" });
 	const selectAllBtn = selectionUtils.createEl("button", {
 		text: "Select all",
@@ -1656,21 +1627,20 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 	bar.createDiv({ cls: "mtg-bulk-actions-divider" });
 
 	const selectedIds = () => Array.from(this.selectedListCardIds);
-	// Clear n'a aucun effet utile sans sélection (contrairement à Select
-	// all, pertinent justement quand la sélection est vide) — inclus dans
-	// actionButtons pour profiter du même bascule disabled que le reste
-	// en bas de fonction, plutôt qu'un désactivage séparé.
+	// Clear has no useful effect without a selection (unlike Select all,
+	// relevant precisely when the selection is empty) — included in
+	// actionButtons to benefit from the same disabled toggle as the rest at
+	// the bottom of the function, rather than a separate disabling.
 	const actionButtons: HTMLButtonElement[] = [clearBtn];
 
-	// Déplacer vers une liste, un deck ou une wantlist — réutilise la même
-	// modale "Move card" que le bouton individuel du panneau de détail
-	// (CopyCardModal, mode "move"), maintenant capable de prendre
-	// plusieurs cartes à la fois (voir CopyCardModal.cards, un tableau).
-	// Remplace l'ancien "Move to list…" (un simple menu déroulant limité
-	// aux listes My Collection) — demandé explicitement pour retrouver
-	// partout la même expérience à 3 onglets (recherche, "+ New X") que
-	// le reste du plugin plutôt qu'un second picker plus pauvre réservé
-	// au bulk. Renommé "Move to" en conséquence.
+	// Move to a list, a deck or a wantlist — reuses the same "Move card" modal
+	// as the individual button of the detail panel (CopyCardModal, "move"
+	// mode), now able to take several cards at once (see CopyCardModal.cards,
+	// an array). Replaces the old "Move to list…" (a simple dropdown menu
+	// limited to My Collection lists) — explicitly requested to get the same
+	// 3-tab experience (search, "+ New X") everywhere as the rest of the
+	// plugin rather than a second, poorer picker reserved for bulk. Renamed
+	// "Move to" accordingly.
 	const moveBtn = bar.createEl("button", { text: "Move to", cls: "mtg-bulk-action-btn" });
 	actionButtons.push(moveBtn);
 	moveBtn.addEventListener("click", () => {
@@ -1682,9 +1652,9 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 			cards,
 			"collection",
 			() => {
-				// Les cartes ont quitté cette liste (déplacées ailleurs) — la
-				// sélection ne pointe plus vers des lignes valides ici, même
-				// comportement que l'ancien "Move to list…".
+				// The cards have left this list (moved elsewhere) — the selection no
+				// longer points to valid rows here, same behavior as the old "Move to
+				// list…".
 				this.selectedListCardIds.clear();
 				this.render();
 			},
@@ -1692,13 +1662,12 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 		).open();
 	});
 
-	// Copier vers une liste, un deck ou une wantlist — même modale que
-	// ci-dessus, en mode copie (CopyCardModal, mode "copy" par défaut).
-	// Remplace l'ancien "Add to deck…" (limité aux decks) — même raison
-	// que "Move to" ci-dessus. Renommé "Copy to" en conséquence.
-	// Ne vide PAS selectedListCardIds (contrairement à Move) : copier ne
-	// retire rien de la liste actuellement affichée, la sélection reste
-	// donc valide — même comportement que l'ancien "Add to deck…".
+	// Copy to a list, a deck or a wantlist — same modal as above, in copy mode
+	// (CopyCardModal, "copy" mode by default). Replaces the old "Add to deck…"
+	// (limited to decks) — same reason as "Move to" above. Renamed "Copy to"
+	// accordingly. Does NOT clear selectedListCardIds (unlike Move): copying
+	// removes nothing from the currently displayed list, so the selection
+	// remains valid — same behavior as the old "Add to deck…".
 	const copyBtn = bar.createEl("button", { text: "Copy to", cls: "mtg-bulk-action-btn" });
 	actionButtons.push(copyBtn);
 	copyBtn.addEventListener("click", () => {
@@ -1709,10 +1678,10 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 		}).open();
 	});
 
-	// Changer l'état — "Set condition" → "Condition" (gain de place,
-	// demandé explicitement le 2026-09-08, même renommage pour Set
-	// language/Set finish/Set quantity plus bas et pour les 3 barres
-	// My Collection/My Decks/My Wantlists).
+	// Change the condition — "Set condition" → "Condition" (saves space,
+	// explicitly requested on 2026-09-08, same renaming for Set language/Set
+	// finish/Set quantity further down and for the 3 bars My Collection/My
+	// Decks/My Wantlists).
 	const conditionBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	conditionBtn.createSpan({ text: "Condition" });
 	setIcon(conditionBtn.createSpan({ cls: "mtg-bulk-action-btn-caret" }), "chevron-down");
@@ -1732,7 +1701,7 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 		);
 	});
 
-	// Changer la langue
+	// Change the language
 	const languageBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	languageBtn.createSpan({ text: "Language" });
 	setIcon(languageBtn.createSpan({ cls: "mtg-bulk-action-btn-caret" }), "chevron-down");
@@ -1775,8 +1744,8 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 		);
 	});
 
-	// Définir la quantité pour toute la sélection (édition en ligne, comme
-	// pour le chiffre d'une carte individuelle)
+	// Set the quantity for the whole selection (inline editing, as for the
+	// number of an individual card)
 	const qtyBtn = bar.createEl("button", { text: "Quantity", cls: "mtg-bulk-action-btn" });
 	actionButtons.push(qtyBtn);
 	qtyBtn.addEventListener("click", () => {
@@ -1787,10 +1756,10 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 		});
 		input.value = "1";
 
-		// Cancel visible à côté du champ — l'annulation au clavier
-		// (Escape) existait déjà mais n'était pas découvrable sans le
-		// savoir ; demandé explicitement pour un bouton visible, même
-		// paire icône+texte que Delete/Cancel plus bas dans cette barre.
+		// Visible Cancel next to the field — keyboard cancellation (Escape)
+		// already existed but wasn't discoverable without knowing about it; a
+		// visible button explicitly requested, same icon+text pair as
+		// Delete/Cancel further down in this bar.
 		const cancelQtyBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 		setIcon(cancelQtyBtn.createSpan({ cls: "mtg-bulk-action-btn-icon" }), "x");
 		cancelQtyBtn.createSpan({ text: "Cancel" });
@@ -1812,14 +1781,13 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 				this.render();
 			}
 		});
-		// mousedown + preventDefault empêche l'input de perdre le focus
-		// (et donc de déclencher commit via blur) au moment où on clique
-		// sur Cancel — sans ça, le blur se déclenche AVANT le click de ce
-		// bouton (l'ordre naturel du navigateur) et valide la quantité
-		// par erreur juste avant l'annulation. Un simple
-		// removeEventListener dans le handler click arriverait trop
-		// tard ; preventDefault sur mousedown empêche le blur de se
-		// produire du tout pour ce clic précis.
+		// mousedown + preventDefault prevents the input from losing focus (and
+		// therefore from triggering commit via blur) at the moment we click on
+		// Cancel — without this, the blur fires BEFORE the click of this button
+		// (the browser's natural order) and validates the quantity by mistake
+		// right before the cancellation. A simple removeEventListener in the click
+		// handler would come too late; preventDefault on mousedown prevents the
+		// blur from happening at all for this precise click.
 		cancelQtyBtn.addEventListener("mousedown", (e) => e.preventDefault());
 		cancelQtyBtn.addEventListener("click", () => {
 			input.removeEventListener("blur", commit);
@@ -1827,15 +1795,14 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 		});
 	});
 
-	// Exporter la sélection en fichier — "Export CSV" (bouton simple) et le
-	// "Download file" de l'ancien menu "TXT" fusionnés en un seul bouton
-	// "Export" avec un choix de format (CSV/TXT), demandé explicitement le
-	// 2026-09-08 pour gagner de la place ; "Copy to clipboard" (presse-
-	// papier, toujours au format TXT) devient son propre bouton simple
-	// juste après, plutôt qu'une 3e option cachée dans ce même menu — les
-	// deux idées ("quel fichier télécharger" vs "copier dans le presse-
-	// papier") sont désormais deux boutons distincts au lieu de 2 boutons
-	// portant chacun un mélange des deux.
+	// Export the selection to a file — "Export CSV" (simple button) and the
+	// "Download file" of the old "TXT" menu merged into a single "Export"
+	// button with a choice of format (CSV/TXT), explicitly requested on
+	// 2026-09-08 to save space; "Copy to clipboard" (always in TXT format)
+	// becomes its own simple button right after, rather than a 3rd option
+	// hidden in this same menu — the two ideas ("which file to download" vs
+	// "copy to the clipboard") are now two distinct buttons instead of 2
+	// buttons each carrying a mix of both.
 	const exportBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	exportBtn.createSpan({ text: "Export" });
 	setIcon(exportBtn.createSpan({ cls: "mtg-bulk-action-btn-caret" }), "chevron-down");
@@ -1861,19 +1828,18 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 	actionButtons.push(copyTxtBtn);
 	copyTxtBtn.addEventListener("click", () => this.copyListSelectionTxt());
 
-	// Séparateur avant Delete — même traitement que celui après Clear,
-	// pour isoler visuellement l'action destructive du reste des actions.
+	// Separator before Delete — same treatment as the one after Clear, to
+	// visually isolate the destructive action from the rest of the actions.
 	bar.createDiv({ cls: "mtg-bulk-actions-divider" });
 
-	// Supprimer (avec confirmation). Remplace l'ancien texte "Confirm
-	// delete?" (un seul bouton, sans retour en arrière possible une fois
-	// cliqué) par une paire de boutons visuellement distincts au clic :
-	// "Delete" rouge (confirme) et "Cancel" (annule, revient à l'état
-	// initial) — demandé explicitement pour pouvoir annuler. Le bouton
-	// initial reste neutre (pas mtg-bulk-action-btn-danger) tant qu'on
-	// n'a pas cliqué une première fois — ne devient rouge qu'au stade de
-	// confirmation, pour ne pas alarmer en permanence alors qu'aucune
-	// suppression n'est engagée (demandé explicitement).
+	// Delete (with confirmation). Replaces the old "Confirm delete?" text (a
+	// single button, with no way back once clicked) with a pair of buttons
+	// that look distinct on click: red "Delete" (confirms) and "Cancel"
+	// (cancels, returns to the initial state) — explicitly requested to be
+	// able to cancel. The initial button stays neutral (not
+	// mtg-bulk-action-btn-danger) until the first click — only turns red at
+	// the confirmation stage, so as not to alarm permanently when no deletion
+	// is in progress (explicitly requested).
 	const deleteBtn = bar.createEl("button", { cls: "mtg-bulk-action-btn" });
 	setIcon(deleteBtn.createSpan({ cls: "mtg-bulk-action-btn-icon" }), "trash-2");
 	deleteBtn.createSpan({ text: "Delete" });
@@ -1898,10 +1864,9 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 			new Notice(`Deleted ${count} card(s).`);
 			this.render();
 		});
-		// Aucune mutation de données — un plein this.render() suffit à
-		// tout reconstruire depuis l'état actuel (même sélection encore
-		// intacte), même idiome que l'annulation Escape du champ quantité
-		// juste au-dessus.
+		// No data mutation — a full this.render() is enough to rebuild everything
+		// from the current state (same selection still intact), same idiom as the
+		// Escape cancellation of the quantity field just above.
 		cancelBtn.addEventListener("click", () => this.render());
 	});
 
@@ -1910,29 +1875,26 @@ export function renderCollectionBulkActionsBar(this: MTGCollectionView, containe
 	}
 }
 
-// Version deck de renderCollectionBulkActionsBar — pleine parité avec My Collection
-// depuis le 2026-09-08 (demandé explicitement), une fois DeckCard doté de
-// finish/condition/langue (harmonisation My Decks/My Collection,
-// 2026-08-25) et Move card/Copy card to (même date) : Move to/Copy to
-// réutilisent CopyCardModal (sourceKind: "deck") exactement comme leurs
-// boutons individuels dans DeckCardDetailModal, Condition/Language/
-// Finish réutilisent bulkSetDeckCardCondition/Language/Finish (plugin.ts,
-// mêmes idiomes que Condition/Language/Finish côté collection), Export
-// réutilise buildDeckCsvString (déjà doté des mêmes colonnes que My
-// Collection). Deux boutons propres à My Decks, sans équivalent côté My
-// Collection/My Wantlists : "Board" (Mainboard/Sideboard/Maybeboard —
-// même 3 options que les onglets de board/le picker "Board" de
-// DeckCardDetailModal, "Category" renommé le 2026-09-08) et "Function"
-// (Ramp/Removal/etc., même picker que la boîte "Function" de ce même
-// modale), demandés explicitement pour appliquer l'un ou l'autre à toute
-// une sélection plutôt qu'une carte à la fois. Le bouton de suppression
-// lit désormais "Delete" (comme My Collection/My Wantlists, renommé le
-// 2026-09-08 pour gagner de la place) — la distinction de fond
-// ("retirer du deck" ≠ "supprimer de la collection/wantlist") reste
-// réelle, seul le libellé a changé (voir bulkRemoveDeckCards, qui ne
-// touche jamais settings.collection/wantlist). Réutilise les mêmes
-// classes CSS *et* les mêmes idiomes (pas de "…", carets sur les menus
-// déroulants, Delete à deux étapes) que My Collection.
+// Deck version of renderCollectionBulkActionsBar — full parity with My Collection
+// since 2026-09-08 (explicitly requested), once DeckCard was given
+// finish/condition/language (My Decks/My Collection harmonization, 2026-08-25) and
+// Move card/Copy card to (same date): Move to/Copy to reuse CopyCardModal
+// (sourceKind: "deck") exactly like their individual buttons in
+// DeckCardDetailModal, Condition/Language/Finish reuse
+// bulkSetDeckCardCondition/Language/Finish (plugin.ts, same idioms as
+// Condition/Language/Finish on the collection side), Export reuses
+// buildDeckCsvString (already given the same columns as My Collection). Two buttons
+// specific to My Decks, with no equivalent on the My Collection/My Wantlists side:
+// "Board" (Mainboard/Sideboard/Maybeboard — same 3 options as the board tabs/the
+// "Board" picker of DeckCardDetailModal, "Category" renamed on 2026-09-08) and
+// "Function" (Ramp/Removal/etc., same picker as the "Function" box of this same
+// modal), explicitly requested to apply either one to a whole selection rather than
+// one card at a time. The delete button now reads "Delete" (like My Collection/My
+// Wantlists, renamed on 2026-09-08 to save space) — the underlying distinction
+// ("remove from the deck" ≠ "delete from the collection/wantlist") remains real,
+// only the label changed (see bulkRemoveDeckCards, which never touches
+// settings.collection/wantlist). Reuses the same CSS classes *and* the same idioms
+// (no "…", carets on the dropdown menus, two-step Delete) as My Collection.
 
 export function exportListCsv(this: MTGCollectionView, listId: string) {
 	const list = this.plugin.settings.lists.find((l) => l.id === listId);
@@ -1941,11 +1903,11 @@ export function exportListCsv(this: MTGCollectionView, listId: string) {
 	this.downloadListCsv(cards, filename);
 }
 
-// Même format "qty - name" que listSelectionTxtLines plus bas, mais pour LA
-// liste entière (ListSettingsModal, "Export"/"Copy to clipboard")
-// plutôt que la sélection en cours — deux sous-ensembles différents de
-// settings.collection, donc pas de réutilisation directe de
-// listSelectionTxtLines possible ici.
+// Same "qty - name" format as listSelectionTxtLines further down, but for
+// the ENTIRE list (ListSettingsModal, "Export"/"Copy to clipboard") rather
+// than the current selection — two different subsets of
+// settings.collection, so no direct reuse of listSelectionTxtLines is
+// possible here.
 
 export function listTxtLines(this: MTGCollectionView, listId: string): string {
 	const cards = this.plugin.settings.collection.filter((c) => c.listId === listId);
@@ -1959,9 +1921,9 @@ export function exportListTxt(this: MTGCollectionView, listId: string) {
 	this.downloadTextFile(this.listTxtLines(listId), filename);
 }
 
-// navigator.clipboard.writeText : même précédent déjà établi (voir
-// copyListSelectionTxt plus bas) — .catch() explicite plutôt qu'une
-// résolution supposée systématique.
+// navigator.clipboard.writeText: same precedent already established (see
+// copyListSelectionTxt further down) — explicit .catch() rather than a
+// resolution assumed to always happen.
 
 export function copyListTxt(this: MTGCollectionView, listId: string) {
 	const cardCount = this.plugin.settings.collection.filter((c) => c.listId === listId).length;
@@ -1977,9 +1939,9 @@ export function exportListSelectionCsv(this: MTGCollectionView) {
 	this.downloadListCsv(cards, "mtg-selection.csv");
 }
 
-// Format simple, une carte par ligne : "3 - Lightning Bolt". Partagé entre
-// l'export fichier (exportListSelectionTxt) et la copie presse-papier
-// (copyListSelectionTxt) ci-dessous, pour que les deux restent identiques.
+// Simple format, one card per line: "3 - Lightning Bolt". Shared between
+// the file export (exportListSelectionTxt) and the clipboard copy
+// (copyListSelectionTxt) below, so that the two stay identical.
 
 export function listSelectionTxtLines(this: MTGCollectionView): string {
 	const cards = this.plugin.settings.collection.filter((c) => this.selectedListCardIds.has(c.id));
@@ -1991,9 +1953,9 @@ export function exportListSelectionTxt(this: MTGCollectionView) {
 	this.downloadTextFile(this.listSelectionTxtLines(), "mtg-selection.txt");
 }
 
-// navigator.clipboard.writeText n'est utilisé nulle part ailleurs dans ce
-// plugin — surface API neuve ici, donc gérée avec un .catch() explicite
-// (Notice d'échec) plutôt que supposée toujours réussir.
+// navigator.clipboard.writeText is not used anywhere else in this plugin —
+// a new API surface here, so handled with an explicit .catch() (failure
+// Notice) rather than assumed to always succeed.
 
 export function copyListSelectionTxt(this: MTGCollectionView) {
 	const count = this.selectedListCardIds.size;
@@ -2003,10 +1965,10 @@ export function copyListSelectionTxt(this: MTGCollectionView) {
 		.catch(() => new Notice("Could not copy to clipboard."));
 }
 
-// Construction pure (aucun effet de bord) du CSV — extraite de
-// downloadListCsv pour être réutilisable telle quelle par downloadZip
-// (chaque liste devient une entrée d'archive, voir renderListGalleryBulkActionsBar)
-// sans dupliquer l'en-tête/les colonnes une seconde fois.
+// Pure construction (no side effects) of the CSV — extracted from downloadListCsv
+// to be reusable as is by downloadZip (each list becomes an archive entry, see
+// renderListGalleryBulkActionsBar) without duplicating the header/columns a second
+// time.
 
 export function buildListCsvString(this: MTGCollectionView, cards: CollectionCard[]): string {
 	const header =
@@ -2040,9 +2002,9 @@ export function downloadListCsv(this: MTGCollectionView, cards: CollectionCard[]
 	this.downloadTextFile(this.buildListCsvString(cards), filename, "text/csv");
 }
 
-// Même format que buildListCsvString, sans Language/Condition (une carte de
-// wantlist n'est pas encore possédée) — "Wantlist" plutôt que "List"
-// comme dernière colonne.
+// Same format as buildListCsvString, without Language/Condition (a wantlist
+// card is not yet owned) — "Wantlist" rather than "List" as the last
+// column.
 
 export function listGroupsToTxtLines(this: MTGCollectionView, groups: ListGroup[]): string {
 	return groups
@@ -2050,15 +2012,15 @@ export function listGroupsToTxtLines(this: MTGCollectionView, groups: ListGroup[
 		.join("\n\n");
 }
 
-// Même principe que listGroupsToTxtLines ci-dessus, côté wantlist.
+// Same principle as listGroupsToTxtLines above, on the wantlist side.
 
 export function triggerImportIntoList(this: MTGCollectionView, listId: string) {
 	this.triggerImportCollection(listId);
 }
 
-// "Import TXT" de ListSettingsModal — lit un .txt de decklist externe (Moxfield/Archidekt/texte brut) et passe par
-// plugin.importDecklistToList (parseDecklistText + résolution Scryfall) plutôt que par le parseur CSV dédié ;
-// le flux fichier/progression/résumé est celui de file-import.ts.
+// "Import TXT" of ListSettingsModal — reads an external decklist .txt (Moxfield/Archidekt/plain text) and goes
+// through plugin.importDecklistToList (parseDecklistText + Scryfall resolution) rather than through the
+// dedicated CSV parser; the file/progress/summary flow is that of file-import.ts.
 
 export function triggerImportTxtIntoList(this: MTGCollectionView, listId: string) {
 	const list = this.plugin.settings.lists.find((l) => l.id === listId);
@@ -2073,11 +2035,10 @@ export function triggerImportTxtIntoList(this: MTGCollectionView, listId: string
 export function openList(this: MTGCollectionView, listId: string) {
 	this.activeSection = "collection";
 	this.openListId = listId;
-	// Toute sélection au niveau de la grille (MergeListsModal, etc.) n'a
-	// plus de sens une fois qu'on navigue vers une liste précise — sans
-	// ceci, revenir ensuite à la grille pouvait laisser le mode sélection
-	// actif avec des ids de listes désormais fusionnées/supprimées encore
-	// dans la sélection.
+	// Any grid-level selection (MergeListsModal, etc.) no longer makes sense
+	// once we navigate to a specific list — without this, going back to the
+	// grid afterwards could leave the selection mode active with ids of lists
+	// now merged/deleted still in the selection.
 	this.selectedListIds.clear();
 	this.listGallerySelectMode = false;
 	this.render();

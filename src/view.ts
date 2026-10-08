@@ -37,8 +37,8 @@ export class MTGCollectionView extends ItemView {
 	collectionHeaderEl!: HTMLElement;
 	headerTitleEl!: HTMLElement;
 	headerStatsEl!: HTMLElement;
-	// Rangée épinglée "Inbox"/"All Cards" de la grille My Collection — voir
-	// son commentaire à la création (onOpen) et renderListGrid.
+	// Pinned "Inbox"/"All Cards" row of the My Collection grid — see its
+	// comment at creation (onOpen) and renderListGrid.
 	collectionPinnedEl!: HTMLElement;
 	collectionToolbarEl!: HTMLElement;
 	decksToolbarEl!: HTMLElement;
@@ -60,8 +60,9 @@ export class MTGCollectionView extends ItemView {
 	navIndicatorEl!: HTMLElement;
 	private navIndicatorPlaced = false;
 
-	// Place la capsule sur l'item actif. Sans transition au tout premier placement (et quand la nav est
-	// masquée, offsetWidth = 0) pour qu'elle n'arrive pas en glissant depuis le coin de la pilule.
+	// Places the capsule on the active item. Without a transition on the very first placement (and when
+	// the nav is hidden, offsetWidth = 0) so that it doesn't arrive sliding in from the corner of the
+	// pill.
 	updateNavIndicator(animate = true) {
 		const active = this.navEl?.querySelector<HTMLElement>(".mtg-nav-item.is-active");
 		if (!active || !this.navIndicatorEl || active.offsetWidth === 0) {
@@ -70,8 +71,8 @@ export class MTGCollectionView extends ItemView {
 		}
 		const el = this.navIndicatorEl;
 		el.toggleClass("is-instant", !animate || !this.navIndicatorPlaced);
-		// getBoundingClientRect (pas offsetLeft/Width, arrondis à l'entier) : la capsule reste alignée au
-		// sous-pixel près sur l'item.
+		// getBoundingClientRect (not offsetLeft/Width, rounded to the integer): the capsule stays aligned
+		// to the sub-pixel with the item.
 		const a = active.getBoundingClientRect();
 		const n = this.navEl.getBoundingClientRect();
 		el.style.width = `${a.width}px`;
@@ -79,62 +80,59 @@ export class MTGCollectionView extends ItemView {
 		el.style.transform = `translate(${a.left - n.left}px, ${a.top - n.top}px)`;
 		this.navIndicatorPlaced = true;
 	}
-	// Aperçu flottant au survol du nom d'une carte en mode Tableau — voir
-	// showCardNamePreview/hideCardNamePreview et le commentaire sur
-	// .mtg-card-name-preview (styles.css) pour le raisonnement complet.
+	// Floating preview on hovering a card's name in Table mode — see
+	// showCardNamePreview/hideCardNamePreview and the comment on
+	// .mtg-card-name-preview (styles.css) for the full reasoning.
 	cardNamePreviewEl!: HTMLElement;
 	cardNamePreviewImgEl!: HTMLImageElement;
 
 	activeSection: "home" | "collection" | "decks" | "wantlists" = "home";
-	// "Voir plus" du bloc Market Trends de Home (2026-09-23, top 5 → top 20,
-	// voir renderHomeMarketTrends) : sur la VUE plutôt qu'en variable locale
-	// de la fermeture comme period/vendor l'étaient (eux sont désormais dans
-	// les réglages, voir MTGCollectionSettings.homeMoversPeriod) — Home est
-	// reconstruit en entier à chaque render() (vue ouverte/fermée, modale qui
-	// modifie des données...), et une liste dépliée qui se replie toute seule
-	// à cause d'un re-rendu sans rapport serait pénible. Pas persisté sur
-	// disque : un dépliage est un choix de session, pas une préférence.
+	// "Show more" of Home's Market Trends block (2026-09-23, top 5 → top 20,
+	// see renderHomeMarketTrends): on the VIEW rather than in a local variable
+	// of the closure as period/vendor were (those are now in the settings, see
+	// MTGCollectionSettings.homeMoversPeriod) — Home is rebuilt in full on
+	// every render() (view opened/closed, modal that modifies data...), and an
+	// expanded list that collapses by itself because of an unrelated re-render
+	// would be annoying. Not persisted to disk: expanding is a session choice,
+	// not a preference.
 	homeMoversExpanded = false;
-	// Désabonnement de la ligne d'état GitHub de Home (une seule à la fois : chaque rendu de Home remplace la précédente).
+	// Unsubscription of Home's GitHub status line (only one at a time: each render of Home replaces the previous one).
 	homeSyncUnsub: (() => void) | null = null;
 	openListId: string | null = null;
 	openDeckId: string | null = null;
 	openWantlistId: string | null = null;
-	// Identifie "où" on se trouve (section + liste/deck/wantlist ouvert) au
-	// dernier render() : sert à ne PAS conserver le défilement d'une vue
-	// quand on change de vue.
+	// Identifies "where" we are (section + open list/deck/wantlist) at the
+	// last render(): used to NOT keep a view's scroll position when we change
+	// view.
 	lastRenderedViewKey: string | null = null;
 
-	// Nombre de lignes actuellement rendues dans chaque liste (voir
-	// RENDER_BATCH_SIZE) : remis à la valeur de départ à chaque changement de
-	// contexte (ouverture d'une autre liste, filtre, tri, groupement...) pour
-	// ne jamais repartir d'une limite déjà agrandie par une session de
-	// défilement précédente.
+	// Number of rows currently rendered in each list (see RENDER_BATCH_SIZE):
+	// reset to the starting value on every change of context (opening another
+	// list, filter, sort, grouping...) so as never to start again from a limit
+	// already enlarged by a previous scrolling session.
 	listRenderLimit = RENDER_BATCH_SIZE;
 	deckRenderLimit = RENDER_BATCH_SIZE;
 	wantlistRenderLimit = RENDER_BATCH_SIZE;
-	// "Signature" du contexte affiché la dernière fois (liste ouverte, filtre,
-	// tri, groupement, mode d'affichage) : comparée à chaque rendu pour
-	// détecter un changement de contexte et remettre la limite de rendu à
-	// zéro, sans avoir à instrumenter individuellement chaque déclencheur
-	// possible (frappe dans le filtre, clic sur trier/grouper...).
-	// "Charger plus" via le défilement ne change, lui, aucun de ces éléments
-	// — la limite déjà agrandie survit donc correctement au re-rendu qu'il
-	// déclenche.
+	// "Signature" of the context displayed last time (open list, filter, sort,
+	// grouping, display mode): compared on every render to detect a change of
+	// context and reset the render limit to zero, without having to instrument
+	// each possible trigger individually (typing in the filter, click on
+	// sort/group...).
+	// "Load more" via scrolling changes none of these elements — the already
+	// enlarged limit therefore correctly survives the re-render it triggers.
 	lastListRenderSignature: string | null = null;
 	lastDeckRenderSignature: string | null = null;
 	lastWantlistRenderSignature: string | null = null;
 
-	// Cache du résultat de groupAndSortCards (tri + regroupement), coûteux à
-	// refaire sur une grosse collection : un "charger plus" au défilement ne
-	// change ni le filtre, ni le tri, ni le groupement, ni les données elles-
-	// mêmes (this.plugin.dataVersion), donc rien ne justifie de recalculer —
-	// seule sliceGroupsForRender doit refaire son travail, avec une nouvelle
-	// limite. La signature ici inclut dataVersion (contrairement à
-	// lastXRenderSignature ci-dessus, qui ne sert qu'à réinitialiser la
-	// limite d'affichage) : une mutation ailleurs (changer une quantité...)
-	// doit invalider ce cache sans pour autant réduire ce qui est déjà
-	// affiché.
+	// Cache of the result of groupAndSortCards (sort + grouping), expensive to
+	// redo on a large collection: a "load more" on scroll changes neither the
+	// filter, nor the sort, nor the grouping, nor the data itself
+	// (this.plugin.dataVersion), so nothing justifies recomputing — only
+	// sliceGroupsForRender must redo its work, with a new limit. The signature
+	// here includes dataVersion (unlike lastXRenderSignature above, which only
+	// serves to reset the display limit): a mutation elsewhere (changing a
+	// quantity...) must invalidate this cache without reducing what is already
+	// displayed.
 	cachedListCardGroups: CardGroup<CollectionCard>[] | null = null;
 	lastListDataSignature: string | null = null;
 	cachedDeckCardGroups: CardGroup<DeckCard>[] | null = null;
@@ -142,31 +140,29 @@ export class MTGCollectionView extends ItemView {
 	cachedWantlistCardGroups: CardGroup<WantlistCard>[] | null = null;
 	lastWantlistDataSignature: string | null = null;
 
-	// Cache des éléments DOM de chaque ligne de carte (contenu de
-	// .mtg-card-row, pas son .mtg-card-row-outer — celui-ci reste toujours
-	// reconstruit à neuf, voir renderListDetail, car il porte l'état de
-	// pliage de groupe manipulé directement par toggleGroupRows). render()
-	// reconstruit tout le corps à chaque interaction (frappe dans le filtre,
-	// case cochée...) même quand la grande majorité des lignes déjà chargées
-	// n'ont, elles, pas changé — sur une collection de 10 000 cartes après un
-	// défilement profond, refaire ce travail (icônes async, écouteurs...)
-	// pour des centaines/milliers de lignes identiques à chaque frappe
-	// devient sensible. Une ligne est réutilisée telle quelle si sa
-	// "signature" (voir collectionCardRowSignature) n'a pas changé depuis le dernier
-	// rendu ; sinon reconstruite et le cache mis à jour. Purgé en fin de
-	// rendu des entrées qui ne correspondent plus au filtre courant, pour ne
-	// pas grossir sans borne au fil d'une session avec beaucoup de filtres
-	// différents.
+	// Cache of the DOM elements of each card row (content of .mtg-card-row, not its
+	// .mtg-card-row-outer — the latter is always rebuilt from scratch, see
+	// renderListDetail, because it carries the group collapse state manipulated
+	// directly by toggleGroupRows). render() rebuilds the whole body on every
+	// interaction (typing in the filter, ticked checkbox...) even when the vast
+	// majority of the rows already loaded have not changed — on a collection of
+	// 10,000 cards after a deep scroll, redoing this work (async icons,
+	// listeners...) for hundreds/thousands of identical rows on every keystroke
+	// becomes noticeable. A row is reused as is if its "signature" (see
+	// collectionCardRowSignature) has not changed since the last render; otherwise
+	// rebuilt and the cache updated. Purged at the end of the render of entries that
+	// no longer match the current filter, so as not to grow without bound over a
+	// session with many different filters.
 	cachedListRowElements: Map<string, { signature: string; el: HTMLElement }> = new Map();
-	// Toujours à jour au moment du clic (contrairement à une variable locale
-	// capturée par la fermeture du gestionnaire de clic d'une ligne réutilisée
-	// depuis un rendu précédent, qui référencerait alors un navOrder périmé —
-	// voir buildCollectionCardRow).
+	// Always up to date at click time (unlike a local variable captured by the
+	// closure of the click handler of a row reused from a previous render,
+	// which would then reference a stale navOrder — see
+	// buildCollectionCardRow).
 	navOrderForListClick: CollectionCard[] = [];
-	// Même principe que cachedListRowElements/navOrderForListClick, pour Decks et
-	// Wantlists. Clé composite deckId:scryfallId (pas juste scryfallId) pour
-	// Decks : la même carte peut apparaître dans plusieurs decks distincts,
-	// avec un statut owned/quantité qui leur est propre.
+	// Same principle as cachedListRowElements/navOrderForListClick, for Decks and
+	// Wantlists. Composite key deckId:scryfallId (not just scryfallId) for Decks:
+	// the same card can appear in several distinct decks, with an owned/quantity
+	// status of its own.
 	cachedDeckRowElements: Map<string, { signature: string; el: HTMLElement }> = new Map();
 	navOrderForDeckClick: DeckCard[] = [];
 	cachedWantlistRowElements: Map<string, { signature: string; el: HTMLElement }> = new Map();
@@ -183,18 +179,17 @@ export class MTGCollectionView extends ItemView {
 	deckSortReverse = false;
 	deckGroupReverse = false;
 	deckViewMode: CardViewMode = "list";
-	// Onglet "board" actif au-dessus de la liste des cartes d'un deck (voir
-	// renderDeckBoardTabs, src/view/deck-render.ts) — global comme le reste de l'état
-	// d'affichage de My Decks ci-dessus, pas propre à un deck précis.
+	// Active "board" tab above a deck's card list (see renderDeckBoardTabs,
+	// src/view/deck-render.ts) — global like the rest of My Decks' display state
+	// above, not specific to a particular deck.
 	deckActiveBoard: DeckBoardTab = "mainboard";
-	// Id de la carte glissée dans la vue Stacks (renderDeckStacksView,
-	// src/view/deck-render.ts, 2026-09-12) — lu directement depuis ce champ
-	// plutôt que via dataTransfer.getData() pendant "dragover" : la norme
-	// HTML5 drag-and-drop n'expose la vraie valeur transportée que dans le
-	// handler "drop" lui-même (restriction de sécurité standard, pas un
-	// bug), donc un champ d'instance est le seul moyen fiable de savoir,
-	// pendant le survol d'une pile, quelle carte est en train d'être
-	// déposée.
+	// Id of the card being dragged in the Stacks view (renderDeckStacksView,
+	// src/view/deck-render.ts, 2026-09-12) — read directly from this field
+	// rather than via dataTransfer.getData() during "dragover": the HTML5
+	// drag-and-drop standard only exposes the real transported value in the
+	// "drop" handler itself (standard security restriction, not a bug), so an
+	// instance field is the only reliable way to know, while hovering over a
+	// pile, which card is being dropped.
 	draggingDeckStackCardId: string | null = null;
 
 	wantlistGroupBy: GroupByOption = "none";
@@ -211,26 +206,24 @@ export class MTGCollectionView extends ItemView {
 	wantlistCardFilterDraft = "";
 	lastFocusedFilterKey: string | null = null;
 	lastFocusedFilterCursor: number | null = null;
-	// Renseigné par renderChipFilter (construit hors DOM, avant l'échange
-	// atomique de render()) et exécuté par render() juste après l'échange,
-	// dans le même passage synchrone — restaurer le focus via setTimeout()
-	// laissait une brève fenêtre sans aucun élément focus (l'ancien vient
-	// d'être détaché, le nouveau ne l'est pas encore) : une frappe tombant
-	// pile dans cette fenêtre était perdue, ce qui donnait l'impression de
-	// ne "parfois" plus pouvoir taper du tout.
+	// Set by renderChipFilter (built off-DOM, before render()'s atomic swap)
+	// and executed by render() right after the swap, in the same synchronous
+	// pass — restoring focus via setTimeout() left a brief window with no
+	// element focused (the old one has just been detached, the new one is not
+	// yet): a keystroke landing right in that window was lost, which gave the
+	// impression of "sometimes" no longer being able to type at all.
 	pendingFocusRestore: (() => void) | null = null;
-	// Debounce du render() déclenché par la frappe dans un filtre texte : le
-	// filtrage tourne sur la liste/deck/wantlist ENTIÈRE (pas seulement la
-	// portion actuellement affichée), et render() reconstruit tout le DOM
-	// chargé jusque-là — sur une collection de 10 000 cartes, appeler ça à
-	// chaque touche pressée devient sensible. Ne retarde que le render() lui-
-	// même : onDraftChange() reste synchrone (mise à jour d'état immédiate,
-	// peu coûteuse), donc taper puis valider tout de suite (Entrée, espace)
-	// voit toujours le dernier caractère tapé. L'input lui-même n'est jamais
-	// démonté pendant le délai (aucun DOM reconstruit tant que le minuteur
-	// n'a pas déclenché), donc pas de risque de perdre le focus au milieu
-	// d'une frappe — contrairement à un debounce qui aurait porté sur la
-	// restauration du focus elle-même (voir pendingFocusRestore ci-dessus).
+	// Debounce of the render() triggered by typing in a text filter: the
+	// filtering runs on the ENTIRE list/deck/wantlist (not only the portion
+	// currently displayed), and render() rebuilds all the DOM loaded so far —
+	// on a collection of 10,000 cards, calling that on every key pressed
+	// becomes noticeable. Only delays render() itself: onDraftChange() stays
+	// synchronous (immediate state update, cheap), so typing then validating
+	// right away (Enter, space) always sees the last character typed. The
+	// input itself is never unmounted during the delay (no DOM rebuilt until
+	// the timer fires), so no risk of losing focus in the middle of a
+	// keystroke — unlike a debounce that would have applied to the focus
+	// restoration itself (see pendingFocusRestore above).
 	filterRenderDebounceTimer: number | null = null;
 	suggestionHighlightIndex = -1;
 	listCollapsedGroups: Set<string> = new Set();
@@ -249,22 +242,21 @@ export class MTGCollectionView extends ItemView {
 	listBulkBarWasVisible = false;
 	deckBulkBarWasVisible = false;
 	wantlistBulkBarWasVisible = false;
-	// Position de défilement de la barre d'actions du mode Sélection, PAR type de barre (clé
-	// = `kind` de createBulkActionsBar : "list-cards", "deck-gallery"…). La barre est
-	// reconstruite à chaque render() ; sans ça, chaque tap de sélection ou action appliquée la
-	// ramènerait à gauche. Une clé par barre et pas un champ unique : le mode Sélection d'une
-	// section peut rester actif pendant qu'on visite une autre, et sa barre (qui ne repart donc
-	// pas de 0, `animate` étant faux) hériterait alors de la position d'une barre sans rapport.
+	// Scroll position of the Select mode actions bar, PER bar type (key = `kind` of
+	// createBulkActionsBar: "list-cards", "deck-gallery"…). The bar is rebuilt on every
+	// render(); without this, every selection tap or applied action would bring it back to the
+	// left. One key per bar and not a single field: a section's Select mode can stay active
+	// while we visit another, and its bar (which therefore does not start from 0, `animate`
+	// being false) would then inherit the position of an unrelated bar.
 	bulkBarScrollLeft: Map<string, number> = new Map();
 
-	// Mode sélection "galerie" — un cran au-dessus de selectMode/
-	// deckSelectMode/wantlistSelectMode ci-dessus : ceux-ci sélectionnent des
-	// CARTES à l'intérieur d'une liste/deck/wantlist déjà ouvert(e), celui-ci
-	// sélectionne des LISTES/DECKS/WANTLISTS entières depuis la grille de
-	// présentation (avant ouverture). États totalement indépendants — les
-	// deux peuvent coexister sans conflit puisqu'ils ne sont jamais actifs au
-	// même endroit de l'écran (la grille n'affiche jamais les boutons "+
-	// Add cards"/select-cartes d'une liste ouverte, et inversement).
+	// "Gallery" selection mode — one notch above
+	// selectMode/deckSelectMode/wantlistSelectMode above: those select CARDS
+	// inside an already open list/deck/wantlist, this one selects whole
+	// LISTS/DECKS/WANTLISTS from the overview grid (before opening). Totally
+	// independent states — the two can coexist without conflict since they are
+	// never active in the same place on the screen (the grid never displays
+	// the "+ Add cards"/card-select buttons of an open list, and vice versa).
 	listGallerySelectMode = false;
 	selectedListIds: Set<string> = new Set();
 	deckGallerySelectMode = false;
@@ -274,8 +266,8 @@ export class MTGCollectionView extends ItemView {
 	listGalleryBulkBarWasVisible = false;
 	deckGalleryBulkBarWasVisible = false;
 	wantlistGalleryBulkBarWasVisible = false;
-	// Champs déplacés depuis la zone des méthodes lors du découpage Phase 5b (2026-09-10)
-	// -- restent des champs d'instance réels, juste relocalisés ici pour rester groupés avec les autres.
+	// Fields moved from the methods area during the Phase 5b split (2026-09-10) -- they remain real
+	// instance fields, just relocated here to stay grouped with the others.
 	tableFadeTimeouts = new WeakMap<HTMLElement, number>();
 	groupCollapseTimeouts = new WeakMap<HTMLElement, number>();
 
@@ -320,15 +312,14 @@ export class MTGCollectionView extends ItemView {
 		this.sortReverse = this.plugin.settings.collectionSortReverse;
 		this.groupReverse = this.plugin.settings.collectionGroupReverse;
 		this.listViewMode = this.plugin.settings.collectionViewMode;
-		// "category" (jamais réécrit en dur nulle part, `as GroupByOption` pour
-		// le comparer malgré tout) : ancienne valeur persistée par une session
-		// antérieure à ce même 2026-09-07 (retirée de GroupByOption, voir
-		// card-sorting.ts) — repliée sur "none" au chargement plutôt que
-		// laissée telle quelle, ce qui afficherait un "Group by " sans libellé
-		// et grouperait tout sous une étiquette vide (default: return "" dans
-		// groupSortValue/groupLabelFor). Un choix utilisateur normal ne peut
-		// plus jamais produire cette valeur, donc ce repli ne s'exécute
-		// concrètement qu'une fois par vault.
+		// "category" (never written out literally anywhere, `as GroupByOption` to
+		// compare it anyway): old value persisted by a session prior to that same
+		// 2026-09-07 (removed from GroupByOption, see card-sorting.ts) — folded
+		// back to "none" at load rather than left as is, which would display a
+		// "Group by " with no label and group everything under an empty label
+		// (default: return "" in groupSortValue/groupLabelFor). A normal user
+		// choice can no longer ever produce this value, so this fallback
+		// concretely only runs once per vault.
 		const loadedDeckGroupBy = this.plugin.settings.deckGroupBy;
 		this.deckGroupBy = (loadedDeckGroupBy as GroupByOption | "category") === "category" ? "none" : loadedDeckGroupBy;
 		this.deckSortBy = this.plugin.settings.deckSortBy;
@@ -366,8 +357,9 @@ export class MTGCollectionView extends ItemView {
 		};
 		toggleBtn.addEventListener("click", () => void toggleNav());
 
-		// Capsule qui glisse derrière l'item actif (téléphone seulement, masquée ailleurs en CSS) : un seul
-		// élément déplacé par left/width plutôt qu'un fond par item, sinon rien à animer entre deux items.
+		// Capsule that slides behind the active item (phone only, hidden elsewhere in CSS): a single
+		// element moved via left/width rather than a background per item, otherwise nothing to animate
+		// between two items.
 		this.navIndicatorEl = nav.createDiv({ cls: "mtg-nav-indicator" });
 		new ResizeObserver(() => this.updateNavIndicator(false)).observe(nav);
 
@@ -406,72 +398,67 @@ export class MTGCollectionView extends ItemView {
 
 		nav.createDiv({ cls: "mtg-nav-divider" });
 
-		// mtg-nav-item-settings : classe dédiée (en plus de mtg-nav-item) pour que .is-phone .mtg-nav
-		// puisse cacher CE bouton précis sans toucher aux 4 autres — voir styles.css.
+		// mtg-nav-item-settings: dedicated class (in addition to mtg-nav-item) so that .is-phone
+		// .mtg-nav can hide THIS particular button without touching the other 4 — see styles.css.
 		const navSettings = makeNavItem("settings", "Settings");
 		navSettings.addClass("mtg-nav-item-settings");
 		navSettings.addEventListener("click", () => this.openPluginSettings());
 
-		// Barres d'Obsidian sur téléphone (la barre flottante du bas et le .view-header du haut) : masquées
-		// tant que cette vue est active ET que settings.hideObsidianMobileBars est vrai — voir
-		// src/view/mobile-bars.ts et le réglage "Hide Obsidian's mobile bars" (Interface, setting-tab.ts).
-		// Plus de bouton dédié dans la rampe depuis 2026-09-27 (voir mobile-bars.ts) : la pilule flottante du
-		// menu sur téléphone n'a de la place que pour les 5 items ci-dessus.
+		// Obsidian's bars on phone (the floating bar at the bottom and the .view-header at the top): hidden
+		// as long as this view is active AND settings.hideObsidianMobileBars is true — see
+		// src/view/mobile-bars.ts and the "Hide Obsidian's mobile bars" setting (Interface, setting-tab.ts).
+		// No dedicated button in the rail since 2026-09-27 (see mobile-bars.ts): the menu's floating pill on
+		// phone only has room for the 5 items above.
 		this.setupMobileBars();
 
 		/* ---- Main area ---- */
 		const main = layout.createDiv({ cls: "mtg-main" });
 		this.mainEl = main;
 
-		// Enfant de layout (pas de main) : main défile en interne
-		// (overflow-y:auto), donc un position:absolute posé DEDANS se
-		// positionnerait par rapport à toute la hauteur défilable du contenu,
-		// pas par rapport à la zone visible — le bouton se retrouverait hors
-		// champ selon la position de défilement au lieu de rester fixé dans le
-		// coin. layout, lui, ne défile jamais (seul main défile en son sein,
-		// voir .mtg-layout/.mtg-main dans styles.css), donc un enfant positionné
-		// en absolu par rapport à layout (position:relative) reste visuellement
-		// fixé dans le coin quelle que soit la position de défilement de main.
+		// Child of layout (not of main): main scrolls internally
+		// (overflow-y:auto), so a position:absolute placed INSIDE it would be
+		// positioned relative to the whole scrollable height of the content, not
+		// relative to the visible area — the button would end up out of view
+		// depending on the scroll position instead of staying fixed in the corner.
+		// layout, for its part, never scrolls (only main scrolls within it, see
+		// .mtg-layout/.mtg-main in styles.css), so a child positioned absolutely
+		// relative to layout (position:relative) stays visually fixed in the
+		// corner whatever the scroll position of main.
 		this.backToTopBtn = layout.createDiv({ cls: "mtg-back-to-top-btn" });
 		setIcon(this.backToTopBtn, "arrow-up");
 		this.backToTopBtn.setAttribute("title", "Back to top");
-		// getActiveScrollEl() plutôt que main directement : depuis l'ajout de
-		// .mtg-detail-scroll-area (voir son propre commentaire dans styles.css
-		// et handleScrollAreaScroll, src/view/shared-render-helpers.ts), c'est CETTE zone-là qui défile
-		// réellement une fois une liste/un deck/une wantlist ouvert(e), pas
-		// main lui-même — résolu au moment du clic, pas à l'enregistrement
-		// (fixe, ce dernier ne verrait jamais la bonne zone une fois le mode
-		// changé).
+		// getActiveScrollEl() rather than main directly: since the addition of .mtg-detail-scroll-area
+		// (see its own comment in styles.css and handleScrollAreaScroll,
+		// src/view/shared-render-helpers.ts), it is THIS area that actually scrolls once a
+		// list/deck/wantlist is open, not main itself — resolved at click time, not at registration
+		// time (fixed, the latter would never see the right area once the mode has changed).
 		this.backToTopBtn.addEventListener("click", () => {
 			this.getActiveScrollEl().scrollTo({ top: 0, behavior: "smooth" });
 		});
-		// Un seul listener pour toute la durée de vie de la vue — main est un
-		// élément persistant (jamais détruit/reconstruit, contrairement à
-		// this.bodyEl plus bas), donc pas besoin de le rattacher à chaque
-		// render(). Générique (n'importe quelle section/vue), pas seulement le
-		// détail d'une liste — une grille avec beaucoup de lignes peut tout
-		// autant justifier ce raccourci. L'aperçu de nom de carte (mode
-		// Tableau) profite du même listener plutôt que d'en ajouter un
-		// second : sa position est calculée une fois à l'ouverture (voir
-		// showCardNamePreview) et ne suit pas le défilement, donc le
-		// masquer ici évite qu'il reste figé au-dessus d'une ligne qui a
-		// bougé sous lui. Ne fait jamais rien tant qu'une vue de détail est
-		// ouverte : main lui-même ne déborde alors plus jamais (voir
-		// .mtg-collection-body-detail) — handleScrollAreaScroll couvre ce cas
-		// séparément, rattaché à .mtg-detail-scroll-area à chaque render().
+		// A single listener for the whole lifetime of the view — main is a
+		// persistent element (never destroyed/rebuilt, unlike this.bodyEl further
+		// down), so no need to attach it on every render(). Generic (any
+		// section/view), not only a list's detail — a grid with many rows can just
+		// as well justify this shortcut. The card name preview (Table mode) takes
+		// advantage of the same listener rather than adding a second one: its
+		// position is computed once on opening (see showCardNamePreview) and does
+		// not follow scrolling, so hiding it here avoids it staying frozen above a
+		// row that has moved under it. Never does anything while a detail view is
+		// open: main itself then never overflows (see .mtg-collection-body-detail)
+		// — handleScrollAreaScroll covers this case separately, attached to
+		// .mtg-detail-scroll-area on every render().
 		main.addEventListener("scroll", () => this.handleScrollAreaScroll(main));
-		// Même raisonnement pour le radius responsive de la vue Carte — voir
+		// Same reasoning for the Card view's responsive radius — see
 		// setupCardTileRadiusObserver.
 		this.setupCardTileRadiusObserver();
-		// Même raisonnement encore, pour la répartition en pistes de la vue
-		// Stacks (My Decks) — voir setupDeckStacksLayoutObserver,
-		// src/view/deck-render.ts.
+		// Same reasoning again, for the split into tracks of the Stacks view (My
+		// Decks) — see setupDeckStacksLayoutObserver, src/view/deck-render.ts.
 		this.setupDeckStacksLayoutObserver();
 
-		// Élément persistant unique (jamais recréé) — voir le commentaire sur
-		// .mtg-card-name-preview (styles.css) pour le raisonnement complet
-		// (position:fixed, ajouté à document.body plutôt qu'à un ancêtre du
-		// plugin, même précédent que .mtg-picker-menu/openPickerMenu).
+		// Single persistent element (never recreated) — see the comment on
+		// .mtg-card-name-preview (styles.css) for the full reasoning
+		// (position:fixed, added to document.body rather than to an ancestor
+		// within the plugin, same precedent as .mtg-picker-menu/openPickerMenu).
 		this.cardNamePreviewEl = document.body.createDiv({ cls: "mtg-card-name-preview" });
 		this.cardNamePreviewImgEl = this.cardNamePreviewEl.createEl("img");
 
@@ -482,21 +469,18 @@ export class MTGCollectionView extends ItemView {
 		this.headerStatsEl = headerTitleInfo.createDiv({
 			cls: "mtg-collection-stats mtg-detail-title-stats",
 		});
-		// Boutons "+ New X" de la grille (My Collection/My Decks/My
-		// Wantlists), chacun suivi de son propre bouton "Select" — demandé
-		// explicitement à droite de "+ New X" (l'ordre inverse d'ici a été
-		// essayé en premier, corrigé sur retour). Les deux partagent déjà la
-		// même hauteur (34px, mtg-search-add-btn / mtg-tile-menu-btn-large) et
-		// le même parent flex à align-items:center (mtg-deck-title-row), donc
-		// aucun CSS supplémentaire n'était nécessaire pour les centrer
-		// verticalement l'un par rapport à l'autre — déjà garanti par cette
-		// mise en page existante. Même icône/bascule (square-mouse-pointer ↔
-		// x) que selectModeBtn (une variable locale à l'intérieur de
-		// renderListDetail/etc., src/view/collection-render.ts — sélection de
-		// CARTES à l'intérieur d'une liste déjà ouverte), juste un cran plus haut dans la
-		// hiérarchie. Éléments persistants (comme newListBtn etc.) : leur
-		// icône/état actif est resynchronisé à chaque render() plutôt que
-		// reconstruit, voir syncGallerySelectBtn.
+		// "+ New X" buttons of the grid (My Collection/My Decks/My Wantlists), each
+		// followed by its own "Select" button — explicitly requested to the right of "+
+		// New X" (the reverse order from here was tried first, corrected on feedback).
+		// The two already share the same height (34px, mtg-search-add-btn /
+		// mtg-tile-menu-btn-large) and the same flex parent with align-items:center
+		// (mtg-deck-title-row), so no additional CSS was needed to center them vertically
+		// relative to each other — already guaranteed by this existing layout. Same
+		// icon/toggle (square-mouse-pointer ↔ x) as selectModeBtn (a variable local to
+		// renderListDetail/etc., src/view/collection-render.ts — selection of CARDS
+		// inside an already open list), just one notch higher in the hierarchy.
+		// Persistent elements (like newListBtn etc.): their icon/active state is
+		// resynchronized on every render() rather than rebuilt, see syncGallerySelectBtn.
 		this.newListBtn = header.createEl("button", {
 			text: "+ New list",
 			cls: "mtg-search-add-btn",
@@ -561,15 +545,14 @@ export class MTGCollectionView extends ItemView {
 			this.render();
 		});
 
-		// Rangée épinglée "Inbox"/"All Cards" de My Collection (remplie par
-		// renderListGrid) — placée AVANT la barre de filtre ci-dessous, demandé
-		// explicitement (la recherche et le tri passent après ces deux
-		// tuiles). C'est cette rangée qui monte au-dessus de la barre, pas
-		// l'inverse : la barre de filtre est un élément persistant que
-		// render() ne reconstruit jamais (sa saisie perdrait le focus, et une
-		// composition IME/touche morte serait annulée, à chaque frappe), alors
-		// que celle-ci est reconstruite à chaque render(), par le même
-		// échange détaché que this.bodyEl — voir render().
+		// Pinned "Inbox"/"All Cards" row of My Collection (filled by
+		// renderListGrid) — placed BEFORE the filter bar below, explicitly
+		// requested (search and sort come after these two tiles). It is this row
+		// that goes up above the bar, not the other way round: the filter bar is a
+		// persistent element that render() never rebuilds (its input would lose
+		// focus, and an IME/dead-key composition would be canceled, on every
+		// keystroke), whereas this one is rebuilt on every render(), by the same
+		// detached swap as this.bodyEl — see render().
 		this.collectionPinnedEl = main.createDiv({ cls: "mtg-collection-pinned" });
 
 		// Toolbar "My Collection" : filtre
@@ -612,19 +595,19 @@ export class MTGCollectionView extends ItemView {
 
 
 	render() {
-		// Un render() qui arrive par un autre chemin (Entrée, puce retirée…)
-		// rend caduc un debounce de frappe encore en attente (voir
-		// scheduleFilterRender) : sans ça, ce minuteur périmé déclencherait un
-		// second render() redondant juste après celui-ci.
+		// A render() arriving via another path (Enter, chip removed…) makes a
+		// keystroke debounce still pending obsolete (see scheduleFilterRender):
+		// without this, that stale timer would trigger a second, redundant
+		// render() right after this one.
 		if (this.filterRenderDebounceTimer !== null) {
 			window.clearTimeout(this.filterRenderDebounceTimer);
 			this.filterRenderDebounceTimer = null;
 		}
-		// Masqué à chaque render() : une ligne survolée peut être détruite/
-		// reconstruite par ce même render() (changement de tri/filtre/mode de
-		// vue) sans qu'un mouseleave n'ait l'occasion de se déclencher sur un
-		// nœud DOM déjà retiré — laisser l'aperçu affiché figerait sa position
-		// au-dessus d'une ligne qui n'existe (ou n'est) plus là.
+		// Hidden on every render(): a hovered row can be destroyed/rebuilt by this
+		// same render() (change of sort/filter/view mode) without a mouseleave
+		// having the chance to fire on an already removed DOM node — leaving the
+		// preview displayed would freeze its position above a row that no longer
+		// exists (or is no longer) there.
 		this.hideCardNamePreview();
 		this.navHomeBtn.toggleClass("is-active", this.activeSection === "home");
 		this.navCollectionBtn.toggleClass(
@@ -636,32 +619,30 @@ export class MTGCollectionView extends ItemView {
 		this.updateNavIndicator();
 
 		// this.collectionHeaderEl ("My Collection"/"My Decks"/"My Wantlists" +
-		// stats + "+ New X") n'était jamais masqué en tant que conteneur — seuls
-		// son texte (headerTitleEl/headerStatsEl, vidé via setText("") plus bas)
-		// et ses 3 boutons "+ New X" l'étaient individuellement. Bug rapporté :
-		// un petit espace visible au-dessus du bouton "Back to X" une fois une
-		// liste/deck/wantlist ouvert(e) — même entièrement vide, ce conteneur
-		// (display:flex, sans hauteur propre une fois son contenu vidé) garde
-		// son margin-bottom: 0.75em, qui pousse quand même .mtg-back-row plus
-		// bas. Masqué ici avec la même logique déjà utilisée par les 3 boutons
-		// "+ New X" (un par section, réunis en un seul OR puisque ce conteneur
-		// est partagé entre les 3 sections) plutôt que de dépendre uniquement
-		// du texte vidé. "Back to X" vit désormais dans .mtg-detail-sticky-
-		// header lui-même (voir renderListDetail/renderDeckDetail/
-		// renderWantlistDetail, plus .mtg-detail-header-banner dans
-		// styles.css) plutôt que dans un élément séparé — ce commentaire
-		// référençait à l'origine ce second élément, mis à jour puisqu'il
-		// n'existe plus.
+		// stats + "+ New X") was never hidden as a container — only its text
+		// (headerTitleEl/headerStatsEl, emptied via setText("") further down) and
+		// its 3 "+ New X" buttons were, individually. Reported bug: a small
+		// visible gap above the "Back to X" button once a list/deck/wantlist is
+		// open — even entirely empty, this container (display:flex, with no height
+		// of its own once its content is emptied) keeps its margin-bottom: 0.75em,
+		// which still pushes .mtg-back-row further down. Hidden here with the same
+		// logic already used by the 3 "+ New X" buttons (one per section, combined
+		// into a single OR since this container is shared between the 3 sections)
+		// rather than depending solely on the emptied text. "Back to X" now lives
+		// in .mtg-detail-sticky-header itself (see
+		// renderListDetail/renderDeckDetail/renderWantlistDetail, plus
+		// .mtg-detail-header-banner in styles.css) rather than in a separate
+		// element — this comment originally referenced that second element,
+		// updated since it no longer exists.
 		this.collectionHeaderEl.style.display =
 			this.activeSection !== "home" && !this.isDetailViewOpen() ? "flex" : "none";
-		// .mtg-main ne défile plus jamais lui-même une fois une vue de détail
-		// ouverte — voir .mtg-collection-body-detail/.mtg-detail-scroll-area
-		// (styles.css), qui prennent le relais du défilement réel à
-		// l'intérieur de this.bodyEl. Sans cette classe, la gouttière de
-		// scrollbar réservée par .mtg-main (scrollbar-gutter: stable)
-		// resterait en plus de celle de .mtg-detail-scroll-area — deux
-		// bandes vides côte à côte, la vraie scrollbar reculée d'autant par
-		// rapport au bord réel du panneau.
+		// .mtg-main no longer ever scrolls by itself once a detail view is open —
+		// see .mtg-collection-body-detail/.mtg-detail-scroll-area (styles.css),
+		// which take over the real scrolling inside this.bodyEl. Without this
+		// class, the scrollbar gutter reserved by .mtg-main (scrollbar-gutter:
+		// stable) would remain in addition to that of .mtg-detail-scroll-area —
+		// two empty bands side by side, the real scrollbar pushed back by that
+		// much from the real edge of the panel.
 		this.mainEl.toggleClass("mtg-main-detail-open", this.isDetailViewOpen());
 
 		this.collectionPinnedEl.style.display =
@@ -692,24 +673,18 @@ export class MTGCollectionView extends ItemView {
 			"Select wantlists"
 		);
 
-		// Construit le nouveau contenu dans un élément détaché du DOM (le code
-		// des render*Section — désormais dans src/view/*-render.ts — cible this.bodyEl sans le savoir), puis
-		// l'échange d'un coup avec l'ancien une fois entièrement prêt — jamais
-		// d'état intermédiaire "vide". Avec l'ancienne approche (vider puis
-		// reconstruire en place), la hauteur défilable de .mtg-main s'effondrait
-		// un instant à chaque rendu ; un défilement rapide en cours (inertie/
-		// momentum) se faisait alors couper net par le navigateur à cet instant
-		// précis — particulièrement visible avec le chargement incrémental
-		// (renderLoadMoreSentinel), qui redéclenche un render() en pleine
-		// action de défilement.
-		// .mtg-detail-scroll-area (voir styles.css) est reconstruite à chaque
-		// render() comme le reste de this.bodyEl — CONTRAIREMENT à this.mainEl,
-		// rien ne préserve donc sa position de défilement "gratuitement" par le
-		// simple fait de ne jamais la détruire. Capturée ici avant l'échange,
-		// réappliquée juste après sur la nouvelle instance : couvre tout
-		// déclencheur de render() (changement de tri/filtre/mode de sélection,
-		// chargement incrémental via renderLoadMoreSentinel, etc.), pas
-		// seulement ce dernier cas.
+		// Builds the new content in an element detached from the DOM (the code of the render*Section methods
+		// — now in src/view/*-render.ts — targets this.bodyEl without knowing it), then swaps it in one go
+		// with the old one once fully ready — never an "empty" intermediate state. With the old approach
+		// (empty then rebuild in place), the scrollable height of .mtg-main collapsed for an instant on
+		// every render; a fast scroll in progress (inertia/momentum) was then cut short by the browser at
+		// that precise instant — particularly visible with incremental loading (renderLoadMoreSentinel),
+		// which triggers a render() again in the middle of a scrolling action.
+		// .mtg-detail-scroll-area (see styles.css) is rebuilt on every render() like the rest of this.bodyEl
+		// — UNLIKE this.mainEl, nothing therefore preserves its scroll position "for free" by the mere fact
+		// of never destroying it. Captured here before the swap, reapplied right after on the new instance:
+		// covers any render() trigger (change of sort/filter/selection mode, incremental loading via
+		// renderLoadMoreSentinel, etc.), not just this last case.
 		const oldScrollArea = this.bodyEl.querySelector<HTMLElement>(".mtg-detail-scroll-area");
 		const viewKey = `${this.activeSection}:${this.openListId ?? ""}:${this.openDeckId ?? ""}:${this.openWantlistId ?? ""}`;
 		const viewChanged = this.lastRenderedViewKey !== null && this.lastRenderedViewKey !== viewKey;
@@ -718,25 +693,25 @@ export class MTGCollectionView extends ItemView {
 
 		const oldBodyEl = this.bodyEl;
 		const newBodyEl = oldBodyEl.cloneNode(false) as HTMLElement;
-		// this.bodyEl n'accueille l'échafaudage flex-colonne des vues de détail
-		// (.mtg-collection-body-detail, voir styles.css) que si la méthode
-		// render*Detail appelée juste en dessous l'ajoute elle-même — jamais
-		// hérité tel quel du rendu précédent via cloneNode(false), qui copie
-		// pourtant l'attribut class de l'ancien nœud : sans ce reset explicite,
-		// revenir du détail à la grille laisserait cette classe traîner sur le
-		// nouveau bodyEl (auto-height/block attendu pour la grille).
+		// this.bodyEl only hosts the flex-column scaffolding of the detail views
+		// (.mtg-collection-body-detail, see styles.css) if the render*Detail
+		// method called just below adds it itself — never inherited as is from the
+		// previous render via cloneNode(false), which nevertheless copies the
+		// class attribute of the old node: without this explicit reset, going back
+		// from the detail to the grid would leave this class lingering on the new
+		// bodyEl (auto-height/block expected for the grid).
 		newBodyEl.removeClass("mtg-collection-body-detail");
 		this.bodyEl = newBodyEl;
-		// Même échange détaché pour la rangée épinglée de My Collection
-		// (collectionPinnedEl, voir onOpen) : seule renderListGrid la remplit,
-		// tout autre rendu la laisse vide — et masquée, son display ayant été
-		// posé plus haut AVANT ce clone, que cloneNode(false) recopie.
+		// Same detached swap for My Collection's pinned row (collectionPinnedEl,
+		// see onOpen): only renderListGrid fills it, every other render leaves it
+		// empty — and hidden, its display having been set above BEFORE this clone,
+		// which cloneNode(false) copies over.
 		const oldPinnedEl = this.collectionPinnedEl;
 		const newPinnedEl = oldPinnedEl.cloneNode(false) as HTMLElement;
 		this.collectionPinnedEl = newPinnedEl;
-		// Réinitialisé avant reconstruction : ne reste "en attente" ici que ce
-		// que CE passage de rendu vient tout juste de programmer (voir
-		// renderChipFilter) — jamais un callback périmé d'un rendu précédent.
+		// Reset before rebuilding: only what THIS render pass has just scheduled
+		// (see renderChipFilter) remains "pending" here — never a stale callback
+		// from a previous render.
 		this.pendingFocusRestore = null;
 
 		if (this.activeSection === "home") {
@@ -756,36 +731,33 @@ export class MTGCollectionView extends ItemView {
 			const newScrollArea = newBodyEl.querySelector<HTMLElement>(".mtg-detail-scroll-area");
 			if (newScrollArea) newScrollArea.scrollTop = preservedScrollTop;
 		}
-		// Exécuté ici, tout de suite après l'échange, dans le même passage
-		// synchrone que la construction ci-dessus : le nouvel élément à
-		// focus est déjà dans le document à cet instant (replaceWith() est
-		// une mutation DOM synchrone), donc aucune fenêtre où rien n'a le
-		// focus ne s'intercale entre le retrait de l'ancien contenu et la
-		// restauration du focus.
+		// Executed here, right after the swap, in the same synchronous pass as the
+		// construction above: the new element to focus is already in the document
+		// at this moment (replaceWith() is a synchronous DOM mutation), so no
+		// window where nothing has focus comes in between the removal of the old
+		// content and the focus restoration.
 		this.runPendingFocusRestore();
 		this.updateDeckStacksLayout();
-		// Même raison d'être que le commentaire d'updateDeckStacksLayout
-		// ci-dessus : à cet instant précis, une tuile de la vue Carte tout
-		// juste construite (si le rendu en affiche une) est déjà dans le
-		// document — voir updateCardTileRadius, qui a justement besoin de ça
-		// pour mesurer une largeur réelle plutôt que celle d'un nœud détaché.
-		// Couvre le cas "on vient d'ouvrir/changer la vue Carte" ; le
-		// ResizeObserver posé une fois dans onOpen() (setupCardTileRadiusObserver)
-		// couvre l'autre cas, un redimensionnement du panneau sans render().
+		// Same purpose as the comment of updateDeckStacksLayout above: at this
+		// precise moment, a freshly built Card view tile (if the render displays
+		// one) is already in the document — see updateCardTileRadius, which
+		// precisely needs this to measure a real width rather than that of a
+		// detached node. Covers the case "we just opened/changed the Card view";
+		// the ResizeObserver set up once in onOpen() (setupCardTileRadiusObserver)
+		// covers the other case, a panel resize without render().
 		this.updateCardTileRadius();
 	}
 
-	// Vrai si une liste/un deck/une wantlist est actuellement ouvert(e) (peu
-	// importe la section) — c'est-à-dire si .mtg-detail-scroll-area existe
-	// dans le rendu courant plutôt que la grille d'ensemble. Centralisé ici :
-	// plusieurs mécanismes (visibilité de collectionHeaderEl, gouttière de
-	// .mtg-main, zone de défilement active) posent exactement la même
-	// question.
+	// True if a list/deck/wantlist is currently open (whatever the section) —
+	// i.e. if .mtg-detail-scroll-area exists in the current render rather than
+	// the overview grid. Centralized here: several mechanisms (visibility of
+	// collectionHeaderEl, gutter of .mtg-main, active scroll area) ask exactly
+	// the same question.
 
 	async onClose() {
-		// cardNamePreviewEl est ajouté à document.body (voir onOpen), pas à un
-		// descendant de cette vue — sans ce retrait explicite, il survivrait à
-		// la fermeture de la vue.
+		// cardNamePreviewEl is added to document.body (see onOpen), not to a
+		// descendant of this view — without this explicit removal, it would
+		// outlive the closing of the view.
 		this.cardNamePreviewEl?.remove();
 		this.homeSyncUnsub?.();
 		this.homeSyncUnsub = null;
@@ -935,7 +907,7 @@ export class MTGCollectionView extends ItemView {
 	buildWantlistCardRow = wantlistRender.buildWantlistCardRow;
 	buildWantlistCardTile = wantlistRender.buildWantlistCardTile;
 
-	// -- Barres d'Obsidian sur téléphone, bas et haut (src/view/mobile-bars.ts) --
+	// -- Obsidian bars on phone, bottom and top (src/view/mobile-bars.ts) --
 	setupMobileBars = mobileBars.setupMobileBars;
 	syncMobileBars = mobileBars.syncMobileBars;
 

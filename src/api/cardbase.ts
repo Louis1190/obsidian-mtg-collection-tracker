@@ -1,47 +1,47 @@
 import { requestUrlOrNull } from "./safe-request";
 
 /* -------------------------------------------------------------------------- */
-/*  cardbase.dev — historique de prix (boîte "Price History") ET, depuis la  */
-/*  colonne Cardmarket ajoutée à "Store Prices", le prix courant Cardmarket   */
-/*  (dernier point de la même série déjà récupérée — aucun aller-retour       */
-/*  réseau supplémentaire, voir getCardbaseLatestPrice ci-dessous).           */
+/* cardbase.dev — price history ("Price History" box) AND, since the */
+/* Cardmarket column was added to "Store Prices", the current Cardmarket */
+/* price (last point of the same series already fetched — no additional */
+/* network round trip, see getCardbaseLatestPrice below). */
 /* -------------------------------------------------------------------------- */
 
-// Point d'accès par impression (pas de version "tout le catalogue" comme
-// Card Kingdom/Mana Pool) : GET /printings/{scryfall_id}/prices, auth
-// optionnelle (Bearer, voir settings.cardbaseApiKey) — anonyme = 30 jours
-// d'historique, avec clé = 365 jours, plafond appliqué silencieusement côté
-// serveur donc pas besoin de logique cliente pour ça (voir fetchCardbase-
-// PriceHistory : on demande toujours 365 jours, le serveur réduit lui-même
-// si nécessaire). vendor omis dans la requête (on filtre côté client après
-// coup) pour ne faire qu'un seul aller-retour au lieu d'un par magasin.
+// Per-printing endpoint (no "whole catalog" version like Card Kingdom/Mana
+// Pool): GET /printings/{scryfall_id}/prices, optional auth (Bearer, see
+// settings.cardbaseApiKey) — anonymous = 30 days of history, with a key =
+// 365 days, a cap applied silently server-side so no client logic is needed
+// for it (see fetchCardbasePriceHistory: we always ask for 365 days, the
+// server reduces it itself if necessary). vendor omitted from the request
+// (we filter client-side afterwards) so as to make a single round trip
+// instead of one per store.
 const CARDBASE_BASE_URL = "https://api.cardbase.dev/v1";
 
 const CARDBASE_HEADERS = {
-	// Même identifiant + contact que SCRYFALL_HEADERS (scryfall.ts) — cohérence
-	// entre toutes les APIs de ce plugin, pas une exigence propre à cardbase.dev.
+	// Same identifier + contact as SCRYFALL_HEADERS (scryfall.ts) — consistency
+	// across all of this plugin's APIs, not a requirement specific to
+	// cardbase.dev.
 	"User-Agent": "ObsidianMTGCollectionTracker/1.0 (+https://github.com/Louis1190/obsidian-mtg-collection-tracker)",
 	Accept: "application/json",
 };
 
-// cardkingdom/tcgplayer/cardmarket/cardsphere alimentent tous les 4 le
-// graphique "Price History" ; cardmarket alimente en plus, via
-// getCardbaseLatestPrice, la colonne du même nom dans "Store Prices" (même
-// requête déjà faite pour le graphique, aucun aller-retour réseau en plus).
-// cardsphere est un vendeur documenté par cardbase mais dont la couverture
-// semble actuellement vide en pratique — vérifié en direct (`vendor=
-// cardsphere` sur Sol Ring ×3 impressions + Counterspell : `series: []`
-// à chaque fois) — câblé quand même : si cardbase le peuple plus tard,
-// cette courbe apparaît d'elle-même, sans autre changement de code.
-// cardhoarder délibérément exclu : ce n'est pas un prix "papier", mais le
-// marché des tickets Magic Online (jeu en ligne) — le mélanger aux 4 autres
-// serait trompeur pour un plugin qui suit une collection physique. Une
-// réponse réelle a par ailleurs inopinément inclus une série "manapool"
-// (prix + points), alors que ce vendeur n'apparaît nulle part dans
-// l'énumération `vendor` documentée par cardbase — pas retenue ici pour
-// autant : ce plugin a déjà sa propre source Mana Pool directe
-// (manapool.ts) pour Store Prices, et rien ne garantit que ce vendeur non
-// documenté reste couvert de façon fiable côté cardbase.
+// cardkingdom/tcgplayer/cardmarket/cardsphere all 4 feed the "Price
+// History" chart; cardmarket additionally feeds, via
+// getCardbaseLatestPrice, the column of the same name in "Store Prices"
+// (same request already made for the chart, no extra network round trip).
+// cardsphere is a vendor documented by cardbase but whose coverage
+// currently seems empty in practice — checked live (`vendor=cardsphere` on
+// Sol Ring ×3 printings + Counterspell: `series: []` every time) — wired
+// anyway: if cardbase populates it later, this curve appears by itself,
+// with no other code change. cardhoarder deliberately excluded: it is not a
+// "paper" price but the Magic Online ticket market (the online game) —
+// mixing it with the other 4 would be misleading for a plugin that tracks a
+// physical collection. A real response also unexpectedly included a
+// "manapool" series (price + points), although this vendor appears nowhere
+// in the `vendor` enumeration documented by cardbase — not adopted here all
+// the same: this plugin already has its own direct Mana Pool source
+// (manapool.ts) for Store Prices, and nothing guarantees that this
+// undocumented vendor stays reliably covered on cardbase's side.
 export type CardbaseVendor = "cardkingdom" | "tcgplayer" | "cardmarket" | "cardsphere";
 export type CardbaseFinish = "normal" | "foil" | "etched";
 
@@ -82,21 +82,21 @@ export interface CardbasePriceHistory {
 	scryfallId: string;
 	series: CardbasePriceSeries[];
 	historyBegins?: string;
-	// meta.as_of de la réponse cardbase — date des données de prix les plus
-	// récentes en base (pas forcément "aujourd'hui", l'ingestion tourne une
-	// fois par jour). Affichée par renderPriceHistorySourceFooter, voir
-	// card-detail-fx.ts — délibérément réutilisée depuis cette réponse déjà
-	// récupérée plutôt que d'ajouter un appel GET /status séparé, jugé pas
-	// justifié pour une simple date de fraîcheur déjà présente ailleurs.
+	// meta.as_of of the cardbase response — date of the most recent price data
+	// in the database (not necessarily "today", ingestion runs once a day).
+	// Displayed by renderPriceHistorySourceFooter, see card-detail-fx.ts —
+	// deliberately reused from this already-fetched response rather than
+	// adding a separate GET /status call, judged not worth it for a simple
+	// freshness date already available elsewhere.
 	asOf?: string;
-	// Prix de la listing Cardmarket la moins chère actuellement disponible
-	// (price_type="low" du Price Guide natif) — voir pickCardmarketLatestPrice
-	// et son point d'attache, MTGCollectionPlugin.getCardbasePriceHistory-
-	// WithNativeCardmarket (plugin.ts). Pas un champ de PriceSeries/series
-	// (pas une donnée qu'on veut tracer sur le graphique ni comparer jour à
-	// jour comme "trend") — juste une info ponctuelle affichée en infobulle
-	// sur la colonne Cardmarket de Store Prices. undefined si Cardmarket n'a
-	// aucune listing pour cette impression/finition.
+	// Price of the cheapest Cardmarket listing currently available
+	// (price_type="low" of the native Price Guide) — see
+	// pickCardmarketLatestPrice and its attachment point,
+	// MTGCollectionPlugin.getCardbasePriceHistoryWithNativeCardmarket
+	// (plugin.ts). Not a field of PriceSeries/series (not data we want to plot
+	// on the chart nor compare day to day like "trend") — just a one-off piece
+	// of information shown in a tooltip on the Cardmarket column of Store
+	// Prices. undefined if Cardmarket has no listing for this printing/finish.
 	cardmarketLow?: CardbaseLatestPrice;
 }
 
@@ -108,19 +108,19 @@ interface CardbaseRawSeries {
 	points?: [string, number][];
 }
 
-// Corps de /printings/{id}/prices (`res.json` est `any` : on le type ici, une fois).
+// Body of /printings/{id}/prices (`res.json` is `any`: we type it here, once).
 interface CardbaseHistoryBody {
 	data?: { series?: CardbaseRawSeries[] };
 	meta?: { history_begins?: string; as_of?: string };
 }
 
-// undefined = échec (réseau, 4xx/5xx, réponse mal formée) — à distinguer par
-// l'appelant d'un succès confirmé avec une série vide (carte réellement sans
-// historique chez ces deux magasins), qui doit lui être mis en cache tel
-// quel. Toujours price_type=retail : c'est ce que les colonnes Card Kingdom/
-// TCGplayer de la boîte "Store Prices" affichent déjà (voir card-kingdom.ts/
-// renderStorePricesBox) — une courbe "buylist" ne se comparerait pas au
-// point le plus récent déjà visible juste au-dessus.
+// undefined = failure (network, 4xx/5xx, malformed response) — to be told
+// apart by the caller from a confirmed success with an empty series (a card
+// that really has no history at these two stores), which must be cached as
+// is. Always price_type=retail: this is what the Card Kingdom/TCGplayer
+// columns of the "Store Prices" box already display (see
+// card-kingdom.ts/renderStorePricesBox) — a "buylist" curve could not be
+// compared with the latest point already visible just above.
 export async function fetchCardbasePriceHistory(
 	scryfallId: string,
 	apiKey: string,
@@ -166,12 +166,12 @@ export interface CardbaseLatestPrice {
 	currency: string;
 }
 
-// Dernier point (le plus récent) de la série d'un magasin donné, pour la
-// colonne "Cardmarket" de Store Prices — vérifié directement contre l'API
-// réelle (pas juste supposé) que `vendor=cardmarket` renvoie bien un
-// `price_type=retail` en EUR, comme cardkingdom/tcgplayer en USD ; `points`
-// est déjà trié par date croissante par cardbase (voir sa doc), donc le
-// dernier élément est le plus récent, pas besoin de re-trier ici.
+// Last (most recent) point of a given store's series, for the "Cardmarket"
+// column of Store Prices — checked directly against the real API (not just
+// assumed) that `vendor=cardmarket` does return a `price_type=retail` in
+// EUR, like cardkingdom/tcgplayer in USD; `points` is already sorted by
+// ascending date by cardbase (see its docs), so the last element is the
+// most recent, no need to re-sort here.
 export function getCardbaseLatestPrice(
 	history: CardbasePriceHistory | undefined,
 	vendor: CardbaseVendor
@@ -186,14 +186,14 @@ export interface CardbaseDayChange {
 	direction: "up" | "down" | "flat";
 }
 
-// Variation veille→aujourd'hui pour un magasin donné, à partir des DEUX
-// DERNIERS points déjà présents dans la série (aucun fetch en plus — cet
-// historique est déjà récupéré pour la boîte "Price History"/la colonne
-// Cardmarket, voir renderStorePricesBox). undefined si la série a moins de 2
-// points (carte trop récente dans le jeu de données cardbase, cf.
-// meta.history_begins) ou si le prix de la veille est 0 (une division par 0
-// n'a pas de sens ici). "flat" (0%) est un résultat valide, distinct
-// d'undefined — l'appelant décide s'il veut l'afficher ou le masquer.
+// Yesterday→today change for a given store, from the LAST TWO points already
+// present in the series (no extra fetch — this history is already fetched
+// for the "Price History" box/the Cardmarket column, see
+// renderStorePricesBox). undefined if the series has fewer than 2 points
+// (card too recent in cardbase's dataset, cf. meta.history_begins) or if
+// yesterday's price is 0 (a division by 0 makes no sense here). "flat" (0%)
+// is a valid result, distinct from undefined — the caller decides whether to
+// display or hide it.
 export function getCardbaseDayChange(
 	history: CardbasePriceHistory | undefined,
 	vendor: CardbaseVendor
@@ -213,10 +213,10 @@ interface CardbasePrintingRaw {
 	cardmarket_id?: number;
 }
 
-// undefined = échec (réseau, 4xx/5xx) ; `null` (côté appelant, voir
-// plugin.ts) = réponse confirmée sans cardmarket_id (impression que
-// cardbase n'a pas mappée côté Cardmarket) — deux cas différents, à ne pas
-// confondre dans le cache.
+// undefined = failure (network, 4xx/5xx); `null` (caller side, see
+// plugin.ts) = confirmed response without a cardmarket_id (a printing
+// cardbase hasn't mapped on the Cardmarket side) — two different cases,
+// not to be confused in the cache.
 export async function fetchCardbasePrintingCardmarketId(
 	scryfallId: string,
 	apiKey: string
@@ -251,16 +251,16 @@ interface CardmarketRawSeries {
 	points?: [string, number][];
 }
 
-// Corps de /cardmarket/{id}/prices (`res.json` est `any` : on le type ici, une fois).
+// Body of /cardmarket/{id}/prices (`res.json` is `any`: we type it here, once).
 interface CardmarketPricesBody {
 	data?: { series?: CardmarketRawSeries[] };
 }
 
-// Pas de filtre vendor/price_type/finish côté serveur pour cet endpoint
-// (contrairement à /printings/{id}/prices) — on récupère toujours les 12
-// séries (2 finitions × 6 types) et on filtre côté client (voir
-// pickCardmarketTrendSeries). Même logique days/palier que fetchCardbase-
-// PriceHistory (l'appelant, plugin.ts, calcule la même valeur pour les deux).
+// No vendor/price_type/finish filter server-side for this endpoint (unlike
+// /printings/{id}/prices) — we always fetch all 12 series (2 finishes × 6
+// types) and filter client-side (see pickCardmarketTrendSeries). Same
+// days/tier logic as fetchCardbasePriceHistory (the caller, plugin.ts,
+// computes the same value for both).
 export async function fetchCardmarketNativePrices(
 	cardmarketId: number,
 	apiKey: string,
@@ -288,14 +288,13 @@ export async function fetchCardmarketNativePrices(
 	return { cardmarketId, series };
 }
 
-// "etched" n'existe pas côté Cardmarket (son API ne connaît que normal/foil,
-// voir CardmarketFinish) — replié sur "foil", même traitement que "surged"
-// déjà appliqué ailleurs dans ce plugin pour la même raison (pas de valeur
-// dédiée disponible côté source, foil est le plus proche). undefined si
-// aucune série "trend" pour cette finition (impression trop récente,
-// finition non vendue par Cardmarket) — l'appelant (withNativeCardmarketTrend)
-// sait alors garder l'ancienne valeur "retail" plutôt que d'afficher un
-// trou.
+// "etched" doesn't exist on Cardmarket's side (its API only knows normal/foil,
+// see CardmarketFinish) — folded into "foil", same treatment as "surged"
+// already applied elsewhere in this plugin for the same reason (no dedicated
+// value available at the source, foil is the closest). undefined if there is
+// no "trend" series for this finish (printing too recent, finish not sold by
+// Cardmarket) — the caller (withNativeCardmarketTrend) then knows to keep the
+// old "retail" value rather than show a gap.
 export function pickCardmarketTrendSeries(
 	native: CardmarketNativePrices | undefined,
 	finish: CardbaseFinish
@@ -307,15 +306,15 @@ export function pickCardmarketTrendSeries(
 	return { vendor: "cardmarket", finish, currency: series.currency, points: series.points };
 }
 
-// Même repli finish "etched" → "foil" que pickCardmarketTrendSeries
-// ci-dessus. Généralisé sur `priceType` (pas figé sur "low") même si le
-// seul appelant actuel demande "low" (le prix de la listing la moins chère
-// actuellement disponible) — la réponse native contient déjà les 6 types du
-// Price Guide (voir fetchCardmarketNativePrices), `pickCardmarketTrendSeries`
-// n'en garde qu'un ("trend") pour la colonne/le graphique principal ; cette
-// fonction-ci récupère un point ponctuel (pas une série complète, pas besoin
-// d'historique pour un "prix le plus bas actuel") parmi les 5 types restants
-// qui seraient sinon jetés sans jamais être lus.
+// Same "etched" → "foil" finish fallback as pickCardmarketTrendSeries above.
+// Generalized over `priceType` (not fixed to "low") even though the only
+// current caller asks for "low" (the price of the cheapest listing currently
+// available) — the native response already contains the 6 Price Guide types
+// (see fetchCardmarketNativePrices), `pickCardmarketTrendSeries` keeps only
+// one ("trend") for the main column/chart; this function fetches a one-off
+// point (not a full series, no need for history for a "current lowest price")
+// among the 5 remaining types that would otherwise be thrown away without
+// ever being read.
 export function pickCardmarketLatestPrice(
 	native: CardmarketNativePrices | undefined,
 	finish: CardbaseFinish,
@@ -328,16 +327,15 @@ export function pickCardmarketLatestPrice(
 	return last ? { price: last.price, currency: series.currency } : undefined;
 }
 
-// Remplace la série "cardmarket" (générique, price_type=retail) de `history`
-// par la série "trend" native quand elle est disponible — repli gracieux
-// délibéré : si `nativeTrend` est undefined (cardmarket_id introuvable,
-// endpoint natif en échec, aucun point pour cette finition), `history` est
-// renvoyé TEL QUEL, avec sa colonne "cardmarket" générique déjà en place,
-// plutôt que de retirer toute donnée Cardmarket — jamais pire qu'avant cette
-// fonctionnalité. Renvoie exactement la même forme CardbasePriceHistory déjà
-// consommée par renderPriceHistoryChart/getCardbaseLatestPrice/getCardbase-
-// DayChange, donc aucun changement requis côté rendu — seule la donnée
-// change de source.
+// Replaces the "cardmarket" series (generic, price_type=retail) of `history`
+// with the native "trend" series when it is available — deliberate graceful
+// fallback: if `nativeTrend` is undefined (cardmarket_id not found, native
+// endpoint failing, no point for this finish), `history` is returned AS IS,
+// with its generic "cardmarket" column already in place, rather than
+// removing all Cardmarket data — never worse than before this feature.
+// Returns exactly the same CardbasePriceHistory shape already consumed by
+// renderPriceHistoryChart/getCardbaseLatestPrice/getCardbaseDayChange, so no
+// change is needed on the rendering side — only the data changes source.
 export function withNativeCardmarketTrend(
 	history: CardbasePriceHistory,
 	nativeTrend: CardbasePriceSeries | undefined
@@ -350,14 +348,13 @@ export function withNativeCardmarketTrend(
 }
 
 /* -------------------------------------------------------------------------- */
-/*  "Market Trends" — GET /movers, les cartes qui ont le plus bougé, EN      */
-/*  PRIX, sur le marché ENTIER (pas scopé à la collection de l'utilisateur — */
-/*  seul endroit de ce fichier dans ce cas) — voir modals/market-trends-     */
-/*  modal.ts. Une seule requête, pas de pagination (contrairement à          */
-/*  /changes, jugé trop volumineux pour un usage par carte — voir la         */
-/*  discussion qui a mené à explorer /movers à la place), et le nom de la    */
-/*  carte est déjà inclus dans la réponse, pas besoin d'un aller-retour      */
-/*  Scryfall en plus pour l'afficher.                                        */
+/* "Market Trends" — GET /movers, the cards that moved the most, in PRICE, */
+/* across the WHOLE market (not scoped to the user's collection — the only */
+/* place in this file where that's the case) — see */
+/* modals/market-trends-modal.ts. A single request, no pagination (unlike */
+/* /changes, judged too voluminous for per-card use — see the discussion that */
+/* led to exploring /movers instead), and the card's name is already included */
+/* in the response, no extra Scryfall round trip needed to display it. */
 /* -------------------------------------------------------------------------- */
 
 export type CardbaseMoverPeriod = "1d" | "7d" | "30d";
@@ -377,8 +374,8 @@ export interface CardbaseMoversResult {
 	period: CardbaseMoverPeriod;
 	gainers: CardbaseMover[];
 	losers: CardbaseMover[];
-	// Voir CardbasePriceHistory.asOf ci-dessus pour le raisonnement complet
-	// (meta.as_of déjà présent sur cette réponse, pas d'appel /status séparé).
+	// See CardbasePriceHistory.asOf above for the full reasoning (meta.as_of
+	// already present on this response, no separate /status call).
 	asOf?: string;
 }
 
@@ -393,7 +390,7 @@ interface CardbaseMoverRaw {
 	change_pct?: number;
 }
 
-// Corps de /movers (`res.json` est `any` : on le type ici, une fois).
+// Body of /movers (`res.json` is `any`: we type it here, once).
 interface CardbaseMoversBody {
 	data?: { gainers?: CardbaseMoverRaw[]; losers?: CardbaseMoverRaw[] };
 	meta?: { as_of?: string };
@@ -426,9 +423,9 @@ function parseCardbaseMovers(raw: CardbaseMoverRaw[] | undefined): CardbaseMover
 	return result;
 }
 
-// undefined = échec réseau/HTTP. `vendor` omis = tous vendeurs confondus
-// (ce que l'endpoint fait lui-même par défaut). `limit` s'applique
-// indépendamment à gainers ET losers (voir la doc cardbase — "Maximum
+// undefined = network/HTTP failure. `vendor` omitted = all vendors
+// combined (what the endpoint itself does by default). `limit` applies
+// independently to gainers AND losers (see cardbase's docs — "Maximum
 // number of gainers and losers each to return").
 export async function fetchCardbaseMovers(
 	apiKey: string,
@@ -452,43 +449,42 @@ export async function fetchCardbaseMovers(
 	};
 }
 
-// Ancien mécanisme (jusqu'au 2026-09-15) : demander days=365 sur
-// /printings/{id}/prices et s'appuyer sur un 400 précis ("days must be 30
-// or fewer for your access tier") pour détecter une clé qui n'élève pas
-// réellement le palier. Ce comportement n'existe plus — vérifié en direct
-// ET confirmé par la doc actuelle de cardbase (https://cardbase.dev/docs) :
-// dépasser son palier est maintenant plafonné silencieusement (200, avec
-// meta.history_begins reflétant ce qui a vraiment été renvoyé), jamais
-// rejeté en 400. Pire, en test réel, même une fausse clé a obtenu bien plus
-// que les 30 jours "anonymes" annoncés — donc ce signal ne fonctionnait
-// déjà plus du tout, pas juste "différemment". Voir docs/history/price-
-// history-chart.md (entrée 2026-09-15) pour l'investigation complète.
+// Old mechanism (until 2026-09-15): ask for days=365 on
+// /printings/{id}/prices and rely on a specific 400 ("days must be 30 or
+// fewer for your access tier") to detect a key that doesn't actually raise
+// the tier. That behavior no longer exists — checked live AND confirmed by
+// cardbase's current docs (https://cardbase.dev/docs): exceeding one's tier
+// is now silently capped (200, with meta.history_begins reflecting what was
+// actually returned), never rejected with a 400. Worse, in a real test even
+// a fake key got much more than the announced "anonymous" 30 days — so this
+// signal had already stopped working altogether, not just "differently".
+// See docs/history/price-history-chart.md (2026-09-15 entry) for the full
+// investigation.
 //
-// Nouveau mécanisme : /bulk/prices/{date} exige une authentification (401
-// "Unauthorized" si absente/invalide — vérifié en direct, jamais mis en
-// cache côté cardbase, Cache-Control: no-store) et vérifie l'auth AVANT la
-// validité de la date (vérifié en direct sur 3 dates différentes : une date
-// bidon et une date dans le futur lointain renvoient toutes les deux 401
-// sans clé, jamais un 400 "date invalide" à la place). En demandant une
-// date volontairement hors plage (fixe, plus de 365 jours dans le passé,
-// donc jamais besoin de maintenance), le serveur ne peut renvoyer 401 QUE
-// si la clé est rejetée — n'importe quelle autre réponse (400/404 attendus
-// pour "date trop ancienne") signifie que la clé a été acceptée, sans
-// jamais atteindre le vrai 302 vers le dump complet (donc aucun
-// téléchargement déclenché juste pour tester une clé).
+// New mechanism: /bulk/prices/{date} requires authentication (401
+// "Unauthorized" if missing/invalid — checked live, never cached on
+// cardbase's side, Cache-Control: no-store) and checks auth BEFORE the
+// validity of the date (checked live on 3 different dates: a bogus date and
+// a date far in the future both return 401 without a key, never a "date
+// invalid" 400 instead). By asking for a deliberately out-of-range date
+// (fixed, more than 365 days in the past, so it never needs maintenance),
+// the server can return 401 ONLY if the key is rejected — any other
+// response (400/404 expected for "date too old") means the key was
+// accepted, without ever reaching the real 302 to the full dump (so no
+// download is triggered just to test a key).
 const CARDBASE_TEST_BULK_DATE = "2000-01-01";
 
 export type CardbaseConnectionStatus = "ok" | "rejected" | "error";
 
-// N'est appelée qu'avec une clé non vide — l'appelant (setting-tab.ts) gère
-// à part le cas "aucune clé saisie", qui n'a pas besoin d'un aller-retour
-// réseau pour être diagnostiqué (toujours limité à 30 jours, par définition).
+// Only called with a non-empty key — the caller (setting-tab.ts) handles the
+// "no key entered" case separately, which needs no network round trip to be
+// diagnosed (always limited to 30 days, by definition).
 export async function testCardbaseConnection(apiKey: string): Promise<CardbaseConnectionStatus> {
 	const res = await requestUrlOrNull({
 		url: `${CARDBASE_BASE_URL}/bulk/prices/${CARDBASE_TEST_BULK_DATE}`,
 		headers: { ...CARDBASE_HEADERS, Authorization: `Bearer ${apiKey}` },
 	});
-	// Pas de réponse du tout (hors ligne…) : le même « error » qu'un 429/5xx — la clé n'est pas en cause.
+	// No response at all (offline…): the same "error" as a 429/5xx — the key isn't at fault.
 	if (!res) return "error";
 	if (res.status === 401) return "rejected";
 	if (res.status === 429 || res.status >= 500) return "error";

@@ -1,28 +1,29 @@
-// Les règles officielles d'Obsidian (eslint-plugin-obsidianmd) dans la configuration que le scanner du répertoire des
-// plug-ins applique à chaque soumission (documentée dans docs/configuration.md du plugin ESLint, « Community plugin
-// scanner configuration ») : seules six règles de sécurité sont des ERREURS, tout le reste est un avertissement, quelques
-// règles sont éteintes, et les tests / scripts / docs ne sont pas lus.
+// The official Obsidian rules (eslint-plugin-obsidianmd) in the configuration that the plugin directory's
+// scanner applies to every submission (documented in the ESLint plugin's docs/configuration.md, "Community
+// plugin scanner configuration"): only six security rules are ERRORS, everything else is a warning, a few rules
+// are turned off, and tests / scripts / docs are not read.
 //
-//   npm run lint          comme le scanner : bloquant = les erreurs
-//   npm run lint:strict   les sévérités d'origine de la config « recommended » (tout ce qu'Obsidian recommande)
+//   npm run lint          like the scanner: blocking = the errors
+//   npm run lint:strict   the original severities of the "recommended" config (everything Obsidian recommends)
 //
-// L'état et le plan : docs/obsidian-compliance.md.
+// State and plan: docs/obsidian-compliance.md.
 import { defineConfig, globalIgnores } from "eslint/config";
 import obsidianmd from "eslint-plugin-obsidianmd";
 
 const strict = process.env.LINT_STRICT === "1";
 
 const SECURITY = ["no-eval", "no-implied-eval", "no-unsanitized/method", "no-unsanitized/property", "obsidianmd/regex-lookbehind", "obsidianmd/no-forbidden-elements"];
-// Les cinq `no-unsafe-*` ne sont PAS éteintes : la première relecture réelle de l'annuaire (2026-10-07) les a signalées en
-// avertissements (13 / 30 / 4 endroits, exactement ce que ce linter trouve en mode strict). Ce qui reste éteint l'est d'après
-// la documentation du scanner ; `no-base-to-string` (3 endroits en mode strict) n'est pas apparue dans la relecture réelle.
+// The five `no-unsafe-*` rules are NOT turned off: the directory's first real review (2026-10-07) reported them
+// as warnings (13 / 30 / 4 places, exactly what this linter finds in strict mode). What remains off is off
+// according to the scanner's documentation; `no-base-to-string` (3 places in strict mode) did not show up in the
+// real review.
 const OFF = [
 	"no-undef", "@typescript-eslint/restrict-template-expressions",
 	"@typescript-eslint/no-base-to-string", "import/no-unresolved", "obsidianmd/validate-manifest", "obsidianmd/validate-license",
 	"obsidianmd/commands/no-command-in-command-id", "obsidianmd/commands/no-plugin-id-in-command-id",
 ];
 
-// « error » (ou 2, ou ["error", options]) devient « warn », comme le fait le scanner.
+// "error" (or 2, or ["error", options]) becomes "warn", as the scanner does.
 const toWarn = (entry) => {
 	if (entry === "error" || entry === 2) return "warn";
 	if (Array.isArray(entry) && (entry[0] === "error" || entry[0] === 2)) return ["warn", ...entry.slice(1)];

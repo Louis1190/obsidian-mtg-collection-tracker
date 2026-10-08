@@ -5,11 +5,12 @@ import { applyModalOpenAnimation, addModalCloseButton, closeModalAnimated } from
 /* -------------------------------------------------------------------------- */
 /*  Restore from a saved backup (the backup folder of the vault)             */
 /* -------------------------------------------------------------------------- */
-// « Restore backup → Choose a saved backup… » (setting-tab.ts) : la liste des sauvegardes trouvées dans le dossier des
-// sauvegardes du coffre (core/backup-files.ts les reconnaît et les ordonne, plugin/backup.ts les lit par l'API Vault). Choisir
-// une ligne rend la main à l'appelant, qui lit le fichier et ouvre RestoreBackupConfirmModal (confirm-modals.ts) : le résumé de
-// ce que contient la sauvegarde s'affiche là, avant que quoi que ce soit change. Aucun sélecteur de fichier du système :
-// fonctionne à l'identique sur ordinateur, iPhone/iPad et Android. Un fichier hors de ce dossier passe par « Load backup file… ».
+// "Restore backup → Choose a saved backup…" (setting-tab.ts): the list of backups found in the vault's backup
+// folder (core/backup-files.ts recognizes and orders them, plugin/backup.ts reads them through the Vault API).
+// Choosing a row hands control back to the caller, which reads the file and opens RestoreBackupConfirmModal
+// (confirm-modals.ts): the summary of what the backup contains is displayed there, before anything changes. No
+// system file picker: works identically on computer, iPhone/iPad and Android. A file outside this folder goes
+// through "Load backup file…".
 
 export class RestoreBackupModal extends Modal {
 	constructor(

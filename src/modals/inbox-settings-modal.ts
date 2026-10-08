@@ -15,27 +15,28 @@ import {
 /* -------------------------------------------------------------------------- */
 /*  Inbox settings modal ("...")                                              */
 /* -------------------------------------------------------------------------- */
-// Liste système "Inbox" (voir CollectionList.isInbox/ensureInboxList,
-// MTGCollectionView.renderListTile) — sa propre modale plutôt qu'une branche
-// de plus dans ListSettingsModal : demandé explicitement ("pas la fenêtre
-// 'List Settings'... mais 'Inbox settings'"). Recalquée sur ListSettingsModal
-// (demandé explicitement, "copier List settings") — mêmes rangées de
-// boutons pleine largeur, même flux Copy/Move via CopyCardModal, même
-// écran de confirmation "Clear list?", même rangée Export/Copy to
-// clipboard/Import — MOINS deux choses, demandées explicitement :
-//   - la section "Display settings" (Choose cover image / Choose icon) ;
-//   - l'action "Merge lists" (Merge duplicates reste, seule cette action-là
-//     est exclue).
-// Deux autres exclusions ne viennent PAS de la demande mais du garde-fou
-// déjà établi côté plugin (deleteList/renameList, voir leurs commentaires
-// respectifs — "l'UI ne montre déjà plus... pour Inbox") : ni le champ
-// "List name" (renameList no-ope silencieusement sur isInbox), ni "Delete
-// list" (deleteList no-ope pareil) — les afficher laisserait croire qu'un
-// clic fait quelque chose alors que ce garde-fou l'annulerait sans le dire.
-// Sans champ à "sauvegarder", pas de rangée "Save and close" non plus : la
-// croix ronde de fermeture (addModalCloseButton) suffit, chaque action ici
-// s'applique immédiatement au clic, exactement comme Copy/Move/Clear/Merge
-// duplicates/Export/Import le font déjà dans ListSettingsModal elle-même.
+// System list "Inbox" (see CollectionList.isInbox/ensureInboxList,
+// MTGCollectionView.renderListTile) — its own modal rather than one more
+// branch in ListSettingsModal: explicitly requested ("not the 'List Settings'
+// window... but 'Inbox settings'"). Modeled on ListSettingsModal (explicitly
+// requested, "copy List settings") — same full-width button rows, same
+// Copy/Move flow via CopyCardModal, same "Clear list?" confirmation screen,
+// same Export/Copy to clipboard/Import row — MINUS two things, explicitly
+// requested:
+// - the "Display settings" section (Choose cover image / Choose icon);
+// - the "Merge lists" action (Merge duplicates stays, only that action is
+//   excluded).
+// Two other exclusions do NOT come from the request but from the safeguard
+// already established on the plugin side (deleteList/renameList, see their
+// respective comments — "the UI already no longer shows... for Inbox"):
+// neither the "List name" field (renameList silently no-ops on isInbox), nor
+// "Delete list" (deleteList no-ops likewise) — showing them would suggest
+// that a click does something while that safeguard would cancel it without
+// saying so.
+// With no field to "save", no "Save and close" row either: the round close
+// cross (addModalCloseButton) is enough, each action here applies immediately
+// on click, exactly as Copy/Move/Clear/Merge duplicates/Export/Import already
+// do in ListSettingsModal itself.
 
 export class InboxSettingsModal extends Modal {
 	private plugin: MTGCollectionPlugin;
@@ -51,11 +52,11 @@ export class InboxSettingsModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		this.draw();
 	}
@@ -75,9 +76,8 @@ export class InboxSettingsModal extends Modal {
 			return;
 		}
 
-		// Même écran de confirmation plein-format que ListSettingsModal (renderConfirmScreen) — Inbox ne peut jamais être
-		// supprimée, mais la vider reste une action valide (clearList ne touche que settings.collection, jamais la liste
-		// elle-même).
+		// Same full-format confirmation screen as ListSettingsModal (renderConfirmScreen) — Inbox can never be deleted,
+		// but emptying it remains a valid action (clearList only touches settings.collection, never the list itself).
 		if (this.confirmingClear) {
 			const cardCount = this.plugin.settings.collection.filter(
 				(c) => c.listId === list.id
@@ -105,12 +105,12 @@ export class InboxSettingsModal extends Modal {
 
 		addSectionTitle(contentEl, "Actions");
 
-		// Les 7 boutons « Actions » vivent tous dans UN SEUL conteneur en grille (3-3-1) plutôt que 3 rangées
-		// séparées bornées à 3 cellules (voir createWrapRow) : signalé explicitement via capture d'écran (« j'aimerais
-		// que les boutons se "wrap" naturellement »). Pas de « Merge with another list » ni de Delete/Rename/Display
-		// settings : Inbox est une variante volontairement réduite de ListSettingsModal.
+		// The 7 "Actions" buttons all live in ONE grid container (3-3-1) rather than 3 separate rows bounded to 3
+		// cells (see createWrapRow): explicitly reported via screenshot ("I'd like the buttons to 'wrap' naturally").
+		// No "Merge with another list" nor Delete/Rename/Display settings: Inbox is a deliberately reduced variant of
+		// ListSettingsModal.
 		const actionsRow = createWrapRow(contentEl);
-		// Copy / Move : Inbox est une liste normale pour ces deux opérations.
+		// Copy / Move: Inbox is a normal list for these two operations.
 		addCopyMoveButtons(actionsRow, {
 			app: this.app,
 			plugin: this.plugin,
@@ -122,8 +122,8 @@ export class InboxSettingsModal extends Modal {
 				this.draw();
 			},
 			afterMove: () => {
-				// deleteList no-ope sur Inbox (voir son propre garde-fou, plugin.ts) — Inbox reste donc en place une
-				// fois vidée, exactement le comportement voulu ici.
+				// deleteList no-ops on Inbox (see its own safeguard, plugin.ts) — Inbox therefore stays in place
+				// once emptied, exactly the behavior wanted here.
 				if (this.plugin.settings.collection.every((c) => c.listId !== list.id)) {
 					this.plugin.deleteList(list.id);
 				}

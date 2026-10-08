@@ -36,22 +36,22 @@ function downloadViaBrowser(content: ExportContent, filename: string, mimeType: 
 	URL.revokeObjectURL(url);
 }
 
-// Repli sans fenêtre : écrit dans le dossier par défaut puis ouvre la feuille
-// de partage — exactement le comportement validé sur Android et iPad avant
-// l'existence de la modale (1.0.453).
+// Fallback without a window: writes into the default folder then opens the
+// share sheet — exactly the behavior validated on Android and iPad before the
+// modal existed (1.0.453).
 async function quickSaveAndShare(app: App, content: ExportContent, filename: string): Promise<void> {
 	const safeName = sanitizeFileName(filename);
 
-	// Créé AVANT toute opération asynchrone, dans la pile même du clic : un
-	// tap sur "Export" produit ainsi un retour visible immédiat, et le bug
-	// d'origine (un silence total, aucun message) ne peut plus se reproduire
-	// sans qu'on sache lequel des trois cas s'est produit — aucun message du
-	// tout (le code n'a pas tourné : version périmée du plugin), "Exporting…"
-	// qui reste affiché (l'écriture dans la vault est bloquée), ou "Saved…"
-	// sans feuille de partage (seul l'appel natif d'Obsidian est en cause).
-	// Durée 0 (persistant) plutôt qu'un délai fixe : un gros export peut
-	// mettre plusieurs secondes à s'écrire sur mobile, un Notice à délai fixe
-	// aurait disparu avant que setMessage ne dise quoi que ce soit.
+	// Created BEFORE any asynchronous operation, in the very stack of the
+	// click: a tap on "Export" thus produces immediate visible feedback, and
+	// the original bug (total silence, no message) can't reproduce again
+	// without us knowing which of the three cases occurred — no message at all
+	// (the code didn't run: stale version of the plugin), "Exporting…" that
+	// stays displayed (the write into the vault is blocked), or "Saved…"
+	// without a share sheet (only Obsidian's native call is at fault).
+	// Duration 0 (persistent) rather than a fixed delay: a big export can take
+	// several seconds to write on mobile, a Notice with a fixed delay would
+	// have disappeared before setMessage says anything.
 	const notice = new Notice(`Exporting ${safeName}…`, 0);
 	const finish = (message: string) => {
 		notice.setMessage(message);
@@ -62,20 +62,19 @@ async function quickSaveAndShare(app: App, content: ExportContent, filename: str
 	try {
 		path = await writeExportFile(app, DEFAULT_EXPORT_FOLDER, safeName, content);
 	} catch (e) {
-		// Le try englobe aussi l'accès à app.vault.adapter (dans
-		// writeExportFile) : sans ça, une erreur inattendue rejetterait la
-		// promesse (jetée par les appelants via `void`) sans le moindre
-		// retour visible.
+		// The try also encloses the access to app.vault.adapter (in
+		// writeExportFile): without that, an unexpected error would reject the
+		// promise (discarded by the callers via `void`) without the slightest
+		// visible feedback.
 		console.error("MTG Collection Tracker: could not save the export file.", e);
 		finish(`Could not export ${safeName}: ${e instanceof Error ? e.message : String(e)}`);
 		return;
 	}
 
-	// Dit aussi où le fichier vit désormais — utile si la feuille de partage
-	// ne s'ouvre pas (les .csv/.txt n'apparaissent pas dans l'explorateur
-	// d'Obsidian tant que "Detect all file extensions" est désactivé, mais
-	// existent bel et bien dans la vault, donc aussi dans toute synchro de
-	// dossier en place).
+	// Also says where the file now lives — useful if the share sheet doesn't
+	// open (.csv/.txt files don't appear in Obsidian's explorer while "Detect
+	// all file extensions" is disabled, but do exist in the vault, hence also
+	// in any folder sync in place).
 	finish(`Saved ${safeName} to the ${DEFAULT_EXPORT_FOLDER} folder of your vault.`);
 	await shareVaultFile(app, path);
 }

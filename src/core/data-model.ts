@@ -4,12 +4,12 @@ import { detectDeckCardFunction } from "./deck-function";
 import type { PriceCurrency } from "./price";
 import type { CardbaseMoverPeriod, CardbaseVendor } from "../api/cardbase";
 
-// Pictogramme affiché à gauche du nom d'une liste (ListSettingsModal,
-// "Choose icon") — soit un symbole de mana (value = une lettre W/U/B/R/G/C,
-// voir MTGCollectionPlugin.getManaSymbolSvg), soit le symbole d'une édition
-// précise (value = son code, voir MTGCollectionPlugin.getSetIconSvg). Un
-// seul à la fois : pas de tableau de couleurs multiples pour cette première
-// version, volontairement proportionné à ce qui a été demandé.
+// Pictogram displayed to the left of a list's name (ListSettingsModal,
+// "Choose icon") — either a mana symbol (value = a letter W/U/B/R/G/C, see
+// MTGCollectionPlugin.getManaSymbolSvg), or the symbol of a specific set
+// (value = its code, see MTGCollectionPlugin.getSetIconSvg). Only one at a
+// time: no array of multiple colors for this first version, deliberately
+// proportioned to what was asked for.
 export interface ListIcon {
 	kind: "mana" | "set";
 	value: string;
@@ -19,24 +19,23 @@ export interface CollectionList {
 	id: string;
 	name: string;
 	dateCreated?: number;
-	// Liste système "Inbox" (voir MTGCollectionPlugin.ensureInboxList) —
-	// exactement une, garantie présente après tout chargement de settings
-	// (chargement normal ET restauration de sauvegarde, voir
-	// runSettingsMigrations). Épinglée en tête de la grille "My Collection"
-	// (renderListGrid), destination par défaut du flux "+ Add cards" depuis
-	// "All Cards" (voir AddCardsModalOptions.listGallery.defaultListId), et
-	// protégée en renommage/suppression (voir ListSettingsModal/
-	// MTGCollectionPlugin.deleteList/renameList/bulkDeleteLists/mergeLists) —
-	// aucune autre liste ne doit jamais porter ce flag.
+	// System list "Inbox" (see MTGCollectionPlugin.ensureInboxList) — exactly
+	// one, guaranteed present after any settings load (normal load AND backup
+	// restore, see runSettingsMigrations). Pinned at the top of the "My
+	// Collection" grid (renderListGrid), default destination of the "+ Add
+	// cards" flow from "All Cards" (see
+	// AddCardsModalOptions.listGallery.defaultListId), and protected against
+	// renaming/deletion (see
+	// ListSettingsModal/MTGCollectionPlugin.deleteList/renameList/bulkDeleteLists/mergeLists)
+	// — no other list must ever carry this flag.
 	isInbox?: boolean;
-	// Image de couverture choisie manuellement (ListSettingsModal, "Choose
-	// cover image") — l'id d'une CollectionCard de CETTE liste. Absent par défaut
-	// (choix automatique, voir pickCoverImage/groupByList dans price.ts,
-	// core/) ; ignoré silencieusement si la carte visée a depuis été
-	// supprimée/déplacée, plutôt que de garder une référence morte — voir
-	// resolveCoverImage.
+	// Cover image chosen manually (ListSettingsModal, "Choose cover image") — the
+	// id of a CollectionCard of THIS list. Absent by default (automatic choice,
+	// see pickCoverImage/groupByList in price.ts, core/); silently ignored if the
+	// targeted card has since been deleted/moved, rather than keeping a dead
+	// reference — see resolveCoverImage.
 	coverCardId?: string;
-	// Voir ListIcon ci-dessus. Absent par défaut (aucun pictogramme).
+	// See ListIcon above. Absent by default (no pictogram).
 	listIcon?: ListIcon;
 }
 
@@ -44,14 +43,14 @@ export interface Wantlist {
 	id: string;
 	name: string;
 	dateCreated?: number;
-	// Même champ/même raisonnement que CollectionList.coverCardId ci-dessus,
-	// côté wantlist (WantlistSettingsModal, "Choose cover image") — l'id
-	// d'une WantlistCard de CETTE wantlist. Voir resolveCoverImage/
-	// groupByWantlist (price.ts).
+	// Same field/same reasoning as CollectionList.coverCardId above, on the
+	// wantlist side (WantlistSettingsModal, "Choose cover image") — the id of
+	// a WantlistCard of THIS wantlist. See resolveCoverImage/groupByWantlist
+	// (price.ts).
 	coverCardId?: string;
-	// Voir ListIcon ci-dessus. Même champ/même raisonnement que
-	// CollectionList.listIcon, côté wantlist (WantlistSettingsModal, "Choose
-	// icon").
+	// See ListIcon above. Same field/same reasoning as
+	// CollectionList.listIcon, on the wantlist side (WantlistSettingsModal,
+	// "Choose icon").
 	listIcon?: ListIcon;
 }
 
@@ -75,53 +74,50 @@ export interface DeckCard {
 	count: number;
 	dateAdded: number;
 	dateModified: number;
-	// Absent sur les entrées créées avant cette fonctionnalité : traité comme
-	// "possédée" partout où ce champ est lu (voir isDeckCardOwned), pour ne
-	// rien changer visuellement aux decks existants.
+	// Absent on entries created before this feature: treated as "owned"
+	// everywhere this field is read (see isDeckCardOwned), so as to change
+	// nothing visually for existing decks.
 	owned?: boolean;
-	// Voir le commentaire sur CollectionCard (types.ts) pour le raisonnement complet
-	// — même champs, même raison d'être optionnelle (donnée immuable ajoutée
-	// après coup, rattrapée une fois par MTGCollectionPlugin.backfillBorderData).
+	// See the comment on CollectionCard (types.ts) for the full reasoning — same
+	// fields, same reason for being optional (immutable data added after the fact,
+	// caught up once by MTGCollectionPlugin.backfillBorderData).
 	borderColor?: string;
 	frame?: string;
 	frameEffects?: string[];
-	// Même raisonnement, rattrapé par backfillOracleTextData() (voir
+	// Same reasoning, caught up by backfillOracleTextData() (see
 	// CollectionCard.oracleText, types.ts).
 	oracleText?: string;
-	// Absent = "mainboard" (voir getDeckCardCategory) — le cas de très loin
-	// le plus courant (toute entrée créée avant cette fonctionnalité, et
-	// toute entrée ajoutée par un chemin autre que l'import de decklist, voir
-	// le commentaire sur DeckCardCategory), pas la peine de le persister pour
-	// rien sur des milliers d'entrées existantes.
+	// Absent = "mainboard" (see getDeckCardCategory) — by far the most common
+	// case (any entry created before this feature, and any entry added by a
+	// path other than decklist import, see the comment on DeckCardCategory),
+	// no point persisting it for nothing on thousands of existing entries.
 	category?: DeckCardCategory;
-	// "Function" (2026-09-02, voir "Group by Function"/vue Stacks, view.ts) —
-	// correction manuelle d'une détection automatique erronée/absente
-	// (detectDeckCardFunction, core/deck-function.ts), pas un système de
-	// tags libres/multi-tags (scoping confirmé explicitement) : une seule
-	// valeur, qui gagne toujours sur la détection automatique quand elle est
-	// présente. Absent = "laisse la détection automatique décider" (le cas
-	// de très loin le plus courant), pas "aucune fonction". Depuis le
-	// 2026-09-07, porte aussi "Commander" (voir isDeckCommander ci-dessus) —
-	// une désignation manuelle pure, jamais un repli auto-détecté, à la
-	// différence de toute autre valeur possible ici.
+	// "Function" (2026-09-02, see "Group by Function"/Stacks view, view.ts) —
+	// manual correction of an erroneous/missing automatic detection
+	// (detectDeckCardFunction, core/deck-function.ts), not a
+	// free-form/multi-tag system (scoping explicitly confirmed): a single
+	// value, which always wins over automatic detection when present. Absent =
+	// "let automatic detection decide" (by far the most common case), not "no
+	// function". Since 2026-09-07, also carries "Commander" (see
+	// isDeckCommander above) — a purely manual designation, never an
+	// auto-detected fallback, unlike any other possible value here.
 	deckFunctionOverride?: string;
-	// Harmonisation du panneau de détail My Decks avec My Collection
-	// (2026-08-25, demandé explicitement) — mêmes 4 champs "état physique"
-	// que CollectionCard (voir son propre commentaire, types.ts), MAIS optionnels
-	// ici pour la même raison que owned?/borderColor?/etc. ci-dessus : un
-	// modèle de données déjà mature avec des milliers d'entrées existantes,
-	// pas parce que la valeur peut légitimement manquer une fois choisie.
-	// Absent = "Regular"/aucune (voir getDeckCardFinish/getDeckCardCondition/
-	// getDeckCardLanguage) — même repli que My Collection (et, depuis,
-	// My Wantlists) ont eux-mêmes une fois leur propre sélecteur Finish/
-	// Language/Condition retiré du flux "Add cards" (add-cards-modal.ts) : une
-	// carte de deck nouvelle (recherche, import CSV/decklist) prend ce repli
-	// par défaut, à affiner
-	// ensuite depuis DeckCardDetailModal comme n'importe quelle autre carte.
-	// addCollectionCardToDeck/addWantlistCardToDeck (plugin.ts) reprennent en
-	// revanche la valeur réelle de la carte source quand elle en a une —
-	// copier un exemplaire déjà suivi vers un deck ne doit pas lui faire
-	// perdre son propre finish/condition/langue.
+	// Harmonization of the My Decks detail panel with My Collection (2026-08-25,
+	// explicitly requested) — same 4 "physical state" fields as CollectionCard
+	// (see its own comment, types.ts), BUT optional here for the same reason as
+	// owned?/borderColor?/etc. above: an already mature data model with thousands
+	// of existing entries, not because the value can legitimately be missing once
+	// chosen. Absent = "Regular"/none (see
+	// getDeckCardFinish/getDeckCardCondition/getDeckCardLanguage) — the same
+	// fallback that My Collection (and, since, My Wantlists) themselves have once
+	// their own Finish/Language/Condition selector was removed from the "Add
+	// cards" flow (add-cards-modal.ts): a new deck card (search, CSV/decklist
+	// import) takes this fallback by default, to be refined afterwards from
+	// DeckCardDetailModal like any other card.
+	// addCollectionCardToDeck/addWantlistCardToDeck (plugin.ts), on the other
+	// hand, carry over the source card's actual value when it has one — copying
+	// an already-tracked copy to a deck must not make it lose its own
+	// finish/condition/language.
 	finish?: Finish;
 	language?: string;
 	condition?: string;
@@ -129,24 +125,24 @@ export interface DeckCard {
 	gradingGrade?: number;
 	gradingLabel?: string;
 	customPrice?: string;
-	// Prix Scryfall en cache (2026-09-02) — mêmes 6 champs que CollectionCard/
-	// WantlistCard (voir leur propre commentaire, types.ts), mêmes deux
-	// raisons d'être optionnels ici : (1) modèle de données déjà mature,
-	// rattrapé une fois pour les decks existants par
-	// MTGCollectionPlugin.backfillDeckCardPrices() ; (2) CONTRAIREMENT à
-	// borderColor/frame/oracleText plus haut (immuables, un seul rattrapage
-	// suffit pour toujours), un prix périme — ces 6 champs sont donc aussi
-	// tenus à jour en continu par MTGCollectionPlugin.refreshAllPrices(),
-	// qui inclut maintenant les decks au même titre que la collection/la
-	// wantlist. `undefined` = "jamais encore rattrapé" (voir toDeckPricedCard,
-	// core/price.ts, pour le repli "" utilisé à l'affichage) ; une fois
-	// rattrapé, une chaîne vide est un résultat définitif (Scryfall n'a
-	// simplement aucun prix connu pour cette impression), pas un échec.
-	// Peuplé directement à la création par les mêmes sites que borderColor/
-	// frame/frameEffects/oracleText (addCardToDeck, importDecklistToDeck,
-	// importDeckCsv, changeDeckCardPrinting) ; addCollectionCardToDeck/
-	// addWantlistCardToDeck reprennent le prix déjà connu de la carte source
-	// (voir DeckSourceCard ci-dessous) plutôt que de le réinventer.
+	// Cached Scryfall price (2026-09-02) — same 6 fields as
+	// CollectionCard/WantlistCard (see their own comment, types.ts), same two
+	// reasons for being optional here: (1) already mature data model, caught
+	// up once for existing decks by
+	// MTGCollectionPlugin.backfillDeckCardPrices(); (2) UNLIKE
+	// borderColor/frame/oracleText above (immutable, a single catch-up is
+	// enough forever), a price goes stale — these 6 fields are therefore also
+	// kept up to date continuously by MTGCollectionPlugin.refreshAllPrices(),
+	// which now includes decks just like the collection/wantlist. `undefined`
+	// = "never caught up yet" (see toDeckPricedCard, core/price.ts, for the ""
+	// fallback used at display time); once caught up, an empty string is a
+	// definitive result (Scryfall simply has no known price for this
+	// printing), not a failure. Populated directly at creation by the same
+	// sites as borderColor/frame/frameEffects/oracleText (addCardToDeck,
+	// importDecklistToDeck, importDeckCsv, changeDeckCardPrinting);
+	// addCollectionCardToDeck/addWantlistCardToDeck carry over the price
+	// already known for the source card (see DeckSourceCard below) rather than
+	// reinventing it.
 	priceUsd?: string;
 	priceUsdFoil?: string;
 	priceEur?: string;
@@ -163,15 +159,14 @@ export function getDeckCardCategory(card: DeckCard): DeckCardCategory {
 	return card.category ?? "mainboard";
 }
 
-// Onglets "board" affichés au-dessus de la liste des cartes d'un deck
-// (renderDeckBoardTabs, view.ts) — remplace l'ancien regroupement "Category"
-// (retiré de DECK_GROUP_BY_OPTIONS, card-sorting.ts, sur demande explicite).
-// Simple alias de DeckCardCategory (même 3 valeurs) plutôt qu'un type propre
-// dupliqué — les deux coïncident exactement depuis que Commander est devenu
-// une Function plutôt qu'une 4e catégorie (voir DeckCardCategory ci-dessus)
-// ; gardé comme alias distinct (pas juste "DeckCardCategory" partout) pour
-// la clarté sémantique à chaque site d'utilisation : "quel onglet" (UI) vs
-// "le board réel de cette carte" (donnée).
+// "Board" tabs displayed above a deck's card list (renderDeckBoardTabs,
+// view.ts) — replaces the old "Category" grouping (removed from
+// DECK_GROUP_BY_OPTIONS, card-sorting.ts, on explicit request). Simple alias
+// of DeckCardCategory (same 3 values) rather than a duplicated type of its
+// own — the two coincide exactly since Commander became a Function rather
+// than a 4th category (see DeckCardCategory above); kept as a distinct alias
+// (not just "DeckCardCategory" everywhere) for semantic clarity at each use
+// site: "which tab" (UI) vs "this card's actual board" (data).
 export type DeckBoardTab = DeckCardCategory;
 
 export const DECK_BOARD_TABS: { value: DeckBoardTab; label: string }[] = [
@@ -180,26 +175,25 @@ export const DECK_BOARD_TABS: { value: DeckBoardTab; label: string }[] = [
 	{ value: "maybeboard", label: "Maybeboard" },
 ];
 
-// Un onglet correspond exactement à une catégorie — plus de fusion à faire
-// ici depuis que Commander n'est plus une valeur de DeckCardCategory du tout
-// (voir son propre commentaire) : une carte Commander est déjà, par
-// construction, catégorisée "mainboard" comme n'importe quelle autre carte
-// du deck principal.
+// A tab corresponds to exactly one category — no more merging to do here
+// since Commander is no longer a DeckCardCategory value at all (see its own
+// comment): a Commander card is already, by construction, categorized
+// "mainboard" like any other card of the main deck.
 export function deckBoardTabMatches(card: DeckCard, tab: DeckBoardTab): boolean {
 	return getDeckCardCategory(card) === tab;
 }
 
-// "Function" résolue d'une carte de deck (Ramp/Removal/Draw/etc., voir
-// "Group by Function"/vue Stacks) — la correction manuelle
-// (deckFunctionOverride) l'emporte toujours, sinon la détection
-// automatique (detectDeckCardFunction, core/deck-function.ts), sinon le
-// type de carte lui-même (primaryType, card-sorting.ts) comme dernier
-// repli, pour qu'une carte affiche toujours une valeur plutôt que rien.
-// card-sorting.ts's groupLabelFor/groupSortValue réimplémentent cette même
-// chaîne inline plutôt que d'appeler cette fonction (elles opèrent sur un
-// SortableCard générique, pas un DeckCard précis) — ce petit doublon reste
-// dans l'esprit des autres petits "getters de repli" déjà établis dans ce
-// fichier (getDeckCardFinish/etc.).
+// Resolved "Function" of a deck card (Ramp/Removal/Draw/etc., see "Group
+// by Function"/Stacks view) — the manual correction (deckFunctionOverride)
+// always wins, otherwise automatic detection (detectDeckCardFunction,
+// core/deck-function.ts), otherwise the card type itself (primaryType,
+// card-sorting.ts) as the last fallback, so that a card always shows a
+// value rather than nothing. card-sorting.ts's
+// groupLabelFor/groupSortValue reimplement this same chain inline rather
+// than calling this function (they operate on a generic SortableCard, not
+// a specific DeckCard) — this small duplication stays in the spirit of the
+// other small "fallback getters" already established in this file
+// (getDeckCardFinish/etc.).
 export function getDeckCardFunction(card: DeckCard): string {
 	return card.deckFunctionOverride || detectDeckCardFunction(card) || primaryType(card.typeLine);
 }
@@ -208,10 +202,10 @@ export function isDeckCommander(card: DeckCard): boolean {
 	return getDeckCardFunction(card) === "Commander";
 }
 
-// Voir le commentaire sur DeckCard.finish/language/condition ci-dessus pour
-// le raisonnement complet — même repli "Regular"/aucune que CollectionCard avait
-// par défaut avant le retrait du trio Finish/Language/Condition du flux
-// "Add cards" (add-cards-modal.ts).
+// See the comment on DeckCard.finish/language/condition above for the full
+// reasoning — same "Regular"/none fallback that CollectionCard had by default
+// before the Finish/Language/Condition trio was removed from the "Add cards"
+// flow (add-cards-modal.ts).
 export function getDeckCardFinish(card: DeckCard): Finish {
 	return card.finish ?? "regular";
 }
@@ -224,10 +218,10 @@ export function getDeckCardLanguage(card: DeckCard): string {
 	return card.language ?? "";
 }
 
-// Sous-ensemble de champs nécessaire pour ajouter une carte à un deck :
-// aussi bien CollectionCard (My Collection) que WantlistCard (My Wantlists)
-// le satisfont, pas besoin de dupliquer addCollectionCardToDeck/
-// addWantlistCardToDeck pour chaque forme de carte source.
+// Subset of fields needed to add a card to a deck: both CollectionCard (My
+// Collection) and WantlistCard (My Wantlists) satisfy it, no need to
+// duplicate addCollectionCardToDeck/addWantlistCardToDeck for each source
+// card shape.
 export interface DeckSourceCard {
 	scryfallId: string;
 	name: string;
@@ -247,23 +241,21 @@ export interface DeckSourceCard {
 	frame?: string;
 	frameEffects?: string[];
 	oracleText?: string;
-	// Voir DeckCard.finish/language/condition ci-dessus — reportés tels
-	// quels sur la nouvelle ligne de deck par addCollectionCardToDeck/
-	// addWantlistCardToDeck quand la carte source en a (CollectionCard a les
-	// trois, WantlistCard n'a que finish) : contrairement à
-	// borderColor/frame/oracleText, qui sont des faits intrinsèques de
-	// l'impression, ce sont des attributs de l'EXEMPLAIRE physique qu'on est
-	// justement en train de copier — les perdre au passage serait une vraie
-	// régression, pas une simplification.
+	// See DeckCard.finish/language/condition above — carried over as is onto
+	// the new deck row by addCollectionCardToDeck/addWantlistCardToDeck when
+	// the source card has them (CollectionCard has all three, WantlistCard
+	// only has finish): unlike borderColor/frame/oracleText, which are
+	// intrinsic facts of the printing, these are attributes of the physical
+	// COPY being copied — losing them along the way would be a real
+	// regression, not a simplification.
 	finish?: Finish;
 	condition?: string;
 	language?: string;
-	// Voir DeckCard.priceUsd/etc. ci-dessus — reporté tel quel plutôt que
-	// rattrapé plus tard par backfillDeckCardPrices() : CollectionCard/
-	// WantlistCard ont déjà ce prix en cache de manière synchrone
-	// (contrairement à un ScryfallCard fraîchement résolu), copier
-	// l'exemplaire ne devrait pas laisser la carte de deck avec un prix
-	// "pas encore su" alors qu'on le connaît déjà.
+	// See DeckCard.priceUsd/etc. above — carried over as is rather than caught
+	// up later by backfillDeckCardPrices(): CollectionCard/WantlistCard
+	// already have this price cached synchronously (unlike a freshly resolved
+	// ScryfallCard), copying the copy should not leave the deck card with a
+	// "not yet known" price when we already know it.
 	priceUsd?: string;
 	priceUsdFoil?: string;
 	priceEur?: string;
@@ -277,33 +269,32 @@ export interface Deck {
 	name: string;
 	cards: DeckCard[];
 	dateCreated?: number;
-	// Clé LEGALITY_SEARCH_FORMATS (card-search.ts, ex. "commander") plutôt
-	// qu'un type union ici — data-model.ts n'importe rien de card-search.ts,
-	// pour éviter tout risque de dépendance circulaire entre ces deux
-	// fichiers core/ ; view.ts/plugin.ts résolvent le libellé affiché en
-	// cherchant cette clé dans LEGALITY_SEARCH_FORMATS. Absent = pas de
-	// format choisi (decks créés avant cette fonctionnalité, ou création
-	// sans format sélectionné) — n'active ni l'affichage du format ni le
-	// badge de légalité par carte (voir deckLegalityBadge, card-search.ts).
+	// LEGALITY_SEARCH_FORMATS key (card-search.ts, e.g. "commander") rather
+	// than a union type here — data-model.ts imports nothing from
+	// card-search.ts, to avoid any risk of circular dependency between these
+	// two core/ files; view.ts/plugin.ts resolve the displayed label by
+	// looking this key up in LEGALITY_SEARCH_FORMATS. Absent = no format
+	// chosen (decks created before this feature, or created without a selected
+	// format) — enables neither the format display nor the per-card legality
+	// badge (see deckLegalityBadge, card-search.ts).
 	format?: string;
-	// "Choose cover image"/"Choose icon" (DeckSettingsModal, harmonisé sur
-	// ListSettingsModal — voir CollectionList.coverCardId/listIcon ci-dessus
-	// pour le raisonnement complet, transposé tel quel). coverCardId
-	// identifie une DeckCard par scryfallId plutôt que par id : DeckCard n'a
-	// pas de champ id propre (voir plus haut), contrairement à CollectionCard.
+	// "Choose cover image"/"Choose icon" (DeckSettingsModal, harmonized with
+	// ListSettingsModal — see CollectionList.coverCardId/listIcon above for
+	// the full reasoning, transposed as is). coverCardId identifies a DeckCard
+	// by scryfallId rather than by id: DeckCard has no id field of its own
+	// (see above), unlike CollectionCard.
 	coverCardId?: string;
 	deckIcon?: ListIcon;
 }
 
-// Filtre de recherche enregistré depuis "Add cards" (bouton "Save filter",
-// voir add-cards-modal.ts) — un instantané de la barre de puces au moment de
-// l'enregistrement : `tokens` sont les jetons bruts de chipTokens (déjà
-// compatibles tels quels avec buildScryfallQueryFromChips/
-// cardMatchesTokens, aucune transformation nécessaire pour les réappliquer),
-// `sortOverride` le tri Scryfall actif le cas échéant (voir
-// AddCardsModal.sortOverride). Persisté comme un réglage ordinaire (voir
-// saveSettings) — contrairement aux caches Scryfall de plugin.ts, une
-// combinaison de filtres ne devient jamais "périmée", donc pas de TTL ici.
+// Search filter saved from "Add cards" ("Save filter" button, see
+// add-cards-modal.ts) — a snapshot of the chip bar at the moment of saving:
+// `tokens` are the raw tokens of chipTokens (already compatible as is with
+// buildScryfallQueryFromChips/cardMatchesTokens, no transformation needed to
+// re-apply them), `sortOverride` the active Scryfall sort if any (see
+// AddCardsModal.sortOverride). Persisted as an ordinary setting (see
+// saveSettings) — unlike plugin.ts's Scryfall caches, a combination of
+// filters never becomes "stale", so no TTL here.
 export interface SavedSearchFilter {
 	id: string;
 	label: string;
@@ -311,12 +302,12 @@ export interface SavedSearchFilter {
 	sortOverride: { order: string; dir: "asc" | "desc" } | null;
 }
 
-// Résumé chiffré du contenu d'un fichier de sauvegarde (voir
+// Numeric summary of the content of a backup file (see
 // MTGCollectionPlugin.exportBackup/parseBackupFile/restoreBackup) —
-// délibérément un sous-ensemble léger (des compteurs + la date d'export),
-// pas les données elles-mêmes, affiché par RestoreBackupConfirmModal avant
-// de confirmer une restauration (destructive : remplace toute la
-// collection/decks/wantlists actuels).
+// deliberately a light subset (counters + the export date), not the data
+// itself, displayed by RestoreBackupConfirmModal before confirming a
+// restore (destructive: replaces the whole current
+// collection/decks/wantlists).
 export interface BackupSummary {
 	cards: number;
 	lists: number;
@@ -342,18 +333,17 @@ export interface MTGCollectionSettings {
 	lastPriceRefresh: number;
 	priceCurrency: PriceCurrency;
 	cardbaseApiKey: string;
-	// Sauvegardes automatiques (2026-09-02, voir MTGCollectionPlugin.
-	// maybeAutoBackup/runAutoBackup) — même schéma intervalle/horodatage que
-	// priceRefreshIntervalHours/lastPriceRefresh juste au-dessus (0 =
-	// désactivé, sinon un nombre d'heures). autoBackupFolder est un chemin de
-	// dossier DANS la vault elle-même (pas le dossier privé du plugin — voir
-	// runAutoBackup) : ces fichiers doivent rester visibles/déplaçables/
-	// synchronisables comme n'importe quel autre fichier de la vault.
-	// autoBackupKeepCount borne combien de sauvegardes automatiques sont
-	// conservées avant que les plus anciennes soient déplacées à la
-	// corbeille (jamais les fichiers qui ne portent pas le préfixe
-	// "auto-", voir AUTO_BACKUP_FILE_PREFIX — une sauvegarde manuelle
-	// déposée dans le même dossier n'est jamais concernée).
+	// Automatic backups (2026-09-02, see
+	// MTGCollectionPlugin.maybeAutoBackup/runAutoBackup) — same
+	// interval/timestamp scheme as priceRefreshIntervalHours/lastPriceRefresh
+	// just above (0 = disabled, otherwise a number of hours). autoBackupFolder
+	// is a folder path INSIDE the vault itself (not the plugin's private
+	// folder — see runAutoBackup): these files must stay
+	// visible/movable/syncable like any other vault file. autoBackupKeepCount
+	// bounds how many automatic backups are kept before the oldest ones are
+	// moved to the trash (never files that don't carry the "auto-" prefix, see
+	// AUTO_BACKUP_FILE_PREFIX — a manual backup dropped in the same folder is
+	// never affected).
 	autoBackupIntervalHours: number;
 	lastAutoBackup: number;
 	autoBackupFolder: string;
@@ -374,9 +364,9 @@ export interface MTGCollectionSettings {
 	deckSortReverse: boolean;
 	deckGroupReverse: boolean;
 	deckViewMode: CardViewMode;
-	// Onglet "board" actif (voir DeckBoardTab ci-dessus) — global comme
-	// deckGroupBy/deckViewMode, pas propre à un deck précis : même
-	// convention que le reste de l'état d'affichage de My Decks.
+	// Active "board" tab (see DeckBoardTab above) — global like
+	// deckGroupBy/deckViewMode, not specific to a given deck: same convention
+	// as the rest of My Decks' display state.
 	deckActiveBoard: DeckBoardTab;
 	wantlistGroupBy: GroupByOption;
 	wantlistSortBy: SortByOption;
@@ -384,36 +374,37 @@ export interface MTGCollectionSettings {
 	wantlistGroupReverse: boolean;
 	wantlistViewMode: CardViewMode;
 	savedSearchFilters: SavedSearchFilter[];
-	// Bloc "Market Trends" de Home (2026-09-23) : période et vendeur choisis,
-	// mémorisés d'une session à l'autre — avant, tout repartait à "24h / tous
-	// vendeurs" à chaque re-rendu de Home (voir renderHomeMarketTrends).
-	// homeMoversVendor vaut "" pour "tous vendeurs" : un `undefined` ne
-	// survivrait pas à la sérialisation JSON de data.json. Un data.json plus
-	// ancien n'a pas ces champs : loadSettings/restoreBackup les complètent
-	// via DEFAULT_SETTINGS, et le rendu ignore de toute façon une valeur qui
-	// n'est plus une période/un vendeur connu (fichier édité à la main, ou
-	// vendeur retiré d'une version future).
+	// Home's "Market Trends" block (2026-09-23): chosen period and vendor,
+	// remembered from one session to the next — before, everything restarted
+	// at "24h / all vendors" on every Home re-render (see
+	// renderHomeMarketTrends). homeMoversVendor is "" for "all vendors": an
+	// `undefined` would not survive the JSON serialization of data.json. An
+	// older data.json doesn't have these fields: loadSettings/restoreBackup
+	// fill them in via DEFAULT_SETTINGS, and the rendering ignores in any case
+	// a value that is no longer a known period/vendor (hand-edited file, or a
+	// vendor removed in a future version).
 	homeMoversPeriod: CardbaseMoverPeriod;
 	homeMoversVendor: CardbaseVendor | "";
-	// Suppressions à propager entre appareils (voir core/settings-merge.ts) :
-	// collection → clé de l'entité → date de suppression. Absent tant que rien
-	// n'a été supprimé ; volontairement PAS dans DEFAULT_SETTINGS (un objet
-	// partagé par référence entre toutes les instances serait muté par erreur).
+	// Deletions to propagate between devices (see core/settings-merge.ts):
+	// collection → entity key → deletion date. Absent as long as nothing has
+	// been deleted; deliberately NOT in DEFAULT_SETTINGS (an object shared by
+	// reference among all instances would be mutated by mistake).
 	syncTombstones?: Record<string, Record<string, number>>;
-	// Synchronisation optionnelle via un dépôt GitHub privé (src/plugin/github-sync.ts), en
-	// plus de Syncthing. Propres à chaque appareil (core/device-settings.ts) : le jeton
-	// d'accès, lui, n'est JAMAIS dans ces réglages (stockage secret d'Obsidian).
+	// Optional synchronization through a private GitHub repository
+	// (src/plugin/github-sync.ts), in addition to Syncthing. Specific to each device
+	// (core/device-settings.ts): the access token, for its part, is NEVER in these settings
+	// (Obsidian's secret storage).
 	githubSyncEnabled: boolean;
-	githubRepo: string; // "propriétaire/nom"
+	githubRepo: string; // "owner/name"
 	githubBranch: string;
-	githubPath: string; // dossier du dépôt qui contient data.json
-	// Adresse de l'API, vide = api.github.com. Pas dans l'interface : sert à GitHub Enterprise et aux
-	// tests contre un faux serveur (tools/android/mock-github.mjs).
+	githubPath: string; // folder of the repository that contains data.json
+	// API address, empty = api.github.com. Not in the interface: serves GitHub Enterprise and tests
+	// against a fake server (tools/android/mock-github.mjs).
 	githubApiBase: string;
-	// Dossier de la vault qui contient le fichier de données ("" = le dossier du plugin, comportement
-	// d'origine). Propre à l'appareil : il faut le connaître AVANT de pouvoir lire les données (voir
-	// settings-sync.ts, readSettingsFromDisk), et il doit être le même sur tous les appareils que
-	// l'utilisateur synchronise entre eux.
+	// Vault folder that contains the data file ("" = the plugin's folder, original behavior).
+	// Specific to the device: it has to be known BEFORE the data can be read (see settings-sync.ts,
+	// readSettingsFromDisk), and it must be the same on all the devices the user syncs with each
+	// other.
 	dataFolder: string;
 }
 

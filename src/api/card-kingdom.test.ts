@@ -11,9 +11,9 @@ vi.mock("obsidian", () => ({
 
 import { cardKingdomKey, fetchCardKingdomPricelist } from "./card-kingdom";
 
-// Un tarif qui cherche à faire trébucher la lecture en flux : des accents (octets UTF-8 multiples, qu'une coupure peut séparer), des
-// guillemets et antislashs dans les noms, des accolades dans une chaîne, des objets imbriqués, des lignes à écarter (prix nul, sans url,
-// sans scryfall_id), un doublon scryfall_id+finition (la première ligne gagne) et la même carte en foil.
+// A pricelist designed to trip up stream reading: accents (multi-byte UTF-8 sequences that a cut can split),
+// quotes and backslashes in names, braces inside a string, nested objects, rows to discard (zero price, no url,
+// no scryfall_id), a scryfall_id+finish duplicate (the first row wins) and the same card in foil.
 const ROWS = [
 	{ id: 1, scryfall_id: "aaaa", url: "mtg/lea/black-lotus", name: "Black Lotus", is_foil: "false", price_retail: "9999.99", condition_values: { nm_price: "9999.99" } },
 	{ id: 2, scryfall_id: "aaaa", url: "/mtg/lea/black-lotus-foil", name: "Black Lotus", is_foil: "true", price_retail: "12000.00" },
@@ -27,7 +27,7 @@ const ROWS = [
 ];
 const DOC = JSON.stringify({ meta: { created_at: "2026-10-05 14:08:33", base_url: "https://www.cardkingdom.com/" }, data: ROWS });
 
-// Une réponse fetch dont le corps est coupé en morceaux d'OCTETS, aux positions données (donc parfois au milieu d'un caractère).
+// A fetch response whose body is cut into BYTE chunks at the given positions (so sometimes in the middle of a character).
 function streamedResponse(text: string, cuts: number[], failAfterChunk?: number) {
 	const bytes = new TextEncoder().encode(text);
 	const edges = [0, ...cuts.filter((c) => c > 0 && c < bytes.length), bytes.length];
@@ -96,16 +96,17 @@ describe("the same pricelist read as a stream (phone, tablet)", () => {
 	});
 
 	it("an empty map — never a partial one — when anything goes wrong", async () => {
-		// coupure du réseau à mi-réponse : la Map partielle serait gardée pour la session et ferait croire que des cartes n'ont pas de prix
+		// network cut mid-response: the partial Map would be kept for the session and would make it look as if some
+		// cards have no price
 		fetchMock.mockResolvedValueOnce(streamedResponse(DOC, [200, 400, 600], 2));
 		expect((await fetchCardKingdomPricelist({ stream: true })).size).toBe(0);
-		// pas de réseau du tout (fetch rejette : hors ligne, CORS, TLS)
+		// no network at all (fetch rejects: offline, CORS, TLS)
 		fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 		expect((await fetchCardKingdomPricelist({ stream: true })).size).toBe(0);
 		// statut d'erreur
 		fetchMock.mockResolvedValueOnce({ ok: false, status: 503, body: null });
 		expect((await fetchCardKingdomPricelist({ stream: true })).size).toBe(0);
-		// une réponse qui n'a pas la forme d'un tarif
+		// a response that doesn't have the shape of a pricelist
 		fetchMock.mockResolvedValueOnce(streamedResponse('{"error":"maintenance"}', []));
 		expect((await fetchCardKingdomPricelist({ stream: true })).size).toBe(0);
 	});

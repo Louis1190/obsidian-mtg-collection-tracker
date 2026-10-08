@@ -4,8 +4,8 @@ import { requestUrl, RequestUrlParam, RequestUrlResponse } from "obsidian";
 /*  Scryfall API helpers                                                      */
 /* -------------------------------------------------------------------------- */
 
-// Résumé d'une édition tel que renvoyé par /sets (liste complète), utilisé
-// pour l'autocomplétion du champ "Set" dans la recherche d'ajout.
+// Summary of a set as returned by /sets (full list), used for
+// autocompleting the "Set" field in the add-card search.
 export interface ScryfallSetSummary {
 	code: string;
 	name: string;
@@ -33,12 +33,12 @@ export interface ScryfallCard {
 	colors?: string[];
 	keywords?: string[];
 	released_at?: string;
-	// "split" couvre Fire // Ice comme Never // Return (mécanique Aftermath,
-	// fusionnée par Scryfall sous ce même layout — voir getSplitCardInfo plus
-	// bas) ; "transform"/"modal_dfc"/etc. pour les vraies double-face — voir
-	// getDoubleFacedImages, qui ne dépend pas de ce champ (repli sur la
-	// présence/absence d'image_uris à la racine, plus fiable, voir son propre
-	// commentaire).
+	// "split" covers Fire // Ice as well as Never // Return (the Aftermath
+	// mechanic, merged by Scryfall under this same layout — see
+	// getSplitCardInfo further down); "transform"/"modal_dfc"/etc. for real
+	// double-faced cards — see getDoubleFacedImages, which does not depend on
+	// this field (falls back to the presence/absence of image_uris at the
+	// root, more reliable, see its own comment).
 	layout?: string;
 	image_uris?: { normal?: string; small?: string; art_crop?: string };
 	card_faces?: {
@@ -61,44 +61,43 @@ export interface ScryfallCard {
 	};
 	legalities?: Record<string, string>;
 	purchase_uris?: { tcgplayer?: string };
-	// Bordure/cadre (filtre "border:", card-search.ts) — toujours présents au
-	// niveau racine, y compris pour une carte double-face (contrairement à
-	// oracle_text/power/toughness, voir buildCardTextInfo plus bas), donc pas
-	// besoin d'une logique de combinaison de faces ici. Confirmé en direct sur
-	// /cards/search le 2026-08-16 : border_color ∈ {black, white, silver,
-	// gold, yellow, borderless} (gold existe côté API mais 0 carte connue
-	// aujourd'hui) ; frame_effects peut porter plusieurs valeurs à la fois
-	// (ex. ["legendary", "showcase"]) — seules "extendedart"/"showcase" nous
-	// intéressent, voir BORDER_SEARCH_OPTIONS (card-search.ts) ; le cadre
-	// "rétro" n'est ni l'un ni l'autre, c'est frame === "1997".
+	// Border/frame ("border:" filter, card-search.ts) — always present at the
+	// root level, including for a double-faced card (unlike
+	// oracle_text/power/toughness, see buildCardTextInfo further down), so no
+	// face-combining logic is needed here. Confirmed live on /cards/search on
+	// 2026-08-16: border_color ∈ {black, white, silver, gold, yellow,
+	// borderless} (gold exists on the API side but there is no known card
+	// today); frame_effects can carry several values at once (e.g.
+	// ["legendary", "showcase"]) — only "extendedart"/"showcase" interest us,
+	// see BORDER_SEARCH_OPTIONS (card-search.ts); the "retro" frame is neither
+	// of those, it is frame === "1997".
 	border_color?: string;
 	frame?: string;
 	frame_effects?: string[];
 }
 
-// Sous-ensemble de ScryfallCard consommé par MTGCollectionPlugin.getScryfall
-// ImmutableSnapshot (plugin.ts) : à l'origine (2026-08-18) les champs
-// partagés par buildCardTextInfo/getDoubleFacedImages/getSplitCardInfo +
-// purchase_uris.tcgplayer — exactement ce qu'ouvrir une fiche carte a
-// besoin de dériver côté "Card Text"/bouton Flip/bouton Rotate/lien
-// TCGplayer, en un seul aller-retour Scryfall par carte au lieu des 4
-// requêtes indépendantes que faisaient encore, jusque-là, ces 4
-// fonctionnalités pour le même id. Élargi deux fois depuis (2026-09-23,
-// voir les champs eux-mêmes ci-dessous) pour CardPreviewModal (Home's
-// Market Trends, card-preview-modal.ts) : set/set_name/collector_number/
-// rarity/mana_cost/type_line, tout aussi immuables par scryfallId
-// qu'oracle_text/image_uris (une impression donnée ne change jamais
-// d'édition/numéro/rareté/coût/type). Toujours délibérément SANS
-// `prices`/`legalities`/`name`/etc. — un objet mis en cache indéfiniment
-// (voir SCRYFALL_IMMUTABLE_CACHE_FILENAME, jamais de TTL) ne doit
-// structurellement pas pouvoir être relu comme une source de prix/légalité
-// fraîche par erreur ; ces deux-là périment (prix quotidien, légalité
-// re-vérifiée sous 7 jours) alors que rien dans ce Pick ne change jamais
-// une fois l'impression sortie (erratum textuel mis à part). Un objet
-// ScryfallCard complet satisfait toujours structurellement ce type plus
-// étroit (Pick), donc buildCardTextInfo/getDoubleFacedImages/getSplitCardInfo
-// restent appelables sans changement partout ailleurs (import CSV, recherche
-// d'ajout...) où un ScryfallCard complet est déjà disponible.
+// Subset of ScryfallCard consumed by
+// MTGCollectionPlugin.getScryfallImmutableSnapshot (plugin.ts): originally
+// (2026-08-18) the fields shared by
+// buildCardTextInfo/getDoubleFacedImages/getSplitCardInfo +
+// purchase_uris.tcgplayer — exactly what opening a card detail needs to
+// derive for "Card Text"/the Flip button/the Rotate button/the TCGplayer
+// link, in a single Scryfall round trip per card instead of the 4 independent
+// requests that these 4 features were still making, until then, for the same
+// id. Widened twice since (2026-09-23, see the fields themselves below) for
+// CardPreviewModal (Home's Market Trends, card-preview-modal.ts):
+// set/set_name/collector_number/rarity/mana_cost/type_line, just as immutable
+// per scryfallId as oracle_text/image_uris (a given printing never changes
+// set/number/rarity/cost/type). Still deliberately WITHOUT
+// `prices`/`legalities`/`name`/etc. — an object cached indefinitely (see
+// SCRYFALL_IMMUTABLE_CACHE_FILENAME, never a TTL) must structurally not be
+// re-readable as a fresh price/legality source by mistake; those two go stale
+// (daily price, legality re-checked within 7 days) whereas nothing in this
+// Pick ever changes once the printing is out (textual errata aside). A full
+// ScryfallCard object still structurally satisfies this narrower (Pick) type,
+// so buildCardTextInfo/getDoubleFacedImages/getSplitCardInfo remain callable
+// unchanged everywhere else (CSV import, add search...) where a full
+// ScryfallCard is already available.
 export type ScryfallImmutableSnapshot = Pick<
 	ScryfallCard,
 	| "oracle_text"
@@ -125,11 +124,11 @@ export type ScryfallImmutableSnapshot = Pick<
 	| "type_line"
 >;
 
-// Une face individuelle d'une carte à plusieurs faces (split, adventure,
-// flip, transform, modal_dfc, meld...), pour l'affichage "Card Text" du
-// panneau de détail (CardDetailModal.renderCardDescriptionBox,
-// renderCardDescriptionFaces dans card-detail-fx.ts) — voir CardTextInfo.
-// faces plus bas pour le raisonnement complet.
+// A single face of a multi-faced card (split, adventure, flip, transform,
+// modal_dfc, meld...), for the "Card Text" display of the detail panel
+// (CardDetailModal.renderCardDescriptionBox, renderCardDescriptionFaces in
+// card-detail-fx.ts) — see CardTextInfo.faces below for the full
+// reasoning.
 export interface CardTextFace {
 	name: string;
 	manaCost?: string;
@@ -140,47 +139,45 @@ export interface CardTextFace {
 	loyalty?: string;
 }
 
-// Texte de règles + stats (bloc "Card Text" du panneau de détail, voir
-// CardDetailModal.renderCardDescriptionBox) — nom/coût/type sont déjà mis en
-// cache sur CollectionCard/DeckCard/WantlistCard (voir "Files" dans
-// CLAUDE.md), donc pas besoin de les refaire remonter ici ; seuls
-// oracle_text/power/toughness/loyalty n'ont jamais été stockés nulle part
-// dans ce plugin avant ce bloc.
+// Rules text + stats ("Card Text" block of the detail panel, see
+// CardDetailModal.renderCardDescriptionBox) — name/cost/type are already
+// cached on CollectionCard/DeckCard/WantlistCard (see "Files" in CLAUDE.md),
+// so no need to bring them up again here; only
+// oracle_text/power/toughness/loyalty had never been stored anywhere in this
+// plugin before this block.
 export interface CardTextInfo {
 	oracleText: string;
 	power?: string;
 	toughness?: string;
 	loyalty?: string;
-	// Non-undefined UNIQUEMENT pour une carte à plusieurs faces (voir
-	// buildCardTextInfo ci-dessous) — détail par face réelle (chacune avec
-	// son propre nom/coût/type/texte/stats), plutôt que la version fusionnée
-	// ci-dessus. Ajouté suite à un retour explicite (Fire // Ice affichait
-	// ses deux coûts de mana bout à bout et "Instant // Instant" comme type
-	// combiné, jugé illisible) — renderCardDescriptionBox préfère ce champ
-	// dès qu'il est présent, pour afficher chaque face dans sa propre
-	// section séparée d'une ligne discrète plutôt qu'un "//" textuel.
-	// oracleText/power/toughness/loyalty ci-dessus restent la version
-	// fusionnée, inchangée, pour tout code qui n'a pas besoin de cette
-	// séparation.
+	// Non-undefined ONLY for a multi-faced card (see buildCardTextInfo below)
+	// — per-actual-face detail (each with its own name/cost/type/text/stats),
+	// rather than the merged version above. Added following explicit feedback
+	// (Fire // Ice displayed its two mana costs end to end and "Instant //
+	// Instant" as the combined type, judged unreadable) —
+	// renderCardDescriptionBox prefers this field whenever it is present, to
+	// display each face in its own section separated by a discreet line rather
+	// than a textual "//". oracleText/power/toughness/loyalty above remain the
+	// merged version, unchanged, for any code that doesn't need this
+	// separation.
 	faces?: CardTextFace[];
 }
 
-// Cartes double-face (transform/modal/split...) : Scryfall ne renvoie ni
-// oracle_text ni power/toughness/loyalty au niveau racine pour ces cartes-là
-// (contrairement à type_line, toujours une combinaison des deux faces même
-// au niveau racine) — le texte de chaque face vit dans card_faces[]. La
-// version fusionnée (oracleText/power/toughness/loyalty) reste volontaire-
-// ment simple plutôt qu'une mise en page recto/verso complète (repli
-// d'origine, avant que `faces` n'existe) : concatène le texte de chaque
-// face (précédé de son propre nom pour rester lisible), et reprend les
-// stats de la première face qui en a — un DFC créature/planeswalker n'a
-// quasiment jamais ses deux faces avec des stats différentes en même
-// temps, donc ce choix couvre déjà l'immense majorité des cas réels.
-// `faces` (ajouté ensuite) expose en plus le détail par face telle quelle,
-// sans fusion — nom/coût/type propres à CHAQUE face, pas de "//" ni de
-// coûts de mana bout à bout, pour un affichage qui sépare vraiment "Fire"
-// de "Ice" (ou le recto du verso d'une vraie double-face) plutôt que de
-// les combiner dans un seul bloc.
+// Double-faced cards (transform/modal/split...): Scryfall returns neither
+// oracle_text nor power/toughness/loyalty at the root level for these cards
+// (unlike type_line, always a combination of both faces even at the root
+// level) — each face's text lives in card_faces[]. The merged version
+// (oracleText/power/toughness/loyalty) deliberately stays simple rather than
+// a full front/back layout (the original fallback, before `faces` existed):
+// it concatenates each face's text (preceded by its own name to stay
+// readable), and takes the stats of the first face that has any — a
+// creature/planeswalker DFC almost never has both faces with different stats
+// at the same time, so this choice already covers the vast majority of real
+// cases. `faces` (added afterwards) also exposes the per-face detail as is,
+// without merging — name/cost/type specific to EACH face, no "//" nor mana
+// costs end to end, for a display that truly separates "Fire" from "Ice" (or
+// the front from the back of a real double-faced card) rather than combining
+// them in a single block.
 export function buildCardTextInfo(card: ScryfallImmutableSnapshot): CardTextInfo {
 	if (card.oracle_text !== undefined || !card.card_faces || card.card_faces.length === 0) {
 		return {
@@ -218,21 +215,21 @@ export function buildCardTextInfo(card: ScryfallImmutableSnapshot): CardTextInfo
 	};
 }
 
-// Images recto/verso d'une VRAIE carte double-face physique (transform,
-// modal_dfc, reversible_card, double_faced_token — deux illustrations
-// imprimées sur les deux faces d'une même carte), pour le bouton "flip" 3D
-// sous l'image dans les 3 modales de détail. À NE PAS confondre avec les
-// layouts split/adventure/flip/meld, qui ont eux aussi une card_faces[] non
-// vide mais un seul visuel réellement imprimé (les "faces" y décrivent des
-// composants textuels d'une même carte physique, ex. Fire // Ice ou Brazen
-// Borrower/Petty Theft) — vérifié en direct sur /cards/named le 2026-08-16
-// pour les 6 layouts concernés : une vraie carte double-face n'a JAMAIS
-// image_uris au niveau racine (seulement sur chacune de ses 2 card_faces),
-// alors que split/adventure/flip/meld ont TOUJOURS image_uris à la racine
-// (et, pour split/adventure/flip, des card_faces SANS image_uris propre).
-// C'est ce signal — racine sans image, les deux premières faces avec — qui
-// distingue fiablement "il existe un vrai verso à révéler" du reste, sans
-// avoir besoin du champ `layout` lui-même.
+// Front/back images of a REAL physical double-faced card (transform,
+// modal_dfc, reversible_card, double_faced_token — two illustrations
+// printed on the two sides of a single card), for the 3D "flip" button
+// under the image in the 3 detail modals. NOT to be confused with the
+// split/adventure/flip/meld layouts, which also have a non-empty
+// card_faces[] but only one actually printed visual (the "faces" there
+// describe textual components of a single physical card, e.g. Fire // Ice
+// or Brazen Borrower/Petty Theft) — checked live on /cards/named on
+// 2026-08-16 for the 6 layouts concerned: a real double-faced card NEVER
+// has image_uris at the root level (only on each of its 2 card_faces),
+// whereas split/adventure/flip/meld ALWAYS have image_uris at the root
+// (and, for split/adventure/flip, card_faces WITHOUT their own image_uris).
+// It is this signal — root without an image, the first two faces with one —
+// that reliably distinguishes "there is a real back to reveal" from the
+// rest, without needing the `layout` field itself.
 export interface DoubleFacedImages {
 	front: string;
 	back: string;
@@ -248,29 +245,28 @@ export function getDoubleFacedImages(card: ScryfallImmutableSnapshot): DoubleFac
 	return { front, back };
 }
 
-// Cartes "split" (Fire // Ice, Dusk // Dawn...), y compris la mécanique
-// Aftermath (Never // Return) — fusionnée par Scryfall sous ce même layout
-// "split", il n'existe plus de layout "aftermath" séparé (vérifié en direct
-// sur /cards/named le 2026-08-17, pour les deux sous-cas). Contrairement aux
-// vraies cartes double-face ci-dessus, il n'y a ici qu'UN SEUL visuel
-// imprimé dont le texte est tourné à 90° dans le cadre — c'est donc
-// l'AFFICHAGE qu'il faut tourner, pas un second visuel à révéler (voir
-// setupSplitCardRotation, card-detail-fx.ts).
-// Les deux sous-cas ont un comportement différent une fois tournés, d'où le
-// besoin de les distinguer plutôt que de traiter tout layout "split" pareil :
-// sur un split classique, les deux moitiés sont imprimées tournées dans le
-// MÊME sens (confirmé en comparant les images réelles de Fire // Ice) — une
-// seule rotation à 90° les rend donc TOUTES LES DEUX lisibles en même temps.
-// Sur un split Aftermath, SEULE la seconde moitié est tournée (la première
-// reste lisible en portrait — c'est celle qu'on lance normalement depuis la
-// main, avant que la seconde ne devienne castable depuis le cimetière) :
-// aucune rotation unique ne rend les deux lisibles à la fois, donc il n'y a
-// pas d'orientation par défaut universellement correcte pour ce sous-cas —
-// setupSplitCardRotation part donc de portrait pour celui-ci (première
-// moitié déjà lisible sans manipulation), rotation manuelle uniquement.
-// Détecté via keywords ∋ "Aftermath" plutôt qu'un nom de carte ou une
-// heuristique de texte — confirmé en direct : présent au niveau racine de
-// la carte (keywords: ["Aftermath"]), absent des faces elles-mêmes.
+// "Split" cards (Fire // Ice, Dusk // Dawn...), including the Aftermath
+// mechanic (Never // Return) — merged by Scryfall under this same "split"
+// layout, there is no longer a separate "aftermath" layout (checked live on
+// /cards/named on 2026-08-17, for both sub-cases). Unlike the real
+// double-faced cards above, there is only ONE printed visual here whose text
+// is rotated 90° in the frame — so it is the DISPLAY that must be rotated,
+// not a second visual to reveal (see setupSplitCardRotation,
+// card-detail-fx.ts).
+// The two sub-cases behave differently once rotated, hence the need to tell
+// them apart rather than treat every "split" layout the same: on a classic
+// split, both halves are printed rotated in the SAME direction (confirmed by
+// comparing the real images of Fire // Ice) — a single 90° rotation therefore
+// makes BOTH of them readable at the same time. On an Aftermath split, ONLY
+// the second half is rotated (the first stays readable in portrait — it is
+// the one normally cast from hand, before the second becomes castable from
+// the graveyard): no single rotation makes both readable at once, so there is
+// no universally correct default orientation for this sub-case —
+// setupSplitCardRotation therefore starts from portrait for this one (first
+// half already readable without manipulation), manual rotation only.
+// Detected via keywords ∋ "Aftermath" rather than a card name or a text
+// heuristic — confirmed live: present at the card's root level (keywords:
+// ["Aftermath"]), absent from the faces themselves.
 export interface SplitCardInfo {
 	isAftermath: boolean;
 }
@@ -294,8 +290,8 @@ export class ScryfallError extends Error {
 }
 
 let scryfallGateChain: Promise<void> = Promise.resolve();
-// <10 requêtes/seconde avec une marge réelle (≈9 req/s max), pas seulement
-// au ras de la limite documentée par Scryfall.
+// <10 requests/second with a real margin (≈9 req/s max), not just right at
+// the limit documented by Scryfall.
 const SCRYFALL_MIN_GAP_MS = 110;
 
 function reserveScryfallSlot(): Promise<void> {
@@ -310,31 +306,30 @@ export async function requestScryfall(params: RequestUrlParam): Promise<RequestU
 	if (res.status === 429) {
 		const header = res.headers?.["retry-after"] ?? res.headers?.["Retry-After"];
 		const seconds = header ? Number(header) : NaN;
-		// Retry-After valide (secondes, borné à 5s pour ne jamais figer l'UI
-		// trop longtemps) sinon un repli raisonnable — Scryfall n'envoie pas
-		// toujours ce header malgré sa propre documentation.
+		// Valid Retry-After (seconds, capped at 5s so as never to freeze the UI
+		// for too long), otherwise a reasonable fallback — Scryfall does not
+		// always send this header despite its own documentation.
 		const waitMs = Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, 5000) : 2000;
 		await sleep(waitMs);
 	}
 	return res;
 }
 
-// Résultat d'une recherche paginée — `hasMore` reflète le `has_more` brut de
-// la réponse Scryfall (une page fait jusqu'à 175 cartes ; au-delà, une
-// recherche large en a plus à offrir), `totalCards` son `total_cards`
-// (nombre total de résultats de la recherche, toutes pages confondues — pas
-// juste `cards.length`, qui ne compte que CETTE page). Utilisé par
-// searchScryfall et fetchLatestPaperPrintings ci-dessous, tous deux paginés
-// de la même façon via un paramètre `page` optionnel — un seul type de
-// résultat partagé plutôt qu'un par fonction, puisque le call site
-// (AddCardsModal, "Load more") traite les deux de façon interchangeable.
+// Result of a paginated search — `hasMore` reflects the raw `has_more` of
+// the Scryfall response (a page holds up to 175 cards; beyond that, a broad
+// search has more to offer), `totalCards` its `total_cards` (total number of
+// search results, all pages combined — not just `cards.length`, which only
+// counts THIS page). Used by searchScryfall and fetchLatestPaperPrintings
+// below, both paginated the same way through an optional `page` parameter —
+// a single shared result type rather than one per function, since the call
+// site (AddCardsModal, "Load more") treats both interchangeably.
 export interface ScryfallPagedResult {
 	cards: ScryfallCard[];
 	hasMore: boolean;
 	totalCards: number;
 }
 
-// Corps JSON des réponses de recherche et d'erreur de Scryfall (`res.json` est `any` : on le type ici, une fois).
+// JSON body of Scryfall's search and error responses (`res.json` is `any`: we type it here, once).
 interface ScryfallListBody {
 	data?: ScryfallCard[];
 	has_more?: boolean;
@@ -344,17 +339,17 @@ interface ScryfallErrorBody {
 	details?: string;
 }
 
-// order/dir : mêmes valeurs que le paramètre `order` de l'API Scryfall
-// (ex. "usd" pour trier par prix). Sert aux suggestions "Price up"/"Price
-// down" de AddCardsModal (add-cards-modal.ts) — quand fourni, prime sur le
-// choix automatique (tri par édition si un filtre "set:" est actif, sinon
-// par date de sortie) plutôt que de s'y ajouter : un tri explicitement
-// choisi par l'utilisateur doit gagner sur l'heuristique par défaut.
-// `page` (1-indexé, comme l'API Scryfall elle-même) sert au "Load more" de
-// AddCardsModal — une recherche large peut dépasser les 175 résultats
-// qu'une seule page Scryfall renvoie ; jamais transmis par les 2 call sites
-// CSV import de plugin.ts, qui ne veulent toujours que le premier résultat
-// d'un lookup par nom, donc reste implicitement à 1 (défaut) pour eux.
+// order/dir: same values as the `order` parameter of the Scryfall API (e.g.
+// "usd" to sort by price). Used by the "Price up"/"Price down" suggestions
+// of AddCardsModal (add-cards-modal.ts) — when provided, takes precedence
+// over the automatic choice (sort by set if a "set:" filter is active,
+// otherwise by release date) rather than adding to it: a sort explicitly
+// chosen by the user must win over the default heuristic.
+// `page` (1-indexed, like the Scryfall API itself) serves the "Load more"
+// of AddCardsModal — a broad search can exceed the 175 results that a
+// single Scryfall page returns; never passed by the 2 CSV import call sites
+// in plugin.ts, which only ever want the first result of a name lookup, so
+// it implicitly stays at 1 (default) for them.
 export async function searchScryfall(
 	name: string,
 	setCode: string,
@@ -363,12 +358,12 @@ export async function searchScryfall(
 	sortOverride?: { order: string; dir: "asc" | "desc" },
 	page = 1
 ): Promise<ScryfallPagedResult> {
-	// Si un numéro de collector ET un set sont fournis, on peut interroger
-	// directement l'endpoint "cards/{set}/{number}", exact et rapide — un
-	// set+numéro identifie déjà une impression unique, donc les éventuelles
-	// autres puces actives sont de toute façon redondantes dans ce cas.
-	// Pas de pagination possible ici (une seule carte au plus) — page est
-	// ignoré sur cette branche.
+	// If a collector number AND a set are provided, we can query the
+	// "cards/{set}/{number}" endpoint directly, exact and fast — a set+number
+	// already identifies a single printing, so any other active chips are
+	// redundant in that case anyway.
+	// No pagination possible here (at most one card) — page is ignored on this
+	// branch.
 	if (setCode && collectorNumber) {
 		const res = await requestScryfall({
 			url: `https://api.scryfall.com/cards/${encodeURIComponent(
@@ -386,7 +381,7 @@ export async function searchScryfall(
 				(res.json as ScryfallErrorBody | undefined)?.details ?? `Scryfall returned HTTP ${res.status}`
 			);
 		}
-		// 404 sur cet endpoint exact -> on retombe sur la recherche classique
+		// 404 on this exact endpoint -> we fall back to the classic search
 	}
 
 	const parts: string[] = [];
@@ -398,10 +393,9 @@ export async function searchScryfall(
 	if (parts.length === 0) return { cards: [], hasMore: false, totalCards: 0 };
 
 	const fullQuery = parts.join(" ");
-	// Quand un filtre d'édition est actif, trier par édition+numéro croissant
-	// (la première carte du set en premier) est plus utile que le tri par
-	// date de sortie par défaut — toutes les cartes d'une même édition
-	// partagent de toute façon la même date.
+	// When a set filter is active, sorting by set+number ascending (the set's
+	// first card first) is more useful than the default release-date sort —
+	// all cards of the same set share the same date anyway.
 	const hasSetFilter = /\b(set|s):\S+/i.test(fullQuery);
 	const orderParams = sortOverride
 		? `order=${sortOverride.order}&dir=${sortOverride.dir}`
@@ -417,7 +411,7 @@ export async function searchScryfall(
 		throw: false,
 	});
 
-	if (res.status === 404) return { cards: [], hasMore: false, totalCards: 0 }; // aucune carte trouvée, réponse normale de Scryfall
+	if (res.status === 404) return { cards: [], hasMore: false, totalCards: 0 }; // no card found, normal Scryfall response
 	if (res.status !== 200) {
 		throw new ScryfallError(
 			res.status,
@@ -433,12 +427,11 @@ export async function searchScryfall(
 	};
 }
 
-// Cartes les plus récemment sorties, en version papier uniquement (le
-// plugin ne gère que les cartes physiques). Sert de contenu par défaut à
-// l'ouverture de la recherche, avant que l'utilisateur ne tape quoi que ce
-// soit — évite un champ de résultats vide qui grandirait d'un coup une fois
-// la première recherche lancée. `page` — voir searchScryfall ci-dessus,
-// même raisonnement/mécanisme.
+// The most recently released cards, paper version only (the plugin only
+// handles physical cards). Serves as the default content when the search
+// opens, before the user types anything — avoids an empty results area that
+// would suddenly grow once the first search is launched. `page` — see
+// searchScryfall above, same reasoning/mechanism.
 export async function fetchLatestPaperPrintings(
 	sortOverride?: { order: string; dir: "asc" | "desc" },
 	page = 1
@@ -470,8 +463,8 @@ export function getImageUrl(card: ScryfallCard): string {
 	return "";
 }
 
-// Juste l'illustration de la carte, sans le cadre ni le texte : bien mieux
-// adapté à une image de fond (tuile de liste) qu'un scan de carte entière.
+// Just the card's artwork, without the frame or text: much better suited
+// to a background image (list tile) than a scan of the whole card.
 export function getArtCropUrl(card: ScryfallCard): string {
 	if (card.image_uris?.art_crop) return card.image_uris.art_crop;
 	if (card.card_faces?.[0]?.image_uris?.art_crop)
@@ -479,8 +472,8 @@ export function getArtCropUrl(card: ScryfallCard): string {
 	return getImageUrl(card);
 }
 
-// Couleur du symbole d'édition selon la rareté, comme sur les vraies cartes /
-// dans Delver : or pour rare, argent pour uncommon, blanc pour common.
+// Color of the set symbol according to rarity, as on real cards / in Delver:
+// gold for rare, silver for uncommon, white for common.
 export const RARITY_COLORS: Record<string, string> = {
 	mythic: "#d9662b",
 	rare: "#d4af37",
@@ -494,10 +487,10 @@ export function getRarityColor(rarity: string): string {
 	return RARITY_COLORS[rarity?.toLowerCase()] ?? "#ffffff";
 }
 
-// Toutes les impressions existantes d'une carte, par nom exact (`!"Nom"`),
-// utilisé pour proposer un changement d'édition sur une carte déjà en
-// collection (le physique peut appartenir à une autre édition que celle
-// enregistrée par erreur, ou on veut simplement la changer).
+// All existing printings of a card, by exact name (`!"Name"`), used to
+// offer a set change on a card already in the collection (the physical
+// card may belong to a different set than the one recorded by mistake, or
+// we simply want to change it).
 export async function searchAllPrintings(name: string): Promise<ScryfallCard[]> {
 	const query = encodeURIComponent(`!"${name}" unique:prints`);
 	const res = await requestScryfall({
@@ -509,10 +502,10 @@ export async function searchAllPrintings(name: string): Promise<ScryfallCard[]> 
 	return (res.json as ScryfallListBody).data ?? [];
 }
 
-// Applique une couleur à un SVG déjà inséré dans le DOM, directement sur
-// chaque forme (path/circle/rect/polygon/g) plutôt que de compter sur
-// `currentColor`, qui peut échouer selon la structure interne du SVG source
-// (ex : fill défini sur un <g> parent plutôt que sur chaque <path>).
+// Applies a color to an SVG already inserted in the DOM, directly on each
+// shape (path/circle/rect/polygon/g) rather than relying on `currentColor`,
+// which can fail depending on the source SVG's internal structure (e.g.
+// fill defined on a parent <g> rather than on each <path>).
 export function applySvgColor(container: HTMLElement, color: string) {
 	container.style.color = color;
 	container
@@ -528,22 +521,21 @@ export function chunk<T>(arr: T[], size: number): T[][] {
 	return out;
 }
 
-// Genres de set jugés "accessoires" plutôt que le produit principal — un
-// symbole d'édition Scryfall est très souvent partagé entre l'expansion
-// elle-même et ses propres tokens/promos/art series (vérifié en direct sur
-// /sets : 987 éditions non-numériques, seulement 337 symboles distincts).
-// Utilisé par dedupeSetsByIcon ci-dessous pour ne garder que l'entrée la
-// plus "principale" par symbole, plutôt que de lister chaque variante
-// séparément pour une icône visuellement identique (ListSettingsModal,
-// "Choose icon", grille "Set Symbol").
+// Kinds of set judged "accessory" rather than the main product — a
+// Scryfall set symbol is very often shared between the expansion itself
+// and its own tokens/promos/art series (checked live on /sets: 987
+// non-digital sets, only 337 distinct symbols). Used by dedupeSetsByIcon
+// below to keep only the most "main" entry per symbol, rather than listing
+// every variant separately for a visually identical icon
+// (ListSettingsModal, "Choose icon", "Set Symbol" grid).
 const SET_TYPE_DEPRIORITIZED = new Set(["token", "memorabilia", "promo", "minigame"]);
 
-// sets.icon_svg_uri sert de clé de regroupement ; un set sans icône connue
-// (aucun cas réel trouvé au moment d'écrire ceci, mais l'API ne le garantit
-// pas explicitement) retombe sur son propre code, jamais fusionné avec un
-// autre. Ordre d'entrée préservé au sein de chaque groupe : l'entrée
-// gagnante est la première "non accessoire" rencontrée, ou sinon la toute
-// première tout court.
+// sets.icon_svg_uri serves as the grouping key; a set with no known icon
+// (no real case found at the time of writing, but the API doesn't
+// explicitly guarantee it) falls back to its own code, never merged with
+// another. Input order preserved within each group: the winning entry is
+// the first "non-accessory" one encountered, or otherwise the very first
+// one.
 export function dedupeSetsByIcon(sets: ScryfallSetSummary[]): ScryfallSetSummary[] {
 	const byIcon = new Map<string, ScryfallSetSummary>();
 	sets.forEach((s) => {
@@ -560,18 +552,17 @@ export function dedupeSetsByIcon(sets: ScryfallSetSummary[]): ScryfallSetSummary
 	return Array.from(byIcon.values());
 }
 
-// Regroupement de haut niveau de la grille "Set Symbol" (ListSettingsModal,
-// "Choose icon") — demandé sur le modèle de la page de référence Keyrune
-// (https://keyrune.andrewgioia.com/icons.html, 16 catégories), mais dérivé
-// du champ set_type de Scryfall plutôt que copié tel quel : Keyrune tient sa
-// propre liste à la main, set par set, ce qui casserait la mise à jour 100%
-// automatique déjà en place ici (un nouveau set tombe dans le bon groupe
-// tout seul via son set_type, sans qu'aucun code n'ait besoin d'être
-// modifié). 9 groupes plutôt que les 16 de Keyrune — plusieurs de ses
-// catégories (ex. "Global Series", "Guild Kits") n'existent pas comme
-// set_type distinct et ne seraient donc dérivables qu'à la main. Les 22
-// valeurs de set_type réellement observées sur /sets (vérifié en direct)
-// sont toutes couvertes ci-dessous.
+// High-level grouping of the "Set Symbol" grid (ListSettingsModal, "Choose
+// icon") — requested on the model of the Keyrune reference page
+// (https://keyrune.andrewgioia.com/icons.html, 16 categories), but derived
+// from Scryfall's set_type field rather than copied as is: Keyrune maintains
+// its own list by hand, set by set, which would break the 100% automatic
+// update already in place here (a new set lands in the right group by itself
+// through its set_type, without any code needing to change). 9 groups rather
+// than Keyrune's 16 — several of its categories (e.g. "Global Series",
+// "Guild Kits") don't exist as a distinct set_type and could therefore only
+// be derived by hand. The 22 set_type values actually observed on /sets
+// (checked live) are all covered below.
 const SET_TYPE_GROUPS: { label: string; types: string[] }[] = [
 	{ label: "Core sets", types: ["core"] },
 	{ label: "Expansion sets", types: ["expansion"] },
@@ -587,37 +578,33 @@ const SET_TYPE_GROUPS: { label: string; types: string[] }[] = [
 	{ label: "Un-Sets", types: ["funny"] },
 ];
 
-// Repli explicite pour un set_type non couvert ci-dessus (une nouvelle
-// catégorie que Scryfall introduirait après l'écriture de ce fichier) —
-// affiché dans son propre groupe "Other" plutôt qu'exclu silencieusement de
-// la grille.
+// Explicit fallback for a set_type not covered above (a new category
+// Scryfall might introduce after this file was written) — displayed in its
+// own "Other" group rather than silently excluded from the grid.
 export function getSetGroupLabel(setType: string): string {
 	const found = SET_TYPE_GROUPS.find((g) => g.types.includes(setType));
 	return found ? found.label : "Other";
 }
 
-// Ordre d'affichage des groupes dans la grille — "Other" toujours en
-// dernier, pour le même repli que ci-dessus.
+// Display order of the groups in the grid — "Other" always last, for the
+// same fallback as above.
 export const SET_GROUP_ORDER: string[] = [...SET_TYPE_GROUPS.map((g) => g.label), "Other"];
 
-// Nettoyage minimal du SVG avant sa mise en cache / son insertion dans le DOM — utilisé
-// aussi bien pour l'icône personnalisable du ruban (customIconSvg, saisie
-// libre) que pour les SVG d'édition/symbole récupérés chez Scryfall
-// (fetchSetIconSvg/fetchManaSymbolSvg, plugin.ts). Retire :
-// - les balises <script> ;
-// - les attributs de gestion d'évènements (onclick, onload…) ;
-// - les URIs javascript:/data: dans href/xlink:href (ex. <a href="javascript:
-//   ...">, <use href="data:image/svg+xml;base64,...">) — un <script>-less SVG
-//   peut quand même exécuter du code via ces attributs ;
-// - <foreignObject> (peut embarquer du HTML/JS arbitraire dans un contexte
-//   SVG) et les balises d'animation SMIL (<animate>/<set>/<animateTransform>/
-//   <animateMotion>), un vecteur XSS SVG historique via leurs attributs
-//   values/to/from.
-// Reste un nettoyage par regex, pas une garantie : la vraie barrière est
-// setSvgMarkup (ui/svg-markup.ts), qui reconstruit le DOM à partir d'une liste
-// d'autorisations et ne laisse donc passer ni <script>, ni attribut on*, ni
-// href, quoi que ce nettoyage ait laissé. Il reste utile en amont : ce qui est
-// mis en cache sur disque est déjà propre.
+// Minimal SVG cleanup before it is cached / inserted into the DOM — used both for the
+// ribbon's customizable icon (customIconSvg, free input) and for the set/symbol SVGs
+// fetched from Scryfall (fetchSetIconSvg/fetchManaSymbolSvg, plugin.ts). Removes:
+// - <script> tags;
+// - event-handler attributes (onclick, onload…);
+// - javascript:/data: URIs in href/xlink:href (e.g. <a href="javascript:...">, <use
+//   href="data:image/svg+xml;base64,...">) — a <script>-less SVG can still execute code
+//   through these attributes;
+// - <foreignObject> (can embed arbitrary HTML/JS in an SVG context) and the SMIL
+//   animation tags (<animate>/<set>/<animateTransform>/<animateMotion>), a historical
+//   SVG XSS vector through their values/to/from attributes.
+// It remains a regex cleanup, not a guarantee: the real barrier is setSvgMarkup
+// (ui/svg-markup.ts), which rebuilds the DOM from an allow-list and therefore lets
+// through no <script>, no on* attribute, no href, whatever this cleanup left behind. It
+// remains useful upstream: what is cached on disk is already clean.
 export function sanitizeSvg(svg: string): string {
 	let clean = svg.replace(/<script[\s\S]*?<\/script>/gi, "");
 	clean = clean.replace(/\son\w+\s*=\s*"[^"]*"/gi, "");
@@ -629,9 +616,9 @@ export function sanitizeSvg(svg: string): string {
 	return clean;
 }
 
-// Parseur CSV "RFC 4180" minimal : gère les champs entre guillemets contenant
-// des virgules, des retours à la ligne et des guillemets échappés ("").
-// Nécessaire car les exports Delver contiennent du texte de règles multi-lignes.
+// Minimal "RFC 4180" CSV parser: handles quoted fields containing commas, line
+// breaks and escaped quotes (""). Needed because Delver exports contain
+// multi-line rules text.
 export function parseCsv(text: string): string[][] {
 	const rows: string[][] = [];
 	let row: string[] = [];
@@ -682,16 +669,15 @@ export function parseCsv(text: string): string[][] {
 	return rows.filter((r) => !(r.length === 1 && r[0].trim() === ""));
 }
 
-// Échappe un champ pour l'export CSV (downloadListCsv/downloadWantlistCsv,
-// view.ts) : double les guillemets internes (RFC 4180, symétrique de
-// parseCsv ci-dessus) ET protège contre l'injection de formule CSV (CWE-1236)
-// — un champ dont le PREMIER caractère est =, +, -, @, tab ou CR est
-// interprété comme une formule par Excel/LibreOffice/Google Sheets à
-// l'ouverture, pas comme du texte. La plupart des colonnes exportées ici
-// viennent de Scryfall (jamais de risque), mais "Custom Price"/"Grading
-// Label" sont du texte librement tapé — un préfixe apostrophe (convention
-// standard OWASP/GitHub pour ce problème) neutralise la formule tout en
-// restant invisible à l'affichage dans un tableur.
+// Escapes a field for CSV export (downloadListCsv/downloadWantlistCsv,
+// view.ts): doubles internal quotes (RFC 4180, symmetric with parseCsv above)
+// AND protects against CSV formula injection (CWE-1236) — a field whose FIRST
+// character is =, +, -, @, tab or CR is interpreted as a formula by
+// Excel/LibreOffice/Google Sheets on opening, not as text. Most of the
+// columns exported here come from Scryfall (never a risk), but "Custom
+// Price"/"Grading Label" are freely typed text — an apostrophe prefix (the
+// standard OWASP/GitHub convention for this problem) neutralizes the formula
+// while staying invisible when displayed in a spreadsheet.
 const CSV_FORMULA_TRIGGER = /^[=+\-@\t\r]/;
 export function toCsvField(value: string): string {
 	const escaped = value.replace(/"/g, '""');
@@ -699,8 +685,9 @@ export function toCsvField(value: string): string {
 	return `"${defanged}"`;
 }
 
-// Récupère en un minimum de requêtes les données à jour (image, prix) pour un
-// lot d'identifiants Scryfall via l'endpoint /cards/collection (75 max/appel).
+// Fetches up-to-date data (image, price) for a batch of Scryfall identifiers
+// in a minimum number of requests, via the /cards/collection endpoint (75 max
+// per call).
 export function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -708,18 +695,16 @@ export function sleep(ms: number): Promise<void> {
 export async function fetchScryfallCollection(
 	ids: string[],
 	onProgress?: (msg: string) => void,
-	// Appelé après CHAQUE lot de 75 avec uniquement les cartes de ce lot —
-	// ajouté pour MTGCollectionPlugin.bulkFetchLegalities (voir ce fichier),
-	// dont un bug rapporté ("la légalité ne s'affiche qu'une fois tout le
-	// fetch terminé") venait exactement d'ici : sans ce callback, un
-	// appelant qui dérive une Promise par id à partir de la seule Promise
-	// renvoyée par cette fonction voit TOUS ses ids résolus seulement au
-	// tout dernier lot, même ceux dont les données sont arrivées dans le
-	// premier — sur une collection de ~10k cartes (134 lots, ~120ms de
-	// pause entre chacun), ça peut représenter plusieurs dizaines de
-	// secondes d'attente pour rien. Optionnel et sans effet sur les autres
-	// appelants existants (refreshAllPrices, getCardLegalities…), qui ne le
-	// passent pas.
+	// Called after EACH batch of 75 with only the cards of that batch — added
+	// for MTGCollectionPlugin.bulkFetchLegalities (see that file), whose
+	// reported bug ("legality only shows once the whole fetch is done") came
+	// exactly from here: without this callback, a caller that derives one
+	// Promise per id from the single Promise returned by this function sees
+	// ALL its ids resolved only at the very last batch, even those whose data
+	// arrived in the first — on a collection of ~10k cards (134 batches,
+	// ~120ms pause between each), that can mean several tens of seconds of
+	// waiting for nothing. Optional and with no effect on the other existing
+	// callers (refreshAllPrices, getCardLegalities…), which don't pass it.
 	onChunkResolved?: (chunkResults: Map<string, ScryfallCard>) => void
 ): Promise<Map<string, ScryfallCard>> {
 	const map = new Map<string, ScryfallCard>();
@@ -744,9 +729,9 @@ export async function fetchScryfallCollection(
 			});
 		}
 		onChunkResolved?.(chunkMap);
-		// Petite pause entre les lots : bonne pratique demandée par Scryfall
-		// (50-100ms minimum entre requêtes), sans effet perceptible puisque tout
-		// ça tourne en arrière-plan.
+		// Small pause between batches: good practice requested by Scryfall
+		// (50-100ms minimum between requests), with no noticeable effect since all
+		// of this runs in the background.
 		if (i < chunks.length - 1) await sleep(120);
 	}
 	return map;

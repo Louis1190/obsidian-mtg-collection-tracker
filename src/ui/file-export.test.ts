@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { App } from "obsidian";
 
-// file-export.ts importe Notice/Platform depuis "obsidian" au niveau module,
-// ainsi que la modale (qui étend Modal) — même contrainte que
-// scryfall.test.ts : le paquet npm "obsidian" ne fournit que des types, pas
-// d'implémentation runtime. `platform` est un objet MUTABLE partagé : chaque
-// test bascule isMobileApp lui-même (le code lit Platform.isMobileApp à
-// chaque appel). Chaque Notice construite est enregistrée avec tout son
-// historique de messages (constructeur puis setMessage) : le code met UN
-// SEUL Notice à jour sur place plutôt que d'en empiler plusieurs.
+// file-export.ts imports Notice/Platform from "obsidian" at module level, as
+// does the modal (which extends Modal) — same constraint as
+// scryfall.test.ts: the npm package "obsidian" only provides types, no
+// runtime implementation. `platform` is a shared MUTABLE object: each test
+// switches isMobileApp itself (the code reads Platform.isMobileApp on every
+// call). Each Notice constructed is recorded with its whole message history
+// (constructor then setMessage): the code updates a SINGLE Notice in place
+// rather than stacking several.
 type FakeNotice = { history: string[]; duration: number | undefined; hidden: boolean };
 type FakeModalCall = { app: unknown; content: unknown; filename: string; opened: boolean };
 
@@ -38,10 +38,10 @@ vi.mock("obsidian", () => ({
 	normalizePath: (p: string) => p.replace(/[\\/]+/g, "/").replace(/^\/+|\/+$/g, ""),
 }));
 
-// La vraie modale (DOM, Modal d'Obsidian) n'est pas exécutable sous Node :
-// on ne teste ici que la DÉCISION de file-export.ts — l'ouvrir sur mobile,
-// retomber sur l'export direct si elle ne peut pas s'ouvrir. Le contenu de la
-// modale elle-même se vérifie à part (voir CLAUDE.md, "File export").
+// The real modal (DOM, Obsidian's Modal) can't be executed under Node: here
+// we only test the DECISION of file-export.ts — open it on mobile, fall back
+// to direct export if it can't open. The content of the modal itself is
+// verified separately (see CLAUDE.md, "File export").
 vi.mock("../modals/export-destination-modal", () => ({
 	ExportDestinationModal: class {
 		call: FakeModalCall;
@@ -121,7 +121,7 @@ describe("saveExportedFile — mobile app (iOS/Android)", () => {
 
 		const pending = saveExportedFile(app, "3 - Lightning Bolt", "mtg-deck.txt", "text/plain");
 
-		// Ouverte dans la pile même du clic — avant tout await.
+		// Opened in the very stack of the click — before any await.
 		expect(mocks.modals).toHaveLength(1);
 		expect(mocks.modals[0]).toEqual({
 			app,
@@ -130,8 +130,8 @@ describe("saveExportedFile — mobile app (iOS/Android)", () => {
 			opened: true,
 		});
 		await pending;
-		// La fenêtre est seule maîtresse de l'écriture : rien n'est écrit tant
-		// que l'utilisateur n'a pas choisi Save/Share.
+		// The window alone controls the writing: nothing is written until the user
+		// has chosen Save/Share.
 		expect(adapter.write).not.toHaveBeenCalled();
 		expect(mocks.notices).toEqual([]);
 	});
@@ -147,8 +147,8 @@ describe("saveExportedFile — mobile app (iOS/Android)", () => {
 	});
 
 	it("never falls back to the browser download (document is not even touched)", async () => {
-		// L'environnement Vitest est "node" : `document` n'existe pas, donc
-		// toucher au chemin <a download> lèverait une ReferenceError.
+		// The Vitest environment is "node": `document` doesn't exist, so touching
+		// the <a download> path would throw a ReferenceError.
 		const { app } = makeApp();
 		await expect(saveExportedFile(app, "x", "a.csv", "text/csv")).resolves.toBeUndefined();
 	});
@@ -169,22 +169,22 @@ describe("saveExportedFile — mobile fallback when the dialog cannot open", () 
 		expect(adapter.mkdir).toHaveBeenCalledWith(DEFAULT_EXPORT_FOLDER);
 		expect(adapter.write).toHaveBeenCalledWith(`${DEFAULT_EXPORT_FOLDER}/mtg-deck.txt`, "3 - Lightning Bolt");
 		expect(openWithDefaultApp).toHaveBeenCalledWith(`${DEFAULT_EXPORT_FOLDER}/mtg-deck.txt`);
-		// openWithDefaultApp lit this.vault : doit être appelée comme méthode
-		// de `app`, jamais détachée.
+		// openWithDefaultApp reads this.vault: it must be called as a method of
+		// `app`, never detached.
 		expect(openWithDefaultApp.mock.contexts[0]).toBe(app);
 	});
 
 	it("shows visible feedback synchronously, before any async work (the original bug was total silence)", async () => {
 		const { app, adapter } = makeApp();
-		// Aucune des opérations de la vault ne se termine tant qu'on ne le
-		// décide pas — simule une écriture lente/bloquée sur mobile.
+		// None of the vault operations completes until we decide so — simulates a
+		// slow/blocked write on mobile.
 		let releaseWrite!: () => void;
 		adapter.write.mockReturnValue(new Promise<void>((resolve) => (releaseWrite = resolve)));
 
 		const pending = saveExportedFile(app, "x", "mtg-list.csv", "text/csv");
 
-		// Immédiatement après le "tap" : déjà un Notice, persistant (durée 0),
-		// AVANT même que exists()/write() n'aient rendu la main.
+		// Right after the "tap": already a Notice, persistent (duration 0), BEFORE
+		// exists()/write() have even returned control.
 		expect(mocks.notices).toHaveLength(1);
 		expect(mocks.notices[0].history).toEqual(["Exporting mtg-list.csv…"]);
 		expect(mocks.notices[0].duration).toBe(0);
@@ -236,9 +236,9 @@ describe("saveExportedFile — mobile fallback when the dialog cannot open", () 
 	});
 
 	it("reports an unexpected error thrown before the write instead of rejecting silently", async () => {
-		// Pas de app.vault du tout : accéder à app.vault.adapter lève une
-		// TypeError — sans ce filet, elle rejetterait la promesse (jetée par
-		// les appelants) sans aucun message.
+		// No app.vault at all: accessing app.vault.adapter throws a TypeError —
+		// without this safety net, it would reject the promise (discarded by the
+		// callers) with no message at all.
 		const brokenApp = {} as unknown as App;
 
 		await expect(saveExportedFile(brokenApp, "x", "a.csv", "text/csv")).resolves.toBeUndefined();

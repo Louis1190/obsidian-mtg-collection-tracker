@@ -10,14 +10,13 @@ import {
 	SYNC_BACKUP_KEEP,
 } from "./settings-sync";
 
-// settings-sync.ts importe Notice/normalizePath depuis "obsidian" au niveau
-// module (le paquet npm ne fournit que des types) — même contrainte que
-// file-export.test.ts. Les `this` sont de faux plugins minimaux : toutes les
-// fonctions du module prennent `this` en paramètre (voir CLAUDE.md, Phase 5),
-// donc aucune vraie instance de MTGCollectionPlugin n'est nécessaire. Deux
-// faux appareils partagent la MÊME logique mais chacun son propre système de
-// fichiers ; "Syncthing" est simulé en copiant data.json (mtime conservé) de
-// l'un à l'autre.
+// settings-sync.ts imports Notice/normalizePath from "obsidian" at module
+// level (the npm package only provides types) — same constraint as
+// file-export.test.ts. The `this` values are minimal fake plugins: all the
+// module's functions take `this` as a parameter (see CLAUDE.md, Phase 5), so
+// no real instance of MTGCollectionPlugin is needed. Two fake devices share
+// the SAME logic but each have their own file system; "Syncthing" is
+// simulated by copying data.json (mtime preserved) from one to the other.
 const mocks = vi.hoisted(() => ({ notices: [] as string[] }));
 
 vi.mock("obsidian", () => ({
@@ -165,7 +164,7 @@ describe("two devices", () => {
 		const mac = await seededDevice([card("a")], 1000);
 		const ipad = await cloneDevice(mac);
 		setNow(2000);
-		ipad.fs.files.set(DATA, { text: mac.fs.data()!.text, mtime: 2000 }); // même contenu, mtime retouché
+		ipad.fs.files.set(DATA, { text: mac.fs.data()!.text, mtime: 2000 }); // same content, mtime touched up
 		await ipad.checkForExternalChange();
 		expect(ipad.refreshOpenViews).not.toHaveBeenCalled();
 	});
@@ -186,7 +185,7 @@ describe("two devices", () => {
 
 		const [src, dst] = first === "mac" ? [mac, ipad] : [ipad, mac];
 		setNow(3000);
-		// Le fichier d'arrivée est plus récent que celui de la destination.
+		// The incoming file is more recent than the destination's.
 		src.fs.files.set(DATA, { ...src.fs.data()!, mtime: 2900 });
 		dst.fs.files.get(DATA)!.mtime = 2600;
 		expect(deliver(src.fs, dst.fs)).toBe(true);
@@ -209,7 +208,7 @@ describe("two devices", () => {
 		setNow(2200);
 		ipad.settings.collection.push(card("y", { dateModified: 2200 }));
 		await ipad.persistSettings();
-		deliver(mac.fs, ipad.fs); // mac plus ancien que ipad : ne remplace pas
+		deliver(mac.fs, ipad.fs); // mac older than ipad: doesn't replace
 		ipad.fs.files.set(DATA, { text: mac.fs.data()!.text, mtime: 2300 });
 		setNow(2400);
 		await ipad.checkForExternalChange();
@@ -234,7 +233,7 @@ describe("two devices", () => {
 			await ipad.checkForExternalChange();
 			await ipad.persistChain;
 			await vi.waitFor(() => expect(ipad.fs.backups("remote").length).toBeGreaterThan(0));
-			// laisse le fire-and-forget de la sauvegarde se terminer avant le tour suivant
+			// lets the save's fire-and-forget finish before the next turn
 			await new Promise((r) => setTimeout(r, 0));
 		}
 		expect(ipad.fs.backups("remote").length).toBeLessThanOrEqual(SYNC_BACKUP_KEEP);
@@ -273,18 +272,18 @@ describe("deletions", () => {
 	});
 
 	it("a deletion made just before the save is not undone by a copy still on the other device", async () => {
-		// L'utilisateur supprime, et un contrôle externe tombe dans le délai de
-		// regroupement (la suppression n'est pas encore écrite).
+		// The user deletes, and an external check falls within the grouping delay
+		// (the deletion isn't written yet).
 		const mac = await seededDevice([card("a"), card("c")], 1000);
 		const ipad = await cloneDevice(mac);
 		setNow(2000);
 		ipad.settings.collection.push(card("z", { dateModified: 2000 }));
 		await ipad.persistSettings();
 		setNow(2500);
-		mac.settings.collection = mac.settings.collection.filter((c: Obj) => c.id !== "c"); // pas encore sauvegardé
+		mac.settings.collection = mac.settings.collection.filter((c: Obj) => c.id !== "c"); // not saved yet
 		deliver(ipad.fs, mac.fs);
 		await mac.checkForExternalChange();
-		expect(ids(mac)).toEqual(["a", "z"]); // c ne revient pas
+		expect(ids(mac)).toEqual(["a", "z"]); // c does not come back
 	});
 
 	it("a device that skipped a version does not bring a deleted card back", async () => {
@@ -303,22 +302,22 @@ describe("deletions", () => {
 		setNow(3000);
 		await phone.checkForExternalChange();
 		phone.settings.collection = phone.settings.collection.filter((c: Obj) => c.id !== "y");
-		await phone.persistSettings(); // …le téléphone le supprime…
+		await phone.persistSettings(); // …the phone deletes it…
 
 		setNow(4000);
 		ipad.settings.collection.push(card("z", { dateAdded: 4000, dateModified: 4000 }));
-		await ipad.persistSettings(); // …l'iPad écrit autre chose avant d'avoir revu le fichier du téléphone
-		// Conflit Syncthing : le fichier le plus récent (celui de l'iPad, qui contient encore y) l'emporte partout.
+		await ipad.persistSettings(); // …the iPad writes something else before having seen the phone's file again
+		// Syncthing conflict: the most recent file (the iPad's, which still contains y) wins everywhere.
 		expect(deliver(ipad.fs, phone.fs)).toBe(true);
 		setNow(5000);
-		await phone.checkForExternalChange(); // le téléphone fusionne : sa pierre tombale tue y, il garde z…
+		await phone.checkForExternalChange(); // the phone merges: its tombstone kills y, it keeps z…
 		await phone.persistChain;
 		expect(ids(phone)).toEqual(["a", "z"]);
 		expect(deliver(phone.fs, ipad.fs)).toBe(true);
 		setNow(6000);
-		await ipad.checkForExternalChange(); // …et l'iPad l'apprend sans rien perdre.
+		await ipad.checkForExternalChange(); // …and the iPad learns it without losing anything.
 
-		expect(ids(ipad)).toEqual(["a", "z"]); // y reste supprimé, z est conservé
+		expect(ids(ipad)).toEqual(["a", "z"]); // y stays deleted, z is kept
 	});
 
 	it("an edit made after the deletion wins over it", async () => {
@@ -706,10 +705,10 @@ describe("robustness", () => {
 		mac.fs.afterWrite = () => {
 			if (fired) return;
 			fired = true;
-			mac.fs.files.set(DATA, { text: other.fs.data()!.text, mtime: 2000 }); // Syncthing renomme son fichier par-dessus
+			mac.fs.files.set(DATA, { text: other.fs.data()!.text, mtime: 2000 }); // Syncthing renames its file over it
 		};
 		await mac.persistSettings();
-		await mac.persistChain; // le contrôle déclenché par la détection
+		await mac.persistChain; // the check triggered by the detection
 		expect(ids(mac)).toEqual(["a", "m", "o"]);
 		expect(JSON.parse(mac.fs.data()!.text).collection.map((c: Obj) => c.id).sort()).toEqual(["a", "m", "o"]);
 	});
@@ -729,7 +728,7 @@ describe("robustness", () => {
 	});
 });
 
-// Diagnostic lisible quand deux appareils ne convergent pas : ce qui diffère, clé par clé.
+// Readable diagnostic when two devices don't converge: what differs, key by key.
 function describeDiff(a: Obj, b: Obj): string {
 	const lines: string[] = [];
 	for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
@@ -760,7 +759,7 @@ function describeDiff(a: Obj, b: Obj): string {
 
 /* ----------------------- convergence : appareils au hasard ------------------ */
 
-// PRNG déterministe : un échec doit se rejouer à l'identique.
+// Deterministic PRNG: a failure must be replayable identically.
 function mulberry32(seed: number) {
 	return () => {
 		seed |= 0;
@@ -772,12 +771,11 @@ function mulberry32(seed: number) {
 }
 
 describe("random multi-device sessions", () => {
-	// Trois appareils, des centaines d'opérations (ajout/modification/suppression
-	// de cartes, de cartes de deck, réglages), des livraisons de fichier dans le
-	// désordre et des appareils qui ne regardent pas tout de suite (iPad suspendu).
-	// Invariants : les appareils convergent vers le même état ; aucune carte
-	// jamais supprimée ne disparaît ; une carte supprimée et jamais retouchée
-	// ensuite n'est pas ressuscitée.
+	// Three devices, hundreds of operations (adding/modifying/deleting cards, deck
+	// cards, settings), file deliveries out of order and devices that don't look
+	// right away (suspended iPad). Invariants: the devices converge to the same
+	// state; no card that was never deleted disappears; a card deleted and never
+	// touched afterwards isn't resurrected.
 	const MARGIN_MS = 10_000;
 	const SEEDS = Number(process.env.SYNC_STRESS_SEEDS ?? 25);
 	const STEPS = Number(process.env.SYNC_STRESS_STEPS ?? 120);
@@ -794,8 +792,8 @@ describe("random multi-device sessions", () => {
 			const devices = [base, await cloneDevice(base), await cloneDevice(base)];
 
 			let nextId = 0;
-			const lastTouched = new Map<string, number>(); // clé → dernière modif/ajout
-			const lastDeleted = new Map<string, number>(); // clé → dernière suppression
+			const lastTouched = new Map<string, number>(); // key → last modification/addition
+			const lastDeleted = new Map<string, number>(); // key → last deletion
 			const everDeleted = new Set<string>();
 			const keys = ["c0", "c1", "c2", "deck:d0", "deck:d1"];
 			const listKeys: string[] = [];
@@ -824,7 +822,7 @@ describe("random multi-device sessions", () => {
 					c.dateModified = t;
 					touch(c.id);
 				} else if (op < 0.5 && list.length) {
-					pick(list).priceUsd = String(rnd()); // prix rafraîchi : aucune date touchée
+					pick(list).priceUsd = String(rnd()); // refreshed price: no date touched
 				} else if (op < 0.65 && list.length) {
 					const c = pick(list);
 					dev.settings.collection = list.filter((x) => x.id !== c.id);
@@ -864,13 +862,13 @@ describe("random multi-device sessions", () => {
 					deletedLists.add(l.id);
 					listDeleted.set(l.id, t);
 				}
-				// Le plugin sauvegarde 400 ms après chaque modification : une suppression est donc
-				// datée (pierre tombale) quasiment à l'instant de l'opération. Les autres
-				// modifications, elles, peuvent rester en attente quand un contrôle externe tombe.
+				// The plugin saves 400 ms after each modification: a deletion is therefore dated
+				// (tombstone) almost at the instant of the operation. The other modifications, for
+				// their part, can remain pending when an external check falls.
 				const wasDeletion = op >= 0.5 && op < 0.65 ? true : op >= 0.82 && op < 0.88 ? true : op >= 0.97 && op < 0.99;
 				if (wasDeletion || rnd() < 0.8) await dev.persistSettings();
 
-				// Livraisons : parfois, entre deux appareils au hasard ; l'arrivant regarde parfois plus tard.
+				// Deliveries: sometimes, between two random devices; the receiver sometimes looks later.
 				if (rnd() < 0.5) {
 					const from = pick(devices);
 					const to = pick(devices);
@@ -882,8 +880,8 @@ describe("random multi-device sessions", () => {
 				}
 			}
 
-			// Règlement : le délai de regroupement s'écoule partout, puis chaque fichier
-			// finit par atteindre chaque appareil (le plus récent gagne), jusqu'à stabilité.
+			// Settlement: the grouping delay elapses everywhere, then each file ends up
+			// reaching each device (the most recent wins), until stability.
 			for (const dev of devices) {
 				t += 1000;
 				setNow(t);
@@ -893,7 +891,7 @@ describe("random multi-device sessions", () => {
 				for (const from of devices) {
 					for (const to of devices) {
 						if (from === to) continue;
-						// Assez de temps entre deux livraisons pour ne pas déclencher le garde-fou anti-boucle.
+						// Enough time between two deliveries not to trigger the anti-loop safeguard.
 						t += 60_000;
 						setNow(t);
 						if (deliver(from.fs, to.fs)) await to.checkForExternalChange();
@@ -913,17 +911,17 @@ describe("random multi-device sessions", () => {
 			]);
 			const presentLists = new Set<string>(a.settings.lists.map((x: Obj) => x.id));
 			for (const id of listKeys) {
-				// Supprimée puis rebaptisée ailleurs APRÈS : la modification gagne (comme pour une carte).
-				// Les dates réelles sont celles de la PRÉPARATION de l'écriture (jusqu'à quelques pas plus
-				// tard que l'opération quand la sauvegarde est différée) : un écart inférieur à MARGIN_MS
-				// entre la dernière modification et la dernière suppression est ambigu, on ne l'exige pas.
+				// Deleted then renamed elsewhere AFTER: the modification wins (as for a card). The real
+				// dates are those of the PREPARATION of the write (up to a few steps later than the
+				// operation when the save is deferred): a gap smaller than MARGIN_MS between the last
+				// modification and the last deletion is ambiguous, we don't require it.
 				const touched = listTouched.get(id) ?? 0;
 				const deleted = listDeleted.get(id) ?? 0;
 				if (deletedLists.has(id) && Math.abs(touched - deleted) <= MARGIN_MS) continue;
 				const alive = !deletedLists.has(id) || touched > deleted;
 				expect(presentLists.has(id), `list ${id}`).toBe(alive);
 			}
-			// Stabilité : une fois convergés, des échanges supplémentaires n'écrivent plus rien (pas de ping-pong).
+			// Stability: once converged, additional exchanges no longer write anything (no ping-pong).
 			const writesBefore = devices.map((d) => d.fs.dataWrites);
 			for (let extra = 0; extra < 2; extra++) {
 				for (const from of devices) {

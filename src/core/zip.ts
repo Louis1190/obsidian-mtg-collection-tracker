@@ -24,9 +24,9 @@ function crc32(bytes: Uint8Array): number {
 	return (crc ^ 0xffffffff) >>> 0;
 }
 
-// Date/heure au format DOS (bit-packées, requises par le format ZIP) —
-// dérivées de l'heure réelle de création de l'archive ; purement cosmétique,
-// aucun extracteur n'en dépend pour la lecture du contenu.
+// Date/time in DOS format (bit-packed, required by the ZIP format) — derived
+// from the archive's actual creation time; purely cosmetic, no extractor
+// depends on it to read the content.
 function dosDateTime(date: Date): { time: number; date: number } {
 	const time =
 		((date.getHours() & 0x1f) << 11) |
@@ -43,15 +43,14 @@ const LOCAL_HEADER_FIXED_SIZE = 30;
 const CENTRAL_HEADER_FIXED_SIZE = 46;
 const END_OF_CENTRAL_DIR_SIZE = 22;
 
-// Construit un ZIP "stored" à partir d'une liste de fichiers texte —
-// retourne les octets bruts de l'archive, à envelopper dans un Blob par
-// l'appelant (voir MTGCollectionView.downloadZip). Chaque entrée est
-// encodée en UTF-8 (nom ET contenu), avec le bit "UTF-8 filename" (0x0800)
-// du general purpose flag activé, pour que les noms/contenus accentués
-// s'affichent correctement dans tout extracteur conforme. Une seule
-// allocation (buffer pré-dimensionné exactement, puis rempli via
-// DataView) plutôt que de faire grossir un tableau JS au fil de l'eau —
-// un export peut représenter plusieurs centaines de Ko cumulés.
+// Builds a "stored" ZIP from a list of text files — returns the archive's
+// raw bytes, to be wrapped in a Blob by the caller (see
+// MTGCollectionView.downloadZip). Each entry is UTF-8 encoded (name AND
+// content), with the "UTF-8 filename" bit (0x0800) of the general purpose
+// flag set, so that accented names/contents display correctly in any
+// conforming extractor. A single allocation (buffer sized exactly
+// beforehand, then filled via DataView) rather than growing a JS array as
+// we go — an export can add up to several hundred KB.
 export function buildZip(entries: ZipEntry[]): Uint8Array {
 	const encoder = new TextEncoder();
 	const now = dosDateTime(new Date());

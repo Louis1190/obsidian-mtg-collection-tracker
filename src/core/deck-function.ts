@@ -1,48 +1,46 @@
-// Détection automatique de la "fonction" d'une carte dans un deck (Ramp,
-// Removal, Draw, Counters, Tokens, etc.) — inspirée des "Categories"
-// d'Archidekt (voir la vue Stacks, view.ts/renderDeckStacksView), mais
-// dérivée automatiquement du texte de règles déjà en cache (DeckCard.
-// oracleText/keywords, voir "Card Text" dans CLAUDE.md) plutôt qu'un
-// système de tags manuels complet — scoping confirmé explicitement
-// (2026-09-02) : auto-détection d'abord, ajustable ensuite carte par carte
-// (voir DeckCard.deckFunctionOverride, data-model.ts), pas un éditeur de
-// tags libres/multi-tags. Une carte ne reçoit toujours qu'UNE seule
-// fonction — la première règle qui matche l'emporte (ordre ci-dessous),
-// jamais plusieurs à la fois (même choix que "une seule pile" pour la vue
-// Stacks : reste dans le moteur de regroupement existant, qui suppose un
-// seul groupe par carte, plutôt qu'un changement d'architecture partagé
-// par les 3 sections du plugin).
+// Automatic detection of a card's "function" in a deck (Ramp, Removal,
+// Draw, Counters, Tokens, etc.) — inspired by Archidekt's "Categories"
+// (see the Stacks view, view.ts/renderDeckStacksView), but derived
+// automatically from the rules text already cached
+// (DeckCard.oracleText/keywords, see "Card Text" in CLAUDE.md) rather than
+// a full manual tagging system — scoping explicitly confirmed
+// (2026-09-02): auto-detection first, adjustable afterwards card by card
+// (see DeckCard.deckFunctionOverride, data-model.ts), not a
+// free-form/multi-tag editor. A card still gets only ONE function — the
+// first rule that matches wins (order below), never several at once (same
+// choice as "a single pile" for the Stacks view: stays within the existing
+// grouping engine, which assumes a single group per card, rather than an
+// architecture change shared by the plugin's 3 sections).
 //
-// Fichier volontairement autonome (aucun import depuis card-sorting.ts,
-// même si son propre "Land"/primaryType s'y trouve déjà) : card-sorting.ts
-// importe CE fichier (pas l'inverse) pour son cas "function" dans
-// groupSortValue/groupLabelFor — un import dans l'autre sens créerait un
-// vrai cycle. D'où la petite règle "Land" dupliquée ci-dessous plutôt que
-// réutilisée depuis isLand (card-sorting.ts) : un simple regex, pas la
-// peine de risquer un cycle pour ça.
+// Deliberately standalone file (no import from card-sorting.ts, even
+// though its own "Land"/primaryType already live there): card-sorting.ts
+// imports THIS file (not the reverse) for its "function" case in
+// groupSortValue/groupLabelFor — an import the other way would create a
+// real cycle. Hence the small "Land" rule duplicated below rather than
+// reused from isLand (card-sorting.ts): a simple regex, not worth risking
+// a cycle for.
 //
-// Chaque règle a été volontairement gardée simple/lisible (un seul motif
-// principal par catégorie) plutôt que sur-optimisée pour capturer chaque
-// carte existante — les faux négatifs (une carte qui aurait mérité une
-// catégorie mais ne matche aucune règle) retombent sur le type de la carte
-// (voir l'appel à primaryType côté card-sorting.ts), les faux positifs
-// occasionnels se corrigent manuellement via deckFunctionOverride.
+// Each rule has been deliberately kept simple/readable (a single main
+// pattern per category) rather than over-optimized to capture every
+// existing card — false negatives (a card that deserved a category but
+// matches no rule) fall back to the card's type (see the call to
+// primaryType on the card-sorting.ts side), occasional false positives are
+// corrected manually via deckFunctionOverride.
 
-// Ordre = ordre d'affichage des piles ET ordre de priorité de détection
-// (la 1ère règle qui matche l'emporte) — les catégories fonctionnelles
-// d'abord (les plus "intéressantes" à voir groupées), les replis par type
-// ensuite (mêmes libellés que primaryType/MAIN_TYPES, card-sorting.ts,
-// pour rester cohérent avec "Group by Type"). "Commander" (2026-09-07,
-// demandé explicitement — "Commander est une Function", pas une catégorie
-// de board, voir DeckCardCategory dans data-model.ts) en tout premier :
-// contrairement à toutes les autres entrées ci-dessous, elle n'a AUCUNE
-// règle de détection dans FUNCTION_RULES/EVASION_KEYWORDS plus bas — rien
-// dans le texte d'une carte ne permet de deviner "c'est LE commandant de
-// CE deck précis", donc elle n'existe jamais que via deckFunctionOverride,
-// une désignation manuelle pure (voir isDeckCommander, data-model.ts). Sa
-// position en tête ne joue donc aucun rôle dans l'ordre de priorité de
-// détection (jamais atteinte par une règle) — seulement dans l'ordre
-// d'affichage des piles/du picker "Function" (deck-card-detail-modal.ts).
+// Order = display order of the piles AND detection priority order (the 1st
+// rule that matches wins) — functional categories first (the most
+// "interesting" ones to see grouped), type fallbacks after (same labels as
+// primaryType/MAIN_TYPES, card-sorting.ts, to stay consistent with "Group
+// by Type"). "Commander" (2026-09-07, explicitly requested — "Commander is
+// a Function", not a board category, see DeckCardCategory in
+// data-model.ts) comes very first: unlike all the other entries below, it
+// has NO detection rule in FUNCTION_RULES/EVASION_KEYWORDS further down —
+// nothing in a card's text allows guessing "this is THE commander of THIS
+// specific deck", so it only exists through deckFunctionOverride, a purely
+// manual designation (see isDeckCommander, data-model.ts). Its position at
+// the head therefore plays no role in the detection priority order (never
+// reached by a rule) — only in the display order of the piles/the
+// "Function" picker (deck-card-detail-modal.ts).
 export const DECK_FUNCTION_CATEGORIES = [
 	"Commander",
 	"Land",
@@ -76,15 +74,15 @@ interface DeckFunctionRule {
 	test: (oracleText: string) => boolean;
 }
 
-// Motifs volontairement en minuscules (oracleText est passé en lowercase
-// une seule fois par detectDeckCardFunction, pas re-testé par règle) —
-// [^.\n] plutôt que .* : reste dans la MÊME phrase/ligne, évite qu'un motif
-// "traverse" par erreur deux capacités sans rapport séparées par un point.
+// Patterns deliberately lowercase (oracleText is lowercased once by
+// detectDeckCardFunction, not re-tested per rule) — [^.\n] rather than .*:
+// stays within the SAME sentence/line, prevents a pattern from mistakenly
+// "crossing" two unrelated abilities separated by a period.
 const FUNCTION_RULES: DeckFunctionRule[] = [
-	// Motif précis (début de phrase) : "counter target spell" ailleurs dans
-	// le texte (ex. "unless that player pays {2}, counter target spell")
-	// reste un vrai contresort, ce motif le capture aussi via \bcounter
-	// target spell\b sans ancrage strict au début.
+	// Precise pattern (start of sentence): "counter target spell" elsewhere in
+	// the text (e.g. "unless that player pays {2}, counter target spell") is
+	// still a real counterspell, this pattern captures it too through
+	// \bcounter target spell\b without strict anchoring at the start.
 	{ label: "Counterspell", test: (t) => /\bcounter target spell\b/.test(t) },
 	{
 		label: "Removal",
@@ -96,8 +94,8 @@ const FUNCTION_RULES: DeckFunctionRule[] = [
 	{ label: "Counters", test: (t) => /\+1\/\+1 counter/.test(t) || /\bproliferate\b/.test(t) },
 	{ label: "Reanimation", test: (t) => /from (your|a) graveyard to the battlefield/.test(t) },
 	{ label: "Sacrifice", test: (t) => /\bsacrifice (a|an|another)\b/.test(t) },
-	// Terrain d'abord (recherche de terrain = mana, pas une vraie "tutor"
-	// pour une carte précise) — d'où Ramp avant Tutor dans cet ordre.
+	// Land first (a land search = mana, not a real "tutor" for a specific
+	// card) — hence Ramp before Tutor in this order.
 	{
 		label: "Ramp",
 		test: (t) => /search your library for [^.\n]*\bland card\b/.test(t) || /^\{t\}: add \{[wubrgc]\}/m.test(t),
@@ -122,21 +120,20 @@ const EVASION_KEYWORDS = new Set([
 	"daunt",
 ]);
 
-// Retourne undefined si aucune règle ne matche (et que ce n'est pas un
-// terrain) — le repli "type de carte" (primaryType) reste la
-// responsabilité de l'appelant (card-sorting.ts), voir le commentaire
-// d'en-tête ci-dessus pour pourquoi ce fichier reste autonome.
+// Returns undefined if no rule matches (and it isn't a land) — the "card
+// type" fallback (primaryType) remains the caller's responsibility
+// (card-sorting.ts), see the header comment above for why this file stays
+// standalone.
 export function detectDeckCardFunction(card: {
 	typeLine: string;
 	oracleText?: string;
 	keywords?: string[];
 }): string | undefined {
-	// Un terrain garde toujours son propre libellé, même si son texte de
-	// règles matche par ailleurs une autre catégorie (ex. un fetchland
-	// matche aussi le motif "Ramp" ci-dessus) — prévisible, toutes les
-	// terrains restent groupés ensemble plutôt qu'éparpillés selon leur
-	// capacité annexe. Regex dupliquée depuis isLand (card-sorting.ts)
-	// plutôt qu'importée — voir le commentaire d'en-tête.
+	// A land always keeps its own label, even if its rules text otherwise
+	// matches another category (e.g. a fetchland also matches the "Ramp"
+	// pattern above) — predictable, all lands stay grouped together rather
+	// than scattered according to their side ability. Regex duplicated from
+	// isLand (card-sorting.ts) rather than imported — see the header comment.
 	if (/\bLand\b/.test(card.typeLine || "")) return "Land";
 
 	const text = (card.oracleText || "").toLowerCase();
@@ -149,13 +146,13 @@ export function detectDeckCardFunction(card: {
 	return undefined;
 }
 
-// Clé de tri stable pour "Group by Function" (groupSortValue, card-sorting.
-// ts) — un préfixe numérique zéro-paddé suivi du libellé lui-même, comparé
-// en tant que CHAÎNE (String.localeCompare) : évite de mélanger nombre/
-// chaîne dans le même groupBy (voir le commentaire sur groupSortValue,
-// card-sorting.ts, pour pourquoi ce fichier ne renvoie jamais un nombre nu
-// ici). Un libellé absent de DECK_FUNCTION_CATEGORIES (ex. "Other", déjà
-// dans la liste, ou un futur repli imprévu) trie après tous les connus.
+// Stable sort key for "Group by Function" (groupSortValue, card-sorting.ts)
+// — a zero-padded numeric prefix followed by the label itself, compared as
+// a STRING (String.localeCompare): avoids mixing numbers/strings in the
+// same groupBy (see the comment on groupSortValue, card-sorting.ts, for why
+// this file never returns a bare number here). A label absent from
+// DECK_FUNCTION_CATEGORIES (e.g. "Other", already in the list, or an
+// unforeseen future fallback) sorts after all the known ones.
 export function deckFunctionSortKey(label: string): string {
 	const idx = (DECK_FUNCTION_CATEGORIES as readonly string[]).indexOf(label);
 	const rank = idx === -1 ? DECK_FUNCTION_CATEGORIES.length : idx;

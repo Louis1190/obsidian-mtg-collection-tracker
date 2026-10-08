@@ -10,15 +10,15 @@ export interface ListGroup {
 	totalQty: number;
 	totalValue: number;
 	coverImage: string;
-	// Voir CollectionList.listIcon (data-model.ts) — simple passe-plat,
-	// jamais résolu ici (ce module n'a pas accès à Scryfall/au plugin).
+	// See CollectionList.listIcon (data-model.ts) — a simple pass-through,
+	// never resolved here (this module has no access to Scryfall/the plugin).
 	icon?: ListIcon;
 }
 
-// Les trois "sources" de prix réellement disponibles chez Scryfall (voir
-// discussion : Scryfall n'expose qu'un seul chiffre par devise/finition,
-// contrairement à des services comme Delver Lens qui agrègent plusieurs
-// sources par devise - TCGPlayer Low/Mid/High, CardKingdom, etc.).
+// The three price "sources" actually available at Scryfall (see
+// discussion: Scryfall exposes only one figure per currency/finish, unlike
+// services such as Delver Lens that aggregate several sources per currency
+// - TCGPlayer Low/Mid/High, CardKingdom, etc.).
 export type PriceCurrency = "usd" | "eur";
 
 export const CURRENCY_LABELS: Record<PriceCurrency, { name: string; symbol: string }> = {
@@ -26,9 +26,9 @@ export const CURRENCY_LABELS: Record<PriceCurrency, { name: string; symbol: stri
 	eur: { name: "EUR (€)", symbol: "€" },
 };
 
-// Sous-ensemble de champs utilisé par les calculs de prix ci-dessous : aussi
-// bien CollectionCard que WantlistCard le satisfont, pas besoin de dupliquer
-// cette logique pour la wantlist.
+// Subset of fields used by the price calculations below: both CollectionCard
+// and WantlistCard satisfy it, no need to duplicate this logic for the
+// wantlist.
 export interface PricedCard {
 	finish: Finish;
 	priceUsd: string;
@@ -40,21 +40,19 @@ export interface PricedCard {
 	count: number;
 }
 
-// Renvoie le prix brut (chaîne) pour une carte, selon la devise choisie et sa
-// finition — utilise bien usd_foil/eur_foil pour une carte foiled, ou
-// usd_etched/eur_etched pour une carte etched (repli sur le prix non-foil si
-// cette carte n'a pas d'impression etched connue chez Scryfall), plutôt que
-// le prix non-foil par erreur. Surge Foil (surged) n'a PAS de champs de prix
-// dédiés côté Scryfall (pas de usd_surge/eur_surge dans leur API, contrairement
-// à etched) — chaque impression surge foil est son propre objet carte chez
-// Scryfall, disponible en foil seulement pour cette impression précise, donc
-// son prix se trouve déjà dans les champs foil habituels : traité comme
-// "foiled" ici plutôt que comme "etched" (pas de repli séparé nécessaire).
-// Une carte Proxy n'a pas de prix : ce n'est pas un objet réellement possédé/
-// échangeable, elle ne doit pas peser dans la valeur totale de la collection.
-// Pas de repli silencieux vers une autre devise : si le prix demandé est
-// absent, on renvoie "" (plutôt que d'afficher un chiffre trompeur venant
-// d'une autre devise).
+// Returns the raw price (string) for a card, according to the chosen currency
+// and its finish — does use usd_foil/eur_foil for a foiled card, or
+// usd_etched/eur_etched for an etched card (falls back to the non-foil price if
+// that card has no known etched printing at Scryfall), rather than the non-foil
+// price by mistake. Surge Foil (surged) has NO dedicated price fields on
+// Scryfall's side (no usd_surge/eur_surge in their API, unlike etched) — each
+// surge foil printing is its own card object at Scryfall, available in foil
+// only for that precise printing, so its price is already found in the usual
+// foil fields: treated as "foiled" here rather than as "etched" (no separate
+// fallback needed). A Proxy card has no price: it isn't a really
+// owned/tradeable object, it must not weigh into the collection's total value.
+// No silent fallback to another currency: if the requested price is missing, we
+// return "" (rather than display a misleading figure from another currency).
 export function getRawCardPrice(card: PricedCard, currency: PriceCurrency): string {
 	if (card.finish === "proxy") return "";
 	if (card.finish === "etched") {
@@ -81,17 +79,16 @@ export function cardValue(card: PricedCard, currency: PriceCurrency = "usd"): nu
 	return getCardPriceNumber(card, currency) * card.count;
 }
 
-// Construit un PricedCard depuis une DeckCard (2026-09-02) — DeckCard.finish/
-// priceUsd/etc. sont tous optionnels (voir son propre commentaire, data-
-// model.ts : un modèle de données déjà mature, rattrapé une fois pour les
-// entrées existantes plutôt que garanti présent dès le départ), donc ne
-// satisfont pas structurellement PricedCard (finish/priceUsd/etc. non-
-// optionnels) sans ce petit repli — même "Regular"/chaîne vide que
-// getDeckCardFinish/etc. (data-model.ts) pour un champ pas encore rattrapé.
-// Une fois ce PricedCard construit, getRawCardPrice/formatCardPrice/
-// cardValue s'appliquent à une carte de deck exactement comme à une
-// CollectionCard/WantlistCard — même gestion etched/surged/proxy, sans
-// logique dupliquée.
+// Builds a PricedCard from a DeckCard (2026-09-02) —
+// DeckCard.finish/priceUsd/etc. are all optional (see its own comment,
+// data-model.ts: an already mature data model, caught up once for existing
+// entries rather than guaranteed present from the start), so they don't
+// structurally satisfy PricedCard (non-optional finish/priceUsd/etc.) without
+// this small fallback — the same "Regular"/empty string as
+// getDeckCardFinish/etc. (data-model.ts) for a field not yet caught up. Once
+// this PricedCard is built, getRawCardPrice/formatCardPrice/cardValue apply
+// to a deck card exactly as to a CollectionCard/WantlistCard — same
+// etched/surged/proxy handling, no duplicated logic.
 export function toDeckPricedCard(card: {
 	finish?: Finish;
 	priceUsd?: string;
@@ -116,34 +113,34 @@ export function toDeckPricedCard(card: {
 
 export const LEGALITY_FORMATS: { key: string; label: string }[] = LEGALITY_SEARCH_FORMATS;
 
-// Formate un montant déjà calculé (ex. une somme totale), contrairement à
-// formatCardPrice qui lit le prix brut d'une carte précise.
+// Formats an already computed amount (e.g. a total sum), unlike
+// formatCardPrice which reads the raw price of a specific card.
 export function formatMoney(amount: number, currency: PriceCurrency): string {
 	return `${CURRENCY_LABELS[currency].symbol}${amount.toFixed(2)}`;
 }
 
-// Variation signée ("+€2.50" / "-$1.05"), pour un écart de prix plutôt qu'un
-// montant absolu — le signe passe AVANT le symbole (convention courante pour
-// une variation), et un écart nul s'affiche "+€0.00", jamais "-€0.00" (le
-// signe vient du montant arrondi, pas d'un -0 flottant).
+// Signed change ("+€2.50" / "-$1.05"), for a price difference rather than an
+// absolute amount — the sign comes BEFORE the symbol (common convention for
+// a change), and a zero difference displays "+€0.00", never "-€0.00" (the
+// sign comes from the rounded amount, not from a floating -0).
 export function formatSignedMoney(amount: number, currency: PriceCurrency): string {
 	const rounded = Math.abs(amount).toFixed(2);
 	const sign = amount < 0 && parseFloat(rounded) !== 0 ? "-" : "+";
 	return `${sign}${CURRENCY_LABELS[currency].symbol}${rounded}`;
 }
 
-// Même principe que formatCardPrice, mais pour un résultat de recherche brut
-// (pas encore une CollectionCard) — utilisé dans les aperçus avant ajout.
+// Same principle as formatCardPrice, but for a raw search result (not yet a
+// CollectionCard) — used in previews before adding.
 export function formatScryfallPrice(card: ScryfallCard, currency: PriceCurrency): string {
 	const raw = currency === "eur" ? card.prices?.eur : card.prices?.usd;
 	if (!raw) return "";
 	return `${CURRENCY_LABELS[currency].symbol}${raw}`;
 }
 
-// Règle de couverture d'une liste : vide -> pas d'image, 1 carte -> son
-// illustration, 2 cartes ou plus -> l'illustration de la carte la plus chère
-// (prix unitaire). On utilise l'illustration seule (art_crop) plutôt que le
-// scan de carte entière, bien mieux adaptée à un fond de tuile.
+// Cover rule of a list: empty -> no image, 1 card -> its artwork, 2 or more
+// cards -> the artwork of the most expensive card (unit price). The artwork
+// alone (art_crop) is used rather than the whole card scan, much better
+// suited to a tile background.
 export function pickCoverImage(cards: { artCropUrl: string; imageUrl: string; priceUsd: string }[]): string {
 	if (cards.length === 0) return "";
 	if (cards.length === 1) return cards[0].artCropUrl || cards[0].imageUrl;
@@ -153,11 +150,11 @@ export function pickCoverImage(cards: { artCropUrl: string; imageUrl: string; pr
 	return mostExpensive.artCropUrl || mostExpensive.imageUrl || cards[0].artCropUrl || cards[0].imageUrl;
 }
 
-// Même règle que pickCoverImage ci-dessus, sauf qu'un choix manuel
-// (CollectionList.coverCardId, "Choose cover image" de ListSettingsModal)
-// gagne s'il pointe encore vers une carte réellement présente dans la
-// liste — sinon (carte déplacée/supprimée depuis) repli silencieux sur
-// l'auto-sélection habituelle plutôt qu'une image cassée ou une exception.
+// Same rule as pickCoverImage above, except that a manual choice
+// (CollectionList.coverCardId, ListSettingsModal's "Choose cover image")
+// wins if it still points to a card actually present in the list —
+// otherwise (card moved/deleted since) silent fallback to the usual
+// auto-selection rather than a broken image or an exception.
 export function resolveCoverImage(
 	cards: { id: string; artCropUrl: string; imageUrl: string; priceUsd: string }[],
 	coverCardId?: string
@@ -169,21 +166,21 @@ export function resolveCoverImage(
 	return pickCoverImage(cards);
 }
 
-// Même principe que pickCoverImage ci-dessus, mais pour un Deck : repli sur
-// la Commander du deck si elle en a une (concept idiomatique pour un deck
-// Commander/EDH — voir isDeckCommander, data-model.ts) plutôt que "la
-// carte la plus chère" comme pickCoverImage, sinon la première carte du
-// deck (ordre d'ajout). DeckCard porte désormais un vrai prix persisté
-// (2026-09-02, voir "Data model notes", CLAUDE.md), donc "la carte la plus
-// chère" serait maintenant calculable ici sans aller-retour réseau — mais
-// ce repli-Commander reste délibéré, pas une limitation technique : plus
-// idiomatique pour un deck, et pas remis en cause par le seul fait que le
-// prix soit désormais disponible. Lit deckFunctionOverride directement
-// (pas isDeckCommander/getDeckCardFunction, data-model.ts) plutôt que
-// d'élargir cette interface déjà volontairement étroite avec typeLine/
-// oracleText/keywords — Commander n'existe de toute façon jamais QUE via
-// cette désignation manuelle (voir son propre commentaire), jamais via la
-// détection automatique/le repli type de carte.
+// Same principle as pickCoverImage above, but for a Deck: falls back to the
+// deck's Commander if it has one (idiomatic concept for a Commander/EDH
+// deck — see isDeckCommander, data-model.ts) rather than "the most
+// expensive card" like pickCoverImage, otherwise the deck's first card
+// (order of addition). DeckCard now carries a real persisted price
+// (2026-09-02, see "Data model notes", CLAUDE.md), so "the most expensive
+// card" would now be computable here with no network round trip — but this
+// Commander fallback remains deliberate, not a technical limitation: more
+// idiomatic for a deck, and not called into question by the sole fact that
+// the price is now available. Reads deckFunctionOverride directly (not
+// isDeckCommander/getDeckCardFunction, data-model.ts) rather than widening
+// this already deliberately narrow interface with
+// typeLine/oracleText/keywords — Commander only ever exists through this
+// manual designation anyway (see its own comment), never through automatic
+// detection/the card-type fallback.
 export function pickDeckCoverImage(
 	cards: { artCropUrl: string; imageUrl: string; deckFunctionOverride?: string }[]
 ): string {
@@ -193,11 +190,11 @@ export function pickDeckCoverImage(
 	return chosen.artCropUrl || chosen.imageUrl;
 }
 
-// Même principe que resolveCoverImage ci-dessus — un choix manuel
-// (Deck.coverCardId, "Choose cover image" de DeckSettingsModal) gagne s'il
-// pointe encore vers une carte réellement présente dans le deck, identifiée
-// par scryfallId (DeckCard n'a pas de champ id propre) plutôt que par id
-// comme pour une liste.
+// Same principle as resolveCoverImage above — a manual choice
+// (Deck.coverCardId, DeckSettingsModal's "Choose cover image") wins if it
+// still points to a card actually present in the deck, identified by
+// scryfallId (DeckCard has no id field of its own) rather than by id as for
+// a list.
 export function resolveDeckCoverImage(
 	cards: { scryfallId: string; artCropUrl: string; imageUrl: string; deckFunctionOverride?: string }[],
 	coverCardId?: string
@@ -237,7 +234,7 @@ export interface WantlistGroup {
 	totalQty: number;
 	totalValue: number;
 	coverImage: string;
-	// Voir ListGroup.icon ci-dessus — même passe-plat, côté wantlist.
+	// See ListGroup.icon above — same pass-through, on the wantlist side.
 	icon?: ListIcon;
 }
 

@@ -58,9 +58,9 @@ export function changeWantlistCardPrinting(this: MTGCollectionPlugin, rowId: str
 	void this.saveSettings();
 }
 
-// Renvoie l'entrée résultante (existante ou nouvellement créée) — utilisé
-// par AddCardsModal pour transformer son bouton "Add" en stepper +/-
-// juste après l'ajout, sans avoir à retrouver l'entrée à part.
+// Returns the resulting entry (existing or newly created) — used by
+// AddCardsModal to turn its "Add" button into a +/- stepper right after
+// the addition, without having to find the entry separately.
 
 export function addCardToWantlist(this: MTGCollectionPlugin, card: ScryfallCard, wantlistId: string, options: { finish: Finish }): WantlistCard {
 	const existing = this.settings.wantlist.find(
@@ -141,10 +141,10 @@ export function removeWantlistCard(this: MTGCollectionPlugin, rowId: string) {
 	void this.saveSettings();
 }
 
-// Voir undoAddToCollection (collection-mutations.ts) — même raisonnement, côté wantlist.
-// addCardToWantlist ne dédoublonne que par scryfallId + listId + finish
-// (pas language/condition, une wantlist item n'a jamais les deux), donc
-// cette clé-ci est plus courte que sa contrepartie collection.
+// See undoAddToCollection (collection-mutations.ts) — same reasoning, on the wantlist
+// side. addCardToWantlist only deduplicates by scryfallId + listId + finish (not
+// language/condition, a wantlist item never has either), so this key is shorter than its
+// collection counterpart.
 
 export function undoAddToWantlist(this: MTGCollectionPlugin, 
 	scryfallId: string,
@@ -197,8 +197,8 @@ export function deleteWantlist(this: MTGCollectionPlugin, wantlistId: string) {
 	void this.saveSettings();
 }
 
-// Vide une wantlist (retire toutes ses cartes) sans la supprimer elle-même
-// — même distinction/même raisonnement que clearList côté collection
+// Empties a wantlist (removes all its cards) without deleting it — same
+// distinction/same reasoning as clearList on the collection side
 // (WantlistSettingsModal, "Clear wantlist").
 
 export function clearWantlist(this: MTGCollectionPlugin, wantlistId: string) {
@@ -206,8 +206,8 @@ export function clearWantlist(this: MTGCollectionPlugin, wantlistId: string) {
 	void this.saveSettings();
 }
 
-// Même principe que setListCoverCard (collection-mutations.ts), côté wantlist — voir
-// Wantlist.coverCardId/resolveCoverImage (core/price.ts).
+// Same principle as setListCoverCard (collection-mutations.ts), on the wantlist side
+// — see Wantlist.coverCardId/resolveCoverImage (core/price.ts).
 
 export function setWantlistCoverCard(this: MTGCollectionPlugin, wantlistId: string, cardId: string | undefined) {
 	const wantlist = this.settings.wantlists.find((w) => w.id === wantlistId);
@@ -216,8 +216,8 @@ export function setWantlistCoverCard(this: MTGCollectionPlugin, wantlistId: stri
 	void this.saveSettings();
 }
 
-// Même principe que setListIcon (collection-mutations.ts), côté wantlist — voir
-// Wantlist.listIcon (core/data-model.ts).
+// Same principle as setListIcon (collection-mutations.ts), on the wantlist side
+// — see Wantlist.listIcon (core/data-model.ts).
 
 export function setWantlistIcon(this: MTGCollectionPlugin, wantlistId: string, icon: ListIcon | undefined) {
 	const wantlist = this.settings.wantlists.find((w) => w.id === wantlistId);
@@ -226,7 +226,7 @@ export function setWantlistIcon(this: MTGCollectionPlugin, wantlistId: string, i
 	void this.saveSettings();
 }
 
-// Version groupée de deleteWantlist ci-dessus — voir bulkDeleteLists.
+// Grouped version of deleteWantlist above — see bulkDeleteLists.
 
 export function bulkDeleteWantlists(this: MTGCollectionPlugin, wantlistIds: string[]) {
 	const idSet = new Set(wantlistIds);
@@ -235,13 +235,12 @@ export function bulkDeleteWantlists(this: MTGCollectionPlugin, wantlistIds: stri
 	void this.saveSettings();
 }
 
-// Équivalent findListDuplicateGroups/mergeListDuplicateGroup (voir
-// collection-mutations.ts) pour les wantlists — pas de fonctionnalité "Merge duplicate
-// cards" dédiée existante ici, donc écrit directement plutôt que réutilisé.
-// Clé de déduplication sans
-// langue/condition : WantlistCard n'a ni l'un ni l'autre (une carte
-// pas encore possédée n'a pas d'exemplaire physique à noter/classer),
-// même asymétrie déjà établie ailleurs dans ce fichier.
+// Equivalent of findListDuplicateGroups/mergeListDuplicateGroup (see
+// collection-mutations.ts) for wantlists — no dedicated "Merge duplicate cards"
+// feature exists here, so written directly rather than reused. Deduplication key
+// without language/condition: WantlistCard has neither (a card not yet owned has no
+// physical copy to grade/classify), same asymmetry already established elsewhere in
+// this file.
 
 export function findWantlistDuplicateGroups(this: MTGCollectionPlugin): WantlistCard[][] {
 	const groups = new Map<string, WantlistCard[]>();
@@ -275,9 +274,9 @@ export function mergeWantlistDuplicateGroup(this: MTGCollectionPlugin, entries: 
 	return { removed };
 }
 
-// Fusionne tous les groupes de doublons stricts (findWantlistDuplicateGroups)
-// d'UNE SEULE wantlist — même principe que mergeListDuplicates
-// (collection-mutations.ts), côté wantlist (WantlistSettingsModal, "Merge duplicates").
+// Merges all the strict-duplicate groups (findWantlistDuplicateGroups) of ONE SINGLE
+// wantlist — same principle as mergeListDuplicates (collection-mutations.ts), on the
+// wantlist side (WantlistSettingsModal, "Merge duplicates").
 
 export function mergeWantlistDuplicates(this: MTGCollectionPlugin, wantlistId: string): { merged: number; removed: number } {
 	const groups = this.findWantlistDuplicateGroups().filter((g) => g[0].listId === wantlistId);
@@ -288,9 +287,9 @@ export function mergeWantlistDuplicates(this: MTGCollectionPlugin, wantlistId: s
 	return { merged: groups.length, removed };
 }
 
-// "Merge" — mode sélection de la grille "My Wantlists" (voir
-// MTGCollectionView.wantlistGallerySelectMode/MergeWantlistsModal). Même
-// principe que mergeLists (collection-mutations.ts), côté wantlist.
+// "Merge" — selection mode of the "My Wantlists" grid (see
+// MTGCollectionView.wantlistGallerySelectMode/MergeWantlistsModal). Same
+// principle as mergeLists (collection-mutations.ts), on the wantlist side.
 
 export function mergeWantlists(this: MTGCollectionPlugin, wantlistIds: string[], name: string): Wantlist {
 	const newWantlist = this.createWantlistSilent(name);
@@ -314,9 +313,9 @@ export function renameWantlist(this: MTGCollectionPlugin, wantlistId: string, na
 	void this.saveSettings();
 }
 
-// Copie une carte de wantlist vers une autre wantlist (ou la même) sans
-// retirer l'original — même exclusion de soi-même que copyCollectionCardToList, pour
-// qu'une copie dans sa propre wantlist crée un doublon volontaire.
+// Copies a wantlist card to another wantlist (or the same one) without removing the
+// original — same self-exclusion as copyCollectionCardToList, so that a copy into
+// its own wantlist creates a deliberate duplicate.
 
 export function copyWantlistCardToWantlist(this: MTGCollectionPlugin, cardId: string, targetWantlistId: string) {
 	const card = this.settings.wantlist.find((c) => c.id === cardId);
@@ -344,9 +343,9 @@ export function copyWantlistCardToWantlist(this: MTGCollectionPlugin, cardId: st
 	void this.saveSettings();
 }
 
-// Déplace une carte de wantlist vers une autre wantlist : réutilise
-// copyWantlistCardToWantlist puis retire l'original par son propre id (la
-// nouvelle/fusionnée entrée a toujours un id différent, voir ci-dessus).
+// Moves a wantlist card to another wantlist: reuses
+// copyWantlistCardToWantlist then removes the original by its own id (the
+// new/merged entry always has a different id, see above).
 
 export function moveWantlistCardToWantlist(this: MTGCollectionPlugin, cardId: string, targetWantlistId: string) {
 	this.copyWantlistCardToWantlist(cardId, targetWantlistId);
@@ -354,13 +353,13 @@ export function moveWantlistCardToWantlist(this: MTGCollectionPlugin, cardId: st
 	void this.saveSettings();
 }
 
-// Copie une carte de wantlist vers My Collection, sans la retirer de la
-// wantlist (contrairement à "Mark as acquired") : condition/langue ne sont
-// pas connues pour une carte pas encore possédée, donc réglées à "" pour
-// les deux (aucune valeur choisie — voir getCondition/getLanguage,
-// types.ts, qui décrivent ce repli comme "None" sans qu'il apparaisse
-// comme choix dans un picker) plutôt que de rouvrir un second dialogue —
-// l'utilisateur peut les ajuster ensuite sur la carte.
+// Copies a wantlist card to My Collection, without removing it from the
+// wantlist (unlike "Mark as acquired"): condition/language are not known
+// for a card not yet owned, so set to "" for both (no value chosen — see
+// getCondition/getLanguage, types.ts, which describe this fallback as
+// "None" without it appearing as a choice in a picker) rather than
+// reopening a second dialog — the user can adjust them afterwards on the
+// card.
 
 export function copyWantlistCardToList(this: MTGCollectionPlugin, cardId: string, targetListId: string) {
 	const card = this.settings.wantlist.find((c) => c.id === cardId);
@@ -451,7 +450,7 @@ export function bulkSetWantlistCardCount(this: MTGCollectionPlugin, ids: string[
 	void this.saveSettings();
 }
 
-// Même logique de fusion que copyCollectionCardToList, pour la wantlist.
+// Same merge logic as copyCollectionCardToList, for the wantlist.
 
 export function bulkMoveWantlistCardsToWantlist(this: MTGCollectionPlugin, ids: string[], targetWantlistId: string) {
 	const idSet = new Set(ids);
@@ -484,10 +483,10 @@ export function bulkMoveWantlistCardsToWantlist(this: MTGCollectionPlugin, ids: 
 	void this.saveSettings();
 }
 
-// "Marquer comme acquise" : retire la carte de la wantlist et l'ajoute (ou
-// fusionne, si une entrée identique existe déjà) à My Collection, avec la
-// condition/langue choisies au moment du transfert (la wantlist ne les
-// suit pas) et le foil déjà connu depuis la wantlist.
+// "Mark as acquired": removes the card from the wantlist and adds it (or
+// merges, if an identical entry already exists) to My Collection, with the
+// condition/language chosen at transfer time (the wantlist doesn't track
+// them) and the foil already known from the wantlist.
 
 export function moveWantlistCardToCollection(this: MTGCollectionPlugin, 
 	wantlistCardId: string,
@@ -499,9 +498,9 @@ export function moveWantlistCardToCollection(this: MTGCollectionPlugin,
 	void this.saveSettings();
 }
 
-// Version "bulk" : déplace plusieurs cartes de wantlist en une seule
-// sauvegarde, plutôt que d'appeler moveWantlistCardToCollection en boucle
-// (ce qui déclencherait autant d'écritures sur disque que de cartes).
+// "Bulk" version: moves several wantlist cards in a single save, rather
+// than calling moveWantlistCardToCollection in a loop (which would trigger
+// as many disk writes as cards).
 
 export function moveWantlistCardsToCollection(this: MTGCollectionPlugin, 
 	wantlistCardIds: string[],
@@ -578,6 +577,6 @@ export function moveWantlistCardToCollectionNoSave(this: MTGCollectionPlugin,
 
 /* ------------------------------- Decks -------------------------------- */
 
-// `format` : une clé LEGALITY_SEARCH_FORMATS (card-search.ts, ex.
-// "commander") choisie dans NewDeckModal, ou undefined ("None") — voir
-// Deck.format (data-model.ts) pour le raisonnement complet.
+// `format`: a LEGALITY_SEARCH_FORMATS key (card-search.ts, e.g.
+// "commander") chosen in NewDeckModal, or undefined ("None") — see
+// Deck.format (data-model.ts) for the full reasoning.

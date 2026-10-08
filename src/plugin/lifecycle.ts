@@ -17,25 +17,23 @@ export async function activateView(this: MTGCollectionPlugin) {
 	let leaf: WorkspaceLeaf | null = null;
 	const existing = workspace.getLeavesOfType(VIEW_TYPE_MTG_COLLECTION);
 
-	// Un onglet déjà existant peut s'être retrouvé dans une barre
-	// latérale (gauche/droite) au lieu de l'espace de travail principal
-	// — observé sur iOS/Android : la vue apparaissait coincée dans le
-	// tiroir latéral droit (un WorkspaceMobileDrawer sur mobile),
-	// limitée à ~50% de la largeur de l'écran, alors que sur desktop
-	// c'est un onglet plein écran normal. getLeaf("tab") garantit bien
-	// un nouvel onglet "within the root split" (doc Obsidian ci-dessous),
-	// mais ça ne s'applique qu'à la CRÉATION — un onglet déjà existant,
-	// retrouvé via getLeavesOfType, était simplement révélé là où il se
-	// trouvait déjà, même une fois égaré dans rightSplit/leftSplit (une
-	// restauration de session mobile imparfaite, ou un déplacement
-	// accidentel). On vérifie donc sa racine et on le recrée dans
-	// l'espace principal si nécessaire, plutôt que de le révéler tel quel.
+	// An already existing tab may have ended up in a sidebar (left/right)
+	// instead of the main workspace — observed on iOS/Android: the view
+	// appeared stuck in the right-hand side drawer (a WorkspaceMobileDrawer on
+	// mobile), limited to ~50% of the screen width, whereas on desktop it's a
+	// normal full-screen tab. getLeaf("tab") does guarantee a new tab "within
+	// the root split" (Obsidian doc below), but that only applies to CREATION
+	// — an already existing tab, found via getLeavesOfType, was simply
+	// revealed where it already was, even once misplaced in
+	// rightSplit/leftSplit (an imperfect mobile session restore, or an
+	// accidental move). We therefore check its root and recreate it in the
+	// main workspace if necessary, rather than reveal it as is.
 	if (existing.length > 0 && existing[0].getRoot() === workspace.rootSplit) {
 		leaf = existing[0];
 	} else {
 		if (existing.length > 0) existing[0].detach();
-		// Onglet dans l'espace de travail principal plutôt que dans la
-		// barre latérale : la grille a besoin de largeur pour bien s'afficher.
+		// Tab in the main workspace rather than in the sidebar: the grid needs
+		// width to display properly.
 		leaf = workspace.getLeaf("tab");
 		await leaf.setViewState({ type: VIEW_TYPE_MTG_COLLECTION, active: true });
 	}
@@ -45,25 +43,25 @@ export async function activateView(this: MTGCollectionPlugin) {
 
 
 export async function loadSettings(this: MTGCollectionPlugin) {
-	// Lecture via settings-sync.ts (et non loadData()) : il faut le texte brut du
-	// fichier et sa signature pour pouvoir fusionner plus tard avec une version
-	// venue d'un autre appareil au lieu de l'écraser.
+	// Read via settings-sync.ts (and not loadData()): we need the raw text of the
+	// file and its signature to be able to merge later with a version coming from
+	// another device instead of overwriting it.
 	this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.readSettingsFromDisk());
-	// Tri, mode de vue, menu replié… : propres à cet appareil, jamais synchronisés (core/device-settings.ts).
+	// Sort, view mode, collapsed menu…: specific to this device, never synchronized (core/device-settings.ts).
 	this.loadDeviceLocalSettings();
 	await this.runSettingsMigrations();
 	this.markSettingsLoaded();
 }
 
-// Les 3 rattrapages qui interrogent Scryfall (migrateEnrich*/migrateArtCropUrls)
-// tournent DANS onload() : fetchScryfallCollection ne rattrape pas les erreurs de
-// transport (throw:false ne couvre que les statuts HTTP), donc hors-ligne, derrière
-// un pare-feu à inspection TLS (SSLHandshakeException constaté sur l'émulateur
-// Android) ou sur un portail captif, l'exception remontait jusqu'à onload() et le
-// plugin entier échouait à se charger ("Plugin failure") — alors qu'une seule carte
-// sans artiste suffit à déclencher la requête à CHAQUE démarrage. Ces données ne sont
-// qu'un enrichissement : on avale la panne, et le prédicat "manquant" de chaque
-// rattrapage étant toujours vrai, il réessaiera tout seul au prochain démarrage.
+// The 3 catch-ups that query Scryfall (migrateEnrich*/migrateArtCropUrls) run INSIDE
+// onload(): fetchScryfallCollection doesn't catch transport errors (throw:false only
+// covers HTTP statuses), so offline, behind a TLS-inspecting firewall
+// (SSLHandshakeException observed on the Android emulator) or on a captive portal,
+// the exception bubbled up to onload() and the whole plugin failed to load ("Plugin
+// failure") — although a single card with no artist is enough to trigger the request
+// at EVERY startup. This data is only an enrichment: we swallow the failure, and
+// since each catch-up's "missing" predicate is always true, it will retry by itself
+// at the next startup.
 async function tolerateNetworkFailure(label: string, run: () => Promise<void>) {
 	try {
 		await run();
@@ -72,11 +70,11 @@ async function tolerateNetworkFailure(label: string, run: () => Promise<void>) {
 	}
 }
 
-// Extrait de loadSettings() pour être réutilisé aussi par restoreBackup()
-// ci-dessous : un fichier de sauvegarde peut provenir d'une version plus
-// ancienne du plugin (structure de données différente), donc restaurer
-// doit repasser par la même chaîne de migrations qu'un chargement normal
-// au démarrage plutôt que de faire confiance aveuglément au fichier.
+// Extracted from loadSettings() to be reused also by restoreBackup()
+// below: a backup file may come from an older version of the plugin
+// (different data structure), so restoring must go through the same chain
+// of migrations as a normal load at startup rather than blindly trust the
+// file.
 
 export async function runSettingsMigrations(this: MTGCollectionPlugin) {
 	this.ensureInboxList();
@@ -87,32 +85,31 @@ export async function runSettingsMigrations(this: MTGCollectionPlugin) {
 	this.migrateCollectionToLists();
 	this.migrateListDateCreated();
 	this.migrateDeckDateCreated();
-	await tolerateNetworkFailure("métadonnées de la collection", () => this.migrateEnrichMetadata());
-	await tolerateNetworkFailure("art crop de la collection", () => this.migrateArtCropUrls());
+	await tolerateNetworkFailure("collection metadata", () => this.migrateEnrichMetadata());
+	await tolerateNetworkFailure("collection art crops", () => this.migrateArtCropUrls());
 	this.migrateDeckCardDefaults();
-	await tolerateNetworkFailure("métadonnées des decks", () => this.migrateEnrichDeckMetadata());
+	await tolerateNetworkFailure("deck metadata", () => this.migrateEnrichDeckMetadata());
 }
 
-// Les listes créées avant l'introduction du tri "par date de création"
-// n'ont pas ce champ. On le complète en utilisant leur ordre actuel dans
-// le tableau comme repère (les tableaux JS préservent l'ordre d'insertion
-// tant qu'ils ne sont pas explicitement réordonnés) : la première de la
-// liste reçoit l'horodatage le plus ancien, la dernière le plus récent.
+// Lists created before the introduction of the "by creation date" sort
+// don't have this field. We fill it in using their current order in the
+// array as a reference point (JS arrays preserve insertion order as long
+// as they aren't explicitly reordered): the first of the list gets the
+// oldest timestamp, the last the most recent.
 
 export async function saveSettings(this: MTGCollectionPlugin) {
 	this.dataVersion++;
-	// Le cache est invalidé immédiatement (recalcul paresseux au prochain
-	// accès, pas ici) : simple et sûr, et le recalcul lui-même reste
-	// rapide même sur une grosse collection (voir getDistinctArtists).
-	// L'état en mémoire (this.settings) est déjà à jour à cet instant —
-	// seule l'écriture sur disque est différée, donc tout ce qui lit
-	// this.settings ailleurs (render(), etc.) voit la mutation tout de
-	// suite malgré le debounce.
+	// The cache is invalidated immediately (lazy recomputation at next access,
+	// not here): simple and safe, and the recomputation itself stays fast even
+	// on a big collection (see getDistinctArtists). The in-memory state
+	// (this.settings) is already up to date at this instant — only the disk
+	// write is deferred, so everything reading this.settings elsewhere
+	// (render(), etc.) sees the mutation right away despite the debounce.
 	this.cachedArtists = null;
 	this.cachedSets = null;
-	// Les réglages d'affichage vont dans le stockage de l'appareil, pas dans data.json.
+	// Display settings go into the device's storage, not into data.json.
 	this.saveDeviceLocalSettings();
-	// Et ce qui a changé doit aussi partir vers GitHub, s'il est activé.
+	// And what changed must also go to GitHub, if enabled.
 	this.markGithubDirty();
 	if (this.pendingSaveTimer !== null) window.clearTimeout(this.pendingSaveTimer);
 	this.pendingSaveTimer = window.setTimeout(() => {
@@ -121,9 +118,9 @@ export async function saveSettings(this: MTGCollectionPlugin) {
 	}, SAVE_DEBOUNCE_MS);
 }
 
-// Écrit immédiatement toute sauvegarde en attente — utilisé à la
-// désactivation du plugin pour ne jamais perdre les dernières
-// modifications restées dans le délai de regroupement.
+// Immediately writes any pending save — used when the plugin is disabled
+// so as never to lose the last changes remaining within the grouping
+// delay.
 
 export async function flushPendingSave(this: MTGCollectionPlugin) {
 	if (this.pendingSaveTimer === null) return;
@@ -132,10 +129,10 @@ export async function flushPendingSave(this: MTGCollectionPlugin) {
 	await this.persistSettings();
 }
 
-// Liste dédupliquée et triée des artistes présents en collection, mise en
-// cache : même à 100 000 cartes, le nombre d'artistes DISTINCTS reste de
-// l'ordre de quelques milliers (l'historique de Magic entier n'en compte
-// qu'environ 2000-3000), donc chercher un préfixe dedans reste instantané.
+// Deduplicated and sorted list of the artists present in the collection,
+// cached: even at 100,000 cards, the number of DISTINCT artists stays on
+// the order of a few thousand (the whole history of Magic counts only
+// about 2000-3000), so searching a prefix in it stays instant.
 
 export function getDistinctArtists(this: MTGCollectionPlugin): string[] {
 	if (this.cachedArtists) return this.cachedArtists;
@@ -147,9 +144,9 @@ export function getDistinctArtists(this: MTGCollectionPlugin): string[] {
 	return this.cachedArtists;
 }
 
-// Éditions distinctes présentes en collection, code + nom (le code sert au
-// filtre lui-même et à retrouver le symbole officiel ; le nom reste ce qui
-// s'affiche et se tape).
+// Distinct sets present in the collection, code + name (the code serves
+// for the filter itself and to find the official symbol; the name remains
+// what is displayed and typed).
 
 export function getDistinctSets(this: MTGCollectionPlugin): { code: string; name: string }[] {
 	if (this.cachedSets) return this.cachedSets;
@@ -163,7 +160,7 @@ export function getDistinctSets(this: MTGCollectionPlugin): { code: string; name
 	return this.cachedSets;
 }
 
-// Anciennes versions stockaient un compteur "foilCount" sur la même ligne
-// que la version normale. On sépare ça en lignes distinctes (une carte foil
-// est maintenant une entrée à part entière), et on attribue à chaque ligne
-// un identifiant propre (id) désormais utilisé comme clé pour les actions.
+// Old versions stored a "foilCount" counter on the same row as the normal
+// version. We split that into separate rows (a foil card is now an entry in
+// its own right), and assign to each row its own identifier (id), now used
+// as the key for actions.

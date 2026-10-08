@@ -37,7 +37,7 @@ export class ListSettingsModal extends Modal {
 	private pickingMergeTarget = false;
 	private pickingCoverImage = false;
 	private pickingIcon = false;
-	// État du sélecteur d'icône (choix en cours, onglet, éditions dédupliquées), voir IconPickerState.
+	// State of the icon picker (current choice, tab, deduplicated sets), see IconPickerState.
 	private iconPicker = newIconPickerState();
 
 	constructor(app: App, plugin: MTGCollectionPlugin, view: MTGCollectionView, listId: string) {
@@ -48,11 +48,11 @@ export class ListSettingsModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		this.draw();
 	}
@@ -93,9 +93,9 @@ export class ListSettingsModal extends Modal {
 			return;
 		}
 
-		// Même écran de confirmation plein-format que « Delete list? » ci-dessus (pas le swap Delete/Cancel en place
-		// de la barre d'actions groupées) — cohérent avec l'autre action destructive de cette fenêtre. L'entité
-		// elle-même n'est pas supprimée, donc pas de close*IfOpen/close() ici, juste un rafraîchissement.
+		// Same full-format confirmation screen as "Delete list?" above (not the in-place Delete/Cancel swap of the
+		// bulk-actions bar) — consistent with the other destructive action in this window. The entity itself is not
+		// deleted, so no close*IfOpen/close() here, just a refresh.
 		if (this.confirmingClear) {
 			const cardCount = this.plugin.settings.collection.filter(
 				(c) => c.listId === list.id
@@ -119,8 +119,8 @@ export class ListSettingsModal extends Modal {
 			return;
 		}
 
-		// Écran de choix de la 2ᵉ entité (renderMergeTargetScreen, entity-settings-screens.ts) ; la fusion elle-même
-		// est déléguée à MergeListsModal (merge-modals.ts).
+		// Screen for choosing the 2nd entity (renderMergeTargetScreen, entity-settings-screens.ts); the merge itself
+		// is delegated to MergeListsModal (merge-modals.ts).
 		if (this.pickingMergeTarget) {
 			const otherLists = this.plugin.settings.lists.filter((l) => l.id !== list.id && !l.isInbox);
 			renderMergeTargetScreen(contentEl, {
@@ -139,7 +139,7 @@ export class ListSettingsModal extends Modal {
 			return;
 		}
 
-		// Écran « Choose cover image » (renderCoverPickerScreen, entity-settings-screens.ts).
+		// "Choose cover image" screen (renderCoverPickerScreen, entity-settings-screens.ts).
 		if (this.pickingCoverImage) {
 			renderCoverPickerScreen(contentEl, {
 				noun: "list",
@@ -162,8 +162,8 @@ export class ListSettingsModal extends Modal {
 			return;
 		}
 
-		// Écran « Choose icon » (renderIconPickerScreen, entity-settings-screens.ts) ; son état (choix en cours, onglet,
-		// éditions dédupliquées) vit dans this.iconPicker pour survivre aux changements d'onglet.
+		// "Choose icon" screen (renderIconPickerScreen, entity-settings-screens.ts); its state (current choice, tab,
+		// deduplicated sets) lives in this.iconPicker to survive tab changes.
 		if (this.pickingIcon) {
 			renderIconPickerScreen(contentEl, {
 				plugin: this.plugin,
@@ -208,9 +208,9 @@ export class ListSettingsModal extends Modal {
 
 		addSectionTitle(contentEl, "Actions");
 
-		// 3 rangées de 3 boutons pleine largeur (mtg-list-actions-action-row) : Copy/Move/Delete,
-		// Clear/Merge duplicates/Merge lists, Export/Copy to clipboard/Import. Voir entity-settings-controls.ts pour
-		// ce que fait chaque bouton ; ici seulement ce qui est propre à une liste.
+		// 3 rows of 3 full-width buttons (mtg-list-actions-action-row): Copy/Move/Delete, Clear/Merge
+		// duplicates/Merge lists, Export/Copy to clipboard/Import. See entity-settings-controls.ts for what each
+		// button does; here only what is specific to a list.
 		const copyMoveRow = createActionRow(contentEl);
 		addCopyMoveButtons(copyMoveRow, {
 			app: this.app,
@@ -223,13 +223,13 @@ export class ListSettingsModal extends Modal {
 				this.draw();
 			},
 			afterMove: () => {
-				// Vérifié plutôt que supposé : une fois toutes les cartes parties (moveCollectionCardToList/
-				// moveCardToDeck/moveCollectionCardToWantlist les retirent toutes de settings.collection sans
-				// exception), la liste vidée n'a plus de raison d'exister.
+				// Checked rather than assumed: once all the cards have gone
+				// (moveCollectionCardToList/moveCardToDeck/moveCollectionCardToWantlist remove them all from
+				// settings.collection without exception), the emptied list no longer has a reason to exist.
 				if (this.plugin.settings.collection.every((c) => c.listId !== list.id)) {
 					this.plugin.deleteList(list.id);
 				}
-				// Pas de view.render() explicite ici : onClose() (appelé par close() ci-dessous) s'en charge déjà.
+				// No explicit view.render() here: onClose() (called by close() below) already takes care of it.
 				this.view.closeListIfOpen(list.id);
 				this.close();
 			},
@@ -244,8 +244,8 @@ export class ListSettingsModal extends Modal {
 			},
 		});
 
-		// Clear vide la liste (la garde, voir clearList) via le même écran de confirmation plein-format que Delete ;
-		// Merge lists ouvre l'écran pickingMergeTarget ci-dessus, qui délègue à MergeListsModal.
+		// Clear empties the list (keeps it, see clearList) via the same full-format confirmation screen as Delete;
+		// Merge lists opens the pickingMergeTarget screen above, which delegates to MergeListsModal.
 		const clearMergeRow = createActionRow(contentEl);
 		addActionButton(clearMergeRow, {
 			icon: "eraser",

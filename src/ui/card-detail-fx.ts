@@ -5,53 +5,53 @@ import { UsdEurRate, convertUsdEur } from "../api/frankfurter";
 import { CardTextFace } from "../api/scryfall";
 import { setSvgMarkup } from "./svg-markup";
 
-// Ouvre une URL externe (colonnes cliquables de "Store Prices" : Card
-// Kingdom/Mana Pool/TCGplayer — CardDetailModal/DeckCardDetailModal/
-// WantlistCardDetailModal) en vérifiant d'abord le schéma. Ces URLs ne
-// viennent jamais d'une saisie utilisateur, mais d'une réponse JSON d'une
-// API tierce (card-kingdom.ts/manapool.ts/scryfall.ts purchase_uris) —
-// aujourd'hui des partenaires de confiance, mais rien ne garantit qu'une
-// réponse malformée/compromise ne contienne jamais autre chose qu'un vrai
-// lien produit http(s). Défense en profondeur bon marché plutôt qu'un
-// window.open(url) aveugle sur une chaîne d'origine externe.
+// Opens an external URL (clickable "Store Prices" columns: Card
+// Kingdom/Mana Pool/TCGplayer —
+// CardDetailModal/DeckCardDetailModal/WantlistCardDetailModal) after first
+// checking the scheme. These URLs never come from user input, but from a
+// JSON response of a third-party API
+// (card-kingdom.ts/manapool.ts/scryfall.ts purchase_uris) — trusted
+// partners today, but nothing guarantees that a malformed/compromised
+// response will never contain anything other than a real http(s) product
+// link. Cheap defense in depth rather than a blind window.open(url) on a
+// string of external origin.
 export function openExternalUrl(url: string | null | undefined): void {
 	if (!url || !/^https:\/\//i.test(url)) return;
 	window.open(url, "_blank");
 }
 
-// Calque de fond flouté (art crop) + voile d'un modal de détail de carte,
-// avec un fondu enchaîné entre deux illustrations lors de la navigation
-// précédent/suivant plutôt qu'un fondu vers le noir puis vers la nouvelle
-// image. Partagé par les trois modales de détail (Collection/Deck/Wantlist),
-// qui reconstruisent tout leur contenu à chaque draw() : ce calque doit être
-// explicitement préservé (voir clearSiblingsIn) pour que la transition en
-// cours ne soit pas interrompue par la reconstruction du reste.
-// Empile un nouveau calque par carte plutôt que de faire va-et-vient entre
-// deux calques réutilisés : chaque calque ne fait jamais qu'une seule chose,
-// une seule fois — apparaître en fondu — et n'est plus jamais retouché
-// ensuite. Une version précédente réutilisait deux calques (dessus/dessous)
-// et "rendait la main" de l'un à l'autre à la fin de chaque transition ; ce
-// passage de relais (changer l'image du calque du dessous puis masquer celui
-// du dessus, même sur la fin réelle de la transition CSS et une frame
-// d'attente supplémentaire) restait perceptible comme un voile qui
-// s'estompe puis réapparaît d'un coup. En empilant simplement les calques
-// (le voile, lui, n'est créé qu'une fois et jamais touché), il n'y a plus
-// aucune étape de "remise à zéro" susceptible de produire cet artefact.
+// Blurred background layer (art crop) + scrim of a card-detail modal, with a
+// crossfade between two illustrations when navigating previous/next rather
+// than a fade to black then to the new image. Shared by the three detail
+// modals (Collection/Deck/Wantlist), which rebuild all their content on
+// every draw(): this layer must be explicitly preserved (see
+// clearSiblingsIn) so that the transition in progress isn't interrupted by
+// the rebuild of the rest.
+// Stacks a new layer per card rather than going back and forth between two
+// reused layers: each layer only ever does one thing, once — fade in — and
+// is never touched again afterwards. A previous version reused two layers
+// (top/bottom) and "handed over" from one to the other at the end of each
+// transition; this handover (changing the image of the bottom layer then
+// hiding the top one, even on the real end of the CSS transition plus an
+// extra waiting frame) remained noticeable as a scrim that fades out then
+// suddenly reappears. By simply stacking the layers (the scrim, for its
+// part, is created only once and never touched), there is no longer any
+// "reset" step that could produce this artifact.
 export class BackgroundCrossfader {
 	el: HTMLElement | null = null;
 	private lastUrl: string | null = null;
 	private token = 0;
 	private layers: HTMLElement[] = [];
-	// Les calques recouverts par un plus récent sont invisibles mais pas
-	// gratuits (chacun porte un flou de 45px) : on n'en garde qu'un nombre
-	// borné pour ne pas les laisser s'accumuler indéfiniment sur une session
-	// où l'utilisateur parcourt beaucoup de cartes dans la même fenêtre.
+	// Layers covered by a more recent one are invisible but not free (each one
+	// carries a 45px blur): we only keep a bounded number of them so they
+	// don't accumulate indefinitely over a session where the user browses many
+	// cards in the same window.
 	private static readonly MAX_LAYERS = 10;
 
-	// Retire tous les enfants de `container` SAUF ce calque, pour que draw()
-	// puisse reconstruire le reste du contenu (panneau, header…) sans détruire
-	// le fond et sa transition en cours. Équivalent de contentEl.empty() qui
-	// épargne ce seul élément.
+	// Removes all the children of `container` EXCEPT this layer, so that
+	// draw() can rebuild the rest of the content (panel, header…) without
+	// destroying the background and its transition in progress. Equivalent of
+	// contentEl.empty() that spares this single element.
 	clearSiblingsIn(container: HTMLElement) {
 		Array.from(container.children).forEach((child) => {
 			if (child !== this.el) child.remove();
@@ -63,10 +63,9 @@ export class BackgroundCrossfader {
 		if (!this.el) {
 			this.el = container.createDiv();
 			container.prepend(this.el);
-			// Le voile est créé une bonne fois pour toutes ici et n'est plus
-			// jamais recréé ni modifié ensuite — son z-index (voir CSS) le
-			// maintient au-dessus de tous les calques d'image ajoutés par la
-			// suite, peu importe leur ordre d'insertion à eux.
+			// The scrim is created once and for all here and is never recreated or
+			// modified afterwards — its z-index (see CSS) keeps it above all the image
+			// layers added later, regardless of their own insertion order.
 			this.el.createDiv({ cls: "mtg-card-detail-scrim" });
 		}
 
@@ -79,11 +78,10 @@ export class BackgroundCrossfader {
 			const layer = this.el!.createDiv({ cls: "mtg-card-detail-bg" });
 			layer.style.backgroundImage = `url("${url}")`;
 			this.layers.push(layer);
-			// Deux requestAnimationFrame imbriqués (même idiome que l'ouverture
-			// du modal) pour garantir que le navigateur peint bien l'état
-			// initial opacity:0 avant de déclencher la transition vers l'état
-			// visible — sans quoi les deux changements peuvent être regroupés
-			// dans la même frame et sauter la transition.
+			// Two nested requestAnimationFrame calls (same idiom as the modal opening)
+			// to guarantee that the browser really paints the initial opacity:0 state
+			// before triggering the transition to the visible state — otherwise the
+			// two changes can be batched into the same frame and skip the transition.
 			window.requestAnimationFrame(() => {
 				window.requestAnimationFrame(() => {
 					if (token !== this.token) return;
@@ -97,8 +95,8 @@ export class BackgroundCrossfader {
 		preload.src = url;
 	}
 
-	// Aucune image pour la carte affichée : retire tout plutôt que de laisser
-	// une illustration obsolète visible.
+	// No image for the displayed card: removes everything rather than leaving
+	// an obsolete illustration visible.
 	clear() {
 		this.el?.remove();
 		this.el = null;
@@ -107,12 +105,12 @@ export class BackgroundCrossfader {
 	}
 }
 
-// La colonne de droite du détail carte (.mtg-card-detail-panel) défile en
-// interne plutôt que de laisser la fenêtre entière grandir avec le contenu
-// (voir max-height sur .mtg-card-detail-modal). Le fondu haut/bas (mask-image
-// en CSS, voir styles.css) n'est affiché que du côté où il reste vraiment du
-// contenu caché — pas un dégradé permanent — d'où ce bascule de classes sur
-// scroll plutôt qu'un mask statique.
+// The right column of the card detail (.mtg-card-detail-panel) scrolls
+// internally rather than letting the whole window grow with the content (see
+// max-height on .mtg-card-detail-modal). The top/bottom fade (mask-image in
+// CSS, see styles.css) is only displayed on the side where there really is
+// hidden content left — not a permanent gradient — hence this class toggle on
+// scroll rather than a static mask.
 export function setupPanelScrollFade(panel: HTMLElement) {
 	const update = () => {
 		const atTop = panel.scrollTop <= 0;
@@ -124,47 +122,44 @@ export function setupPanelScrollFade(panel: HTMLElement) {
 	update();
 }
 
-// Rayon de coin responsive (--mtg-card-radius, consommée par
-// .mtg-card-detail-tilt/.mtg-card-detail-image dans styles.css, plus la
-// variante Alpha dérivée par calc()) — un radius fixe en px reste bien
-// rond (contrairement à un %, qui se résout par axe et déforme en ovale
-// sur une carte non carrée, voir la note historique de ces deux classes)
-// mais ne rétrécissait pas avec la carte elle-même — retour explicite :
-// "si ma fenêtre devient plus petite, le radius devient trop grand".
-// RATIO calibré pour valoir exactement MAX à la largeur maximale réelle
-// de la carte (~402px, une fois .mtg-card-detail-modal-frame plafonnée à
-// 1100px de large — voir le calcul dans l'historique CLAUDE.md de ce
-// changement) : aucun changement visible sur un écran normal/large, seule
-// une fenêtre étroite voit désormais le radius rétrécir. MIN empêche la
-// carte de devenir presque carrée sur un écran mobile très étroit.
-// Bump explicite (2026-09-10) : "le radius ne semble pas assez important",
-// à la fois ici et pour --mtg-card-tile-radius plus bas — MAX/MIN augmentés
-// proportionnellement (14→20 / 6→8) en gardant la même largeur de référence
-// (~402px, calcul ci-dessus inchangé) pour ne rien changer d'autre au
-// mécanisme lui-même : sur un écran normal/large (déjà plafonné à MAX avant
-// ce changement, comme documenté ci-dessus) c'est ce nouveau MAX qui se voit
-// directement ; le ratio Alpha (*29/14, styles.css) s'applique à la valeur
-// LIVE de --mtg-card-radius, donc l'Alpha grandit lui aussi proportionnellement
-// sans avoir besoin d'être retouché séparément.
+// Responsive corner radius (--mtg-card-radius, consumed by
+// .mtg-card-detail-tilt/.mtg-card-detail-image in styles.css, plus the Alpha
+// variant derived via calc()) — a fixed radius in px stays properly round
+// (unlike a %, which resolves per axis and distorts into an oval on a
+// non-square card, see the historical note on these two classes) but didn't
+// shrink with the card itself — explicit feedback: "if my window gets smaller,
+// the radius becomes too large".
+// RATIO calibrated to equal exactly MAX at the real maximum width of the card
+// (~402px, once .mtg-card-detail-modal-frame is capped at 1100px wide — see the
+// calculation in the CLAUDE.md history of this change): no visible change on a
+// normal/wide screen, only a narrow window now sees the radius shrink. MIN
+// prevents the card from becoming almost square on a very narrow mobile screen.
+// Explicit bump (2026-09-10): "the radius doesn't seem large enough", both here
+// and for --mtg-card-tile-radius further down — MAX/MIN increased
+// proportionally (14→20 / 6→8) keeping the same reference width (~402px,
+// calculation above unchanged) so as to change nothing else about the mechanism
+// itself: on a normal/wide screen (already capped at MAX before this change, as
+// documented above) it's this new MAX that is directly visible; the Alpha ratio
+// (*29/14, styles.css) applies to the LIVE value of --mtg-card-radius, so the
+// Alpha also grows proportionally without needing to be touched separately.
 const CARD_RADIUS_RATIO = 0.05;
 const CARD_RADIUS_MIN = 8;
 const CARD_RADIUS_MAX = 20;
 
-// Factorisé hors de setupCardTilt (qui reste le seul appelant) le jour où la
-// vue Carte a eu besoin du même mécanisme pour son propre radius — voir
-// computeCardTileRadius plus bas pour pourquoi la vue Carte n'utilise PAS
-// cette fonction elle-même (elle a besoin d'observer un élément persistant
-// plutôt qu'une tuile individuelle, pour des raisons propres à view.ts).
-// ResizeObserver (pas un simple listener resize sur window) : se
-// redéclenche pour toute cause de changement de taille (le conteneur
-// change de largeur au redimensionnement du panneau, pas seulement de la
-// fenêtre), et sert aussi de mesure initiale en se déclenchant
-// immédiatement à l'observation. Pas de disconnect() explicite : `tilt`
-// (le seul appelant) est toujours recréé à chaque draw() par ses
-// appelants (jamais réutilisé), donc une fois l'ancien élément détaché
-// sans autre référence, cet observer devient lui aussi éligible au
-// ramasse-miettes — même raisonnement déjà appliqué aux écouteurs
-// mousemove/mouseleave de setupCardTilt plus bas.
+// Factored out of setupCardTilt (which remains the only caller) the day the
+// Card view needed the same mechanism for its own radius — see
+// computeCardTileRadius further down for why the Card view does NOT use this
+// function itself (it needs to observe a persistent element rather than an
+// individual tile, for reasons specific to view.ts).
+// ResizeObserver (not a simple resize listener on window): fires again for
+// any cause of size change (the container changes width when the panel is
+// resized, not only the window), and also serves as the initial measurement
+// by firing immediately upon observation. No explicit disconnect(): `tilt`
+// (the only caller) is always recreated on every draw() by its callers
+// (never reused), so once the old element is detached with no other
+// reference, this observer also becomes eligible for garbage collection —
+// same reasoning already applied to the mousemove/mouseleave listeners of
+// setupCardTilt further down.
 function setupResponsiveRadius(el: HTMLElement, ratio: number, min: number, max: number, cssVar: string) {
 	const observer = new ResizeObserver((entries) => {
 		const width = entries[0]?.contentRect.width;
@@ -183,27 +178,27 @@ export function computeCardTileRadius(width: number): number {
 	return Math.min(CARD_TILE_RADIUS_MAX, Math.max(CARD_TILE_RADIUS_MIN, width * CARD_TILE_RADIUS_RATIO));
 }
 
-// Effet "holo" façon carte Pokémon (inclinaison 3D + reflet qui suit la
-// souris), réservé aux finitions foil/etched — une carte "regular" ne
-// scintille pas physiquement, elle ne le fait pas non plus ici.
-// `anchor` (l'élément dont on lit la position de la souris) et `tilt`
-// (l'élément qu'on incline réellement) sont volontairement deux éléments
-// distincts : suivre la souris sur le MÊME élément qu'on transforme créerait
-// une boucle de rétroaction (la boîte suivie bouge légèrement à chaque
-// inclinaison, donc les coordonnées de la souris qu'on en déduit ensuite
-// deviennent legèrement fausses). `anchor` reste également libre pour porter
-// le transform du carrousel Cover Flow (animateCardNav) sans jamais entrer
-// en conflit avec celui-ci, posé ici sur `tilt`, imbriqué à l'intérieur.
+// "Holo" effect in the style of a Pokémon card (3D tilt + glare following
+// the mouse), reserved for foil/etched finishes — a "regular" card doesn't
+// physically sparkle, so it doesn't here either.
+// `anchor` (the element whose mouse position is read) and `tilt` (the
+// element actually tilted) are deliberately two distinct elements: tracking
+// the mouse on the SAME element being transformed would create a feedback
+// loop (the tracked box moves slightly with each tilt, so the mouse
+// coordinates we then deduce from it become slightly wrong). `anchor` also
+// remains free to carry the transform of the Cover Flow carousel
+// (animateCardNav) without ever conflicting with it, the tilt being set here
+// on `tilt`, nested inside.
 export function setupCardTilt(anchor: HTMLElement, tilt: HTMLElement) {
-	// Mesure la largeur RÉELLEMENT RENDUE de `tilt` (voir setupResponsiveRadius
-	// plus haut) — sans rapport avec l'inclinaison 3D ci-dessous, mais posé
-	// dans ce même setup puisque les deux ont besoin du même élément `tilt`
-	// et sont appelés depuis les 3 mêmes sites d'appel (Card/Deck/Wantlist
-	// detail) — une fonction, un seul appel par modale, plutôt que deux.
+	// Measures the width ACTUALLY RENDERED of `tilt` (see setupResponsiveRadius
+	// above) — unrelated to the 3D tilt below, but placed in this same setup
+	// since both need the same `tilt` element and are called from the same 3
+	// call sites (Card/Deck/Wantlist detail) — one function, a single call per
+	// modal, rather than two.
 	setupResponsiveRadius(tilt, CARD_RADIUS_RATIO, CARD_RADIUS_MIN, CARD_RADIUS_MAX, "--mtg-card-radius");
 
-	// 12 (pas 6, puis 8) : deuxième renforcement demandé — l'angle
-	// précédent était encore jugé trop discret.
+	// 12 (not 6, then 8): second strengthening requested — the previous angle
+	// was still judged too subtle.
 	const maxTiltDeg = 12;
 	const handleMove = (evt: MouseEvent) => {
 		const rect = anchor.getBoundingClientRect();
@@ -216,45 +211,42 @@ export function setupCardTilt(anchor: HTMLElement, tilt: HTMLElement) {
 		}
 		tilt.style.setProperty("--holo-x", `${px * 100}%`);
 		tilt.style.setProperty("--holo-y", `${py * 100}%`);
-		// Position du reflet arc-en-ciel (.mtg-card-detail-holo-shine) :
-		// amortie sur une plage resserrée (20-80%) plutôt que la position
-		// brute du curseur (--holo-x/-y, 0-100%, utilisée par le spot blanc
-		// .mtg-card-detail-holo-sweep) — la bande colorée dérive doucement
-		// sur la carte au lieu de suivre sèchement la souris jusqu'aux
-		// bords, comme un vrai reflet holographique physique. Cf. le projet
-		// de référence pokemon-cards-css (Card.svelte, `adjust(percent, 0,
-		// 100, 37, 63)`), qui sépare de la même façon la position du reflet
-		// coloré (amortie) de celle du glare net (brute).
+		// Position of the rainbow glare (.mtg-card-detail-holo-shine): damped over
+		// a narrowed range (20-80%) rather than the raw cursor position
+		// (--holo-x/-y, 0-100%, used by the white spot
+		// .mtg-card-detail-holo-sweep) — the colored band drifts gently across the
+		// card instead of following the mouse sharply up to the edges, like a real
+		// physical holographic glare. Cf. the reference project pokemon-cards-css
+		// (Card.svelte, `adjust(percent, 0, 100, 37, 63)`), which likewise
+		// separates the position of the colored glare (damped) from that of the
+		// sharp glare (raw).
 		tilt.style.setProperty("--holo-bg-x", `${20 + px * 60}%`);
 		tilt.style.setProperty("--holo-bg-y", `${20 + py * 60}%`);
-		// Rotation de teinte (--holo-hue, lue par le filter: hue-rotate() de
-		// .mtg-card-detail-holo-shine) dérivée des MÊMES angles rotateX/
-		// rotateY que l'inclinaison : sans ça, le dégradé ne fait que
-		// glisser en gardant toujours les mêmes couleurs aux mêmes endroits
-		// (un pur effet de parallaxe) — une vraie carte holographique change
-		// de COULEUR à un endroit donné selon l'angle de vue (réseau de
-		// diffraction), pas seulement de position. hue-rotate recolore tout
-		// le calque uniformément, donc une même zone affichée à l'écran voit
-		// sa teinte varier au fur et à mesure qu'on incline la carte.
-		// Facteur *8 (pas *5, encore jugé trop discret) : sur l'amplitude
-		// réelle de rotateX/rotateY (±16deg chacun avec maxTiltDeg=8), ça
-		// couvre jusqu'à ~512deg de variation de teinte sur l'ensemble du
-		// geste — hue-rotate étant cyclique (mod 360), ça ne "saute" jamais,
-		// ça balaie juste une bonne partie de la roue chromatique plus d'une
-		// fois entre deux positions opposées de la souris.
+		// Hue rotation (--holo-hue, read by the filter: hue-rotate() of
+		// .mtg-card-detail-holo-shine) derived from the SAME rotateX/rotateY
+		// angles as the tilt: without it, the gradient merely slides while always
+		// keeping the same colors at the same places (a pure parallax effect) — a
+		// real holographic card changes COLOR at a given spot depending on the
+		// viewing angle (diffraction grating), not only position. hue-rotate
+		// recolors the whole layer uniformly, so a same area displayed on screen
+		// sees its hue vary as the card is tilted.
+		// Factor *8 (not *5, still judged too subtle): over the real amplitude of
+		// rotateX/rotateY (±16deg each with maxTiltDeg=8), that covers up to
+		// ~512deg of hue variation across the whole gesture — hue-rotate being
+		// cyclic (mod 360), it never "jumps", it just sweeps a good part of the
+		// color wheel more than once between two opposite mouse positions.
 		const hueShift = (rotateX - rotateY) * 8;
 		tilt.style.setProperty("--holo-hue", `${hueShift}deg`);
-		// Intensité du reflet arc-en-ciel (--holo-intensity, lue par
-		// l'opacité de .mtg-card-detail-holo-shine) modulée par la distance
-		// du curseur au CENTRE de la carte — 0 pile au centre (carte à plat,
-		// face à l'écran), jusqu'à 1 en s'approchant des bords. Sans ça, le
-		// reflet restait pleinement visible même carte à plat, ce qui n'a
-		// pas de sens physiquement : un vrai film holographique ne change
-		// de couleur qu'à angle de vue oblique, pas de face (signalé). /0.5
-		// (pas /0.7071, la distance jusqu'au coin) : on veut déjà une
-		// intensité pleine en s'approchant d'un BORD, pas seulement des
-		// coins, sinon l'effet resterait atténué sur la majeure partie de
-		// la carte.
+		// Intensity of the rainbow glare (--holo-intensity, read by the opacity of
+		// .mtg-card-detail-holo-shine) modulated by the distance of the cursor
+		// from the CENTER of the card — 0 right at the center (card flat, facing
+		// the screen), up to 1 when approaching the edges. Without this, the glare
+		// stayed fully visible even with the card flat, which makes no physical
+		// sense: a real holographic film only changes color at an oblique viewing
+		// angle, not head-on (reported). /0.5 (not /0.7071, the distance to the
+		// corner): we already want full intensity when approaching an EDGE, not
+		// only the corners, otherwise the effect would stay attenuated over most
+		// of the card.
 		const distFromCenter = Math.min(1, Math.hypot(px - 0.5, py - 0.5) / 0.5);
 		tilt.style.setProperty("--holo-intensity", `${distFromCenter}`);
 		tilt.addClass("is-tilting");
@@ -267,29 +259,29 @@ export function setupCardTilt(anchor: HTMLElement, tilt: HTMLElement) {
 	anchor.addEventListener("mouseleave", handleLeave);
 }
 
-// Anime la navigation précédent/suivant façon Cover Flow : l'ancienne et la
-// nouvelle carte sont toutes deux visibles et animées EN MÊME TEMPS (pas
-// l'une après l'autre) — l'ancienne glisse/tourne hors du cadre du côté vers
-// lequel on navigue pendant que la nouvelle glisse/tourne depuis le côté
-// opposé jusqu'au centre. Ceci nécessite de garder l'ancien
-// .mtg-card-detail-image-wrap en vie à travers le redessin de draw() (qui le
-// détruirait sinon avec le reste du panneau) : on le détache AVANT d'appeler
-// update(), puis on le réinsère dans le nouveau "viewport" (voir
-// .mtg-card-detail-nav-viewport, styles.css) juste après, pour qu'il partage
-// exactement le même cadre découpé (overflow:hidden) que la nouvelle carte —
-// c'est ce qui garde l'animation dans les limites de la colonne plutôt que de
-// déborder sur le panneau voisin.
-// Les deux cartes passent en position:absolute (mtg-card-nav-animating) le
-// temps de la transition, pour pouvoir se superposer — hors de ce court
-// instant, la carte reste en flux normal (voir styles.css) pour que sa
-// hauteur réelle (celle de l'image, pas une approximation) détermine celle
-// du viewport. Comme deux cartes en position:absolute ne participent plus du
-// tout au calcul de hauteur du parent, la hauteur du viewport est figée en
-// px juste avant (capturée sur l'ancien, pendant qu'il est encore en flux
-// normal) et reportée sur le nouveau, sans quoi cette boîte s'effondrerait
-// pendant l'animation. onDone signale le lancement (pas la fin visuelle) de
-// la transition — suffisant pour lever le verrou anti-double-clic sans
-// bloquer inutilement longtemps.
+// Animates the previous/next navigation Cover Flow style: the old and the new
+// card are both visible and animated AT THE SAME TIME (not one after the
+// other) — the old one slides/rotates out of the frame on the side we're
+// navigating toward while the new one slides/rotates in from the opposite
+// side to the center. This requires keeping the old
+// .mtg-card-detail-image-wrap alive across the redraw of draw() (which would
+// otherwise destroy it along with the rest of the panel): we detach it BEFORE
+// calling update(), then reinsert it into the new "viewport" (see
+// .mtg-card-detail-nav-viewport, styles.css) right after, so that it shares
+// exactly the same clipped frame (overflow:hidden) as the new card — that is
+// what keeps the animation within the bounds of the column rather than
+// spilling onto the neighboring panel.
+// Both cards switch to position:absolute (mtg-card-nav-animating) for the
+// duration of the transition, so they can overlap — outside this short
+// moment, the card stays in normal flow (see styles.css) so that its real
+// height (that of the image, not an approximation) determines that of the
+// viewport. Since two position:absolute cards no longer take part at all in
+// the parent's height calculation, the viewport's height is frozen in px just
+// before (captured on the old one, while it is still in normal flow) and
+// carried over to the new one, without which this box would collapse during
+// the animation. onDone signals the launch (not the visual end) of the
+// transition — enough to release the anti-double-click lock without blocking
+// needlessly long.
 export function animateCardNav(
 	contentEl: HTMLElement,
 	direction: "prev" | "next",
@@ -337,31 +329,31 @@ export function animateCardNav(
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Boîte "Price History" (cardbase.dev) — graphique fait main, sans          */
-/*  librairie de charts (voir CLAUDE.md/Conventions : ce plugin n'en a        */
-/*  jamais eu besoin ailleurs). Partagé par les trois modales de détail       */
-/*  (Collection/Deck/Wantlist) — chacune construit sa propre boîte (même      */
-/*  convention que renderStorePricesBox, dupliqué par modale) mais délègue    */
-/*  tout le calcul/dessin du graphique lui-même ici, comme setupCardTilt/     */
-/*  animateCardNav plus haut dans ce fichier.                                */
+/* "Price history" box (cardbase.dev) — hand-made chart, without a charting */
+/* library (see CLAUDE.md/Conventions: this plugin never needed one */
+/* elsewhere). Shared by the three detail modals (Collection/Deck/Wantlist) — */
+/* each builds its own box (same convention as renderStorePricesBox, */
+/* duplicated per modal) but delegates all the calculation/drawing of the */
+/* chart itself here, like setupCardTilt/animateCardNav higher up in this */
+/* file. */
 /* -------------------------------------------------------------------------- */
 
-// "surged" n'a pas de champ dédié chez cardbase (comme chez Scryfall/Card
-// Kingdom/Mana Pool ailleurs dans ce plugin) — traité comme "foil". "proxy"
-// n'a pas d'équivalent ici : les appelants doivent déjà exclure les cartes
-// Proxy avant d'appeler getCardbasePriceHistory (même exclusion que pour
-// Store Prices), donc jamais passé à cette fonction.
+// "surged" has no dedicated field at cardbase (as at Scryfall/Card
+// Kingdom/Mana Pool elsewhere in this plugin) — treated as "foil". "proxy"
+// has no equivalent here: callers must already exclude Proxy cards before
+// calling getCardbasePriceHistory (same exclusion as for Store Prices), so
+// it is never passed to this function.
 export function toCardbaseFinish(finish: Finish): CardbaseFinish {
 	if (finish === "etched") return "etched";
 	if (finish === "foiled" || finish === "surged") return "foil";
 	return "normal";
 }
 
-// 4 des 5 vendeurs cardbase — cardhoarder (Magic Online, pas du papier) reste
-// exclu, voir cardbase.ts. cardsphere a une entrée ici alors que sa
-// couverture semble actuellement vide en pratique (voir cardbase.ts) — câblé
-// quand même, `series` filtre déjà les séries sans point plus bas, donc une
-// courbe sans donnée ne s'affiche simplement pas plutôt que de planter.
+// 4 of the 5 cardbase vendors — cardhoarder (Magic Online, not paper) stays
+// excluded, see cardbase.ts. cardsphere has an entry here even though its
+// coverage currently seems empty in practice (see cardbase.ts) — wired
+// anyway, `series` already filters out series without a point further down,
+// so a curve with no data simply isn't displayed rather than crashing.
 const PRICE_HISTORY_VENDOR_LABELS: Partial<Record<CardbaseVendor, string>> = {
 	cardkingdom: "Card Kingdom",
 	tcgplayer: "TCGplayer",
@@ -369,9 +361,9 @@ const PRICE_HISTORY_VENDOR_LABELS: Partial<Record<CardbaseVendor, string>> = {
 	cardsphere: "Cardsphere",
 };
 
-// 4 teintes Obsidian standard bien distinguables, disponibles dans tout
-// thème — pas var(--text-accent)/var(--text-success) déjà chargées de sens
-// ailleurs dans ce panneau (prix courant, format légal).
+// 4 standard, clearly distinguishable Obsidian hues, available in any
+// theme — not var(--text-accent)/var(--text-success), already loaded with
+// meaning elsewhere in this panel (current price, legal format).
 const PRICE_HISTORY_VENDOR_COLORS: Partial<Record<CardbaseVendor, string>> = {
 	cardkingdom: "var(--color-blue)",
 	tcgplayer: "var(--color-orange)",
@@ -379,17 +371,17 @@ const PRICE_HISTORY_VENDOR_COLORS: Partial<Record<CardbaseVendor, string>> = {
 	cardsphere: "var(--color-pink)",
 };
 
-// Cardmarket est le seul des 4 vendeurs affichés ici à répondre en EUR (voir
-// cardbase.ts/fetchCardbasePriceHistory) — tous les autres, en USD. Mélanger
-// les deux sur un seul axe Y afficherait un nombre à la mauvaise hauteur
-// (un "10" EUR n'est pas la même vraie valeur qu'un "10" USD) sans
-// conversion. Depuis l'ajout de frankfurter.ts, un taux de change réel est
-// disponible : renderPriceHistoryChart convertit alors Cardmarket vers
-// settings.priceCurrency et affiche un seul axe unifié (plus lisible qu'un
-// double axe, signalé explicitement — voir la discussion menant à ce
-// fichier). Si le taux n'est pas disponible (échec réseau frankfurter.dev),
-// repli sur l'ancien double axe indépendant ci-dessous plutôt que perdre la
-// courbe Cardmarket — voir renderPriceHistoryChart.
+// Cardmarket is the only one of the 4 vendors displayed here to answer in
+// EUR (see cardbase.ts/fetchCardbasePriceHistory) — all the others, in USD.
+// Mixing the two on a single Y axis would display a number at the wrong
+// height (a "10" EUR is not the same real value as a "10" USD) without
+// conversion. Since the addition of frankfurter.ts, a real exchange rate is
+// available: renderPriceHistoryChart then converts Cardmarket to
+// settings.priceCurrency and displays a single unified axis (more readable
+// than a dual axis, explicitly reported — see the discussion leading to this
+// file). If the rate isn't available (frankfurter.dev network failure),
+// falls back to the old independent dual axis below rather than losing the
+// Cardmarket curve — see renderPriceHistoryChart.
 const CARDBASE_VENDOR_CURRENCY: Partial<Record<CardbaseVendor, "usd" | "eur">> = {
 	cardkingdom: "usd",
 	tcgplayer: "usd",
@@ -397,13 +389,13 @@ const CARDBASE_VENDOR_CURRENCY: Partial<Record<CardbaseVendor, "usd" | "eur">> =
 	cardmarket: "eur",
 };
 
-// Séparateurs de milliers (Intl, pas formatMoney/price.ts — resterait
-// "$150000.00" sinon, dur à lire sur une carte comme Black Lotus qui peut
-// dépasser 150 000$). "en-US" pour les deux devises (pas juste USD) — même
-// raisonnement que formatHistoryDate plus bas : l'anglais partout, pas la
-// locale système. Local à ce graphique uniquement : ne touche pas le
-// formatage partagé utilisé ailleurs dans le plugin (boîte Store Prices,
-// totaux de collection, etc.), pas demandé là et hors de portée ici.
+// Thousands separators (Intl, not formatMoney/price.ts — it would stay
+// "$150000.00" otherwise, hard to read on a card like Black Lotus that can
+// exceed $150,000). "en-US" for both currencies (not just USD) — same
+// reasoning as formatHistoryDate further down: English everywhere, not the
+// system locale. Local to this chart only: doesn't touch the shared
+// formatting used elsewhere in the plugin (Store Prices box, collection
+// totals, etc.), not requested there and out of scope here.
 const CHART_PRICE_FORMATTERS: Record<"usd" | "eur", Intl.NumberFormat> = {
 	usd: new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }),
 	eur: new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" }),
@@ -420,11 +412,11 @@ interface DrawnPriceSeries {
 	vendor: CardbaseVendor;
 	color: string;
 	currency: "usd" | "eur";
-	// true si cette série a été convertie depuis sa devise native (voir
-	// convertUsdEur ci-dessous) pour rejoindre l'axe unifié — jamais vrai en
-	// mode double-axe (repli sans taux). Pilote le tracé en pointillé + la
-	// mention "(converted)" partout où cette série est affichée, pour ne
-	// jamais confondre un prix converti avec le vrai prix natif du magasin.
+	// true if this series was converted from its native currency (see
+	// convertUsdEur below) to join the unified axis — never true in dual-axis
+	// mode (fallback without a rate). Drives the dashed line + the
+	// "(converted)" mention everywhere this series is displayed, so as never
+	// to confuse a converted price with the store's real native price.
 	converted: boolean;
 	points: CardbasePricePoint[];
 	toY: (price: number) => number;
@@ -440,16 +432,16 @@ interface YAxis {
 	toY: (price: number) => number;
 }
 
-// Axe ancré à 0 (demandé explicitement) plutôt qu'un plancher
-// padded-autour-du-minimum — un vrai zéro en bas garde l'échelle honnête, pas
-// de fausse impression de grosse variation sur un écart en réalité petit. La
-// marge au-dessus du maximum observé combine deux termes et garde le plus
-// grand des deux : une fraction de l'amplitude RÉELLEMENT observée (pour
-// qu'un vrai mouvement de prix garde une marge proportionnée à son ampleur,
-// sans être artificiellement écrasé) et une fraction du prix lui-même (pour
-// qu'une carte quasi plate — peu d'amplitude à exploiter — garde tout de
-// même une marge visible plutôt que de coller au plafond). Jamais de valeur
-// ronde arbitraire type "100$" qui écraserait une carte à 1$.
+// Axis anchored at 0 (explicitly requested) rather than a floor padded around
+// the minimum — a true zero at the bottom keeps the scale honest, no false
+// impression of a big variation over a gap that is actually small. The margin
+// above the observed maximum combines two terms and keeps the larger of the
+// two: a fraction of the amplitude ACTUALLY observed (so that a real price
+// movement keeps a margin proportionate to its magnitude, without being
+// artificially squashed) and a fraction of the price itself (so that a nearly
+// flat card — little amplitude to work with — still keeps a visible margin
+// rather than sticking to the ceiling). Never an arbitrary round value like
+// "$100" that would squash a $1 card.
 function buildYAxis(seriesForAxis: { currency: "usd" | "eur"; points: CardbasePricePoint[] }[], H: number): YAxis | null {
 	if (seriesForAxis.length === 0) return null;
 	let maxPrice = -Infinity;
@@ -471,10 +463,10 @@ function buildYAxis(seriesForAxis: { currency: "usd" | "eur"; points: CardbasePr
 	};
 }
 
-// `history` peut être undefined (échec réseau après retentative) ou avoir
-// une `series` vide (succès confirmé, mais aucun des 4 magasins n'a
-// d'historique pour cette impression/finition) — les deux cas affichent le
-// même message neutre, la distinction n'intéresse pas l'utilisateur final.
+// `history` can be undefined (network failure after retry) or have an
+// empty `series` (confirmed success, but none of the 4 stores has history
+// for this printing/finish) — both cases display the same neutral message,
+// the distinction is of no interest to the end user.
 export function renderPriceHistoryChart(
 	container: HTMLElement,
 	history: CardbasePriceHistory | undefined,
@@ -482,9 +474,9 @@ export function renderPriceHistoryChart(
 	exchangeRate: UsdEurRate | undefined
 ) {
 	container.empty();
-	// Le conteneur porte la classe/l'icône de chargement (voir les appelants
-	// dans modals/*.ts) jusqu'ici — plus nécessaire une fois le vrai contenu
-	// (graphique ou message "aucun historique") sur le point d'être construit.
+	// The container has carried the loading class/icon (see the callers in
+	// modals/*.ts) until now — no longer needed once the real content (chart
+	// or "no history" message) is about to be built.
 	container.removeClass("mtg-price-history-loading");
 	const rawSeries = (history?.series ?? [])
 		.filter((s) => s.points.length > 0 && CARDBASE_VENDOR_CURRENCY[s.vendor] !== undefined)
@@ -494,17 +486,16 @@ export function renderPriceHistoryChart(
 		return;
 	}
 
-	// Axe unique si un taux de change est disponible (voir frankfurter.ts,
-	// getUsdEurRate) : toute série pas déjà dans `targetCurrency` (en
-	// pratique Cardmarket, seul vendeur en EUR — voir CARDBASE_VENDOR_
-	// CURRENCY) est convertie et marquée `converted`, pour un tracé en
-	// pointillé + une infobulle "(converted)" plutôt que de se confondre
-	// avec un vrai prix affiché par ce magasin (voir DrawnPriceSeries). Un
-	// seul taux "aujourd'hui" s'applique à tout l'historique de la série
-	// (voir convertUsdEur) — approximation assumée, précisée dans
-	// l'infobulle. Sans taux (échec réseau frankfurter.dev), repli explicite
-	// sur l'ancien double axe indépendant plutôt que de perdre la courbe
-	// Cardmarket.
+	// Single axis if an exchange rate is available (see frankfurter.ts,
+	// getUsdEurRate): any series not already in `targetCurrency` (in practice
+	// Cardmarket, the only EUR vendor — see CARDBASE_VENDOR_CURRENCY) is
+	// converted and marked `converted`, for a dashed line + a "(converted)"
+	// tooltip rather than blending in with a real price displayed by this
+	// store (see DrawnPriceSeries). A single "today" rate applies to the whole
+	// history of the series (see convertUsdEur) — a deliberate approximation,
+	// stated in the tooltip. Without a rate (frankfurter.dev network failure),
+	// explicit fallback to the old independent dual axis rather than losing
+	// the Cardmarket curve.
 	const series = exchangeRate
 		? rawSeries.map((s) => {
 				const converted = s.currency !== targetCurrency;
@@ -522,9 +513,9 @@ export function renderPriceHistoryChart(
 		  })
 		: rawSeries.map((s) => ({ ...s, converted: false }));
 
-	// Repère commun (dates uniquement) partagé par toutes les courbes, pour
-	// qu'elles se comparent sur le même axe X — l'axe des prix, lui, dépend
-	// de la disponibilité d'un taux de change (voir juste au-dessus).
+	// Common reference (dates only) shared by all the curves, so they compare
+	// on the same X axis — the price axis, for its part, depends on the
+	// availability of an exchange rate (see just above).
 	let minDate = Infinity;
 	let maxDate = -Infinity;
 	for (const s of series) {
@@ -540,14 +531,13 @@ export function renderPriceHistoryChart(
 	const H = 80;
 	const toX = (t: number) => ((t - minDate) / dateRange) * W;
 
-	// Avec un taux (exchangeRate défini) : toutes les séries partagent déjà
-	// `targetCurrency` (voir plus haut), un seul axe suffit, pas de colonne
-	// secondaire. Sans taux : repli sur l'ancien partage USD (colonne de
-	// gauche, primaire — c'est le cas pour la quasi-totalité des cartes,
-	// Card Kingdom/TCGplayer étant les vendeurs les mieux couverts par
-	// cardbase) / EUR (colonne de droite, optionnelle) ; dans le cas rare où
-	// SEUL Cardmarket a des données pour cette carte, l'EUR devient l'axe
-	// primaire plutôt que de laisser la colonne de gauche vide.
+	// With a rate (exchangeRate defined): all the series already share
+	// `targetCurrency` (see above), a single axis is enough, no secondary
+	// column. Without a rate: fallback to the old USD (left column, primary —
+	// this is the case for nearly all cards, Card Kingdom/TCGplayer being the
+	// best-covered vendors on cardbase) / EUR (right column, optional) split;
+	// in the rare case where ONLY Cardmarket has data for this card, EUR
+	// becomes the primary axis rather than leaving the left column empty.
 	let primaryAxis: YAxis;
 	let secondaryAxis: YAxis | null;
 	if (exchangeRate) {
@@ -564,11 +554,10 @@ export function renderPriceHistoryChart(
 	const axisFor = (currency: "usd" | "eur") => (currency === primaryAxis.currency ? primaryAxis : secondaryAxis!);
 
 	const drawn: DrawnPriceSeries[] = series.map((s) => {
-		// Filet de sécurité seulement — `series` est déjà restreint aux 4
-		// vendeurs de CARDBASE_VENDOR_CURRENCY juste au-dessus, cette clé
-		// existe toujours en pratique ; le fallback évite juste de propager
-		// un `undefined` dans le SVG si ce filtre changeait un jour sans
-		// mettre ces maps à jour.
+		// Safety net only — `series` is already restricted to the 4 vendors of
+		// CARDBASE_VENDOR_CURRENCY just above, this key always exists in practice;
+		// the fallback merely avoids propagating an `undefined` into the SVG if
+		// that filter ever changed without updating these maps.
 		const color = PRICE_HISTORY_VENDOR_COLORS[s.vendor] ?? "var(--text-muted)";
 		const toY = axisFor(s.currency).toY;
 		const d = s.points
@@ -595,15 +584,14 @@ export function renderPriceHistoryChart(
 		};
 	});
 
-	// Colonnes d'étiquettes Y (0 / milieu / max) en HTML de part et d'autre du
-	// SVG, pas en <text> SVG : le SVG a preserveAspectRatio="none" (il
-	// s'étire pour remplir sa boîte, X et Y dans des proportions
-	// différentes), ce qui déformerait horizontalement un texte SVG — même
-	// raisonnement déjà appliqué à dateRow plus bas. Largeur des colonnes
-	// volontairement NON fixée (voir styles.css) — une carte comme Black
-	// Lotus peut dépasser 150 000$, une largeur figée coupait ce genre
-	// d'étiquette (signalé) ; chaque colonne se dimensionne sur son propre
-	// contenu, quelle que soit sa longueur.
+	// Y label columns (0 / middle / max) in HTML on either side of the SVG,
+	// not as SVG <text>: the SVG has preserveAspectRatio="none" (it stretches
+	// to fill its box, X and Y in different proportions), which would distort
+	// an SVG text horizontally — same reasoning already applied to dateRow
+	// further down. Width of the columns deliberately NOT fixed (see
+	// styles.css) — a card like Black Lotus can exceed $150,000, a fixed width
+	// cut off that kind of label (reported); each column sizes itself on its
+	// own content, whatever its length.
 	const chartRow = container.createDiv({ cls: "mtg-price-history-chart-row" });
 	const yLabelsLeft = chartRow.createDiv({ cls: "mtg-price-history-y-labels" });
 	yLabelsLeft.createSpan({ text: formatChartPrice(primaryAxis.yMax, primaryAxis.currency) });
@@ -611,30 +599,28 @@ export function renderPriceHistoryChart(
 	yLabelsLeft.createSpan({ text: formatChartPrice(0, primaryAxis.currency) });
 
 	const plot = chartRow.createDiv({ cls: "mtg-price-history-plot" });
-	// Tout ce qui est STATIQUE (grille, courbes, point final) construit comme
-	// une chaîne puis injecté via setSvgMarkup (ui/svg-markup.ts) — même
-	// convention que tous les autres SVG de ce plugin. Le curseur interactif (ligne verticale + points
-	// survolés) est ajouté PAR-DESSUS ensuite via l'API DOM (voir
-	// setupPriceHistoryCrosshair), puisqu'il doit être mis à jour en continu
-	// au mousemove sans reconstruire tout le graphique à chaque frame.
+	// Everything STATIC (grid, curves, end point) is built as a string then injected via setSvgMarkup
+	// (ui/svg-markup.ts) — same convention as all the other SVGs of this plugin. The interactive
+	// cursor (vertical line + hovered points) is added ON TOP afterwards through the DOM API (see
+	// setupPriceHistoryCrosshair), since it must be updated continuously on mousemove without
+	// rebuilding the whole chart on every frame.
 	setSvgMarkup(plot, `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
-		// Grille horizontale (0 / milieu / max) — un même triplet de lignes
-		// sert de repère aux DEUX axes à la fois (chacun va de son propre 0 à
-		// son propre max sur la même hauteur en pixels, donc la ligne du haut
-		// représente à la fois le max primaire ET le max secondaire, chacun
-		// avec sa propre étiquette de part et d'autre) ; les valeurs exactes
-		// sont déjà données par les étiquettes HTML, donc pas besoin
-		// d'étiqueter la grille elle-même.
+		// Horizontal grid (0 / middle / max) — one and the same triplet of lines
+		// serves as a reference for BOTH axes at once (each goes from its own 0 to
+		// its own max over the same pixel height, so the top line represents both
+		// the primary max AND the secondary max, each with its own label on either
+		// side); the exact values are already given by the HTML labels, so there
+		// is no need to label the grid itself.
 		`<line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="var(--background-modifier-border)" stroke-width="1" vector-effect="non-scaling-stroke" />` +
 		`<line x1="0" y1="${H / 2}" x2="${W}" y2="${H / 2}" stroke="var(--background-modifier-border)" stroke-width="1" stroke-dasharray="3,3" vector-effect="non-scaling-stroke" />` +
 		`<line x1="0" y1="0" x2="${W}" y2="0" stroke="var(--background-modifier-border)" stroke-width="1" vector-effect="non-scaling-stroke" />` +
 		drawn
 			.map(
 				(p) =>
-					// stroke-dasharray uniquement sur une série convertie (voir
-					// DrawnPriceSeries) — distingue au premier coup d'œil un prix
-					// estimé (converti au taux du jour) d'un vrai prix natif, sans
-					// attendre un survol de la légende/infobulle.
+					// stroke-dasharray only on a converted series (see DrawnPriceSeries) —
+					// distinguishes at first glance an estimated price (converted at today's
+					// rate) from a real native price, without waiting for a hover over the
+					// legend/tooltip.
 					`<path d="${p.d}" fill="none" stroke="${p.color}" stroke-width="2"${
 						p.converted ? ' stroke-dasharray="4,3"' : ""
 					} vector-effect="non-scaling-stroke" />` +
@@ -643,9 +629,9 @@ export function renderPriceHistoryChart(
 			.join("") +
 		`</svg>`);
 
-	// Colonne de droite optionnelle — seulement si une devise secondaire a
-	// vraiment des données pour cette carte (voir secondaryAxis ci-dessus),
-	// pas un axe vide affiché par défaut.
+	// Optional right column — only if a secondary currency really has data for
+	// this card (see secondaryAxis above), not an empty axis displayed by
+	// default.
 	if (secondaryAxis) {
 		const yLabelsRight = chartRow.createDiv({ cls: "mtg-price-history-y-labels mtg-price-history-y-labels-right" });
 		yLabelsRight.createSpan({ text: formatChartPrice(secondaryAxis.yMax, secondaryAxis.currency) });
@@ -669,10 +655,10 @@ export function renderPriceHistoryChart(
 			}`,
 		});
 		if (p.converted) {
-			// Devise d'origine déduite plutôt que stockée à part : seules
-			// USD/EUR existent ici (voir CARDBASE_VENDOR_CURRENCY), donc
-			// "convertie vers targetCurrency" détermine sans ambiguïté
-			// laquelle des deux était la devise native.
+			// Original currency deduced rather than stored separately: only USD/EUR
+			// exist here (see CARDBASE_VENDOR_CURRENCY), so "converted to
+			// targetCurrency" unambiguously determines which of the two was the native
+			// currency.
 			const originalCurrency = targetCurrency === "usd" ? "EUR" : "USD";
 			item.setAttribute(
 				"title",
@@ -684,16 +670,16 @@ export function renderPriceHistoryChart(
 	setupPriceHistoryCrosshair(plot, drawn, toX, minDate, dateRange, W, H);
 }
 
-// Ligne verticale + un point par courbe qui suivent la souris, avec une
-// infobulle date/prix — ajoutés par-dessus le SVG statique (voir
-// renderPriceHistoryChart ci-dessus) via l'API DOM plutôt que reconstruits en
-// chaîne à chaque mousemove, pour rester fluide. `allTimestamps` est l'union
-// des dates de toutes les courbes (pas juste une seule) au cas où un magasin
-// manquerait un jour que l'autre a — le point exact au jour survolé est
-// cherché indépendamment par courbe, une courbe sans donnée ce jour-là cache
-// juste son propre point plutôt que d'interpoler une valeur inventée. Chaque
-// courbe porte déjà son propre `toY` (voir DrawnPriceSeries) — plus besoin
-// qu'une fonction ici sache quel axe/devise correspond à quel vendeur.
+// Vertical line + one point per curve that follow the mouse, with a
+// date/price tooltip — added on top of the static SVG (see
+// renderPriceHistoryChart above) via the DOM API rather than rebuilt as a
+// string on every mousemove, to stay smooth. `allTimestamps` is the union of
+// the dates of all the curves (not just one) in case one store misses a day
+// that the other has — the exact point on the hovered day is looked up
+// independently per curve, a curve with no data that day just hides its own
+// point rather than interpolating an invented value. Each curve already
+// carries its own `toY` (see DrawnPriceSeries) — no more need for a function
+// here to know which axis/currency corresponds to which vendor.
 function setupPriceHistoryCrosshair(
 	plot: HTMLElement,
 	drawn: DrawnPriceSeries[],
@@ -774,11 +760,11 @@ function setupPriceHistoryCrosshair(
 		tooltip.empty();
 		lines.forEach((line) => tooltip.createDiv({ text: line }));
 		tooltip.addClass("is-visible");
-		// Ancré sur la position RÉELLEMENT dessinée du curseur (x/W, le point
-		// accroché le plus proche), pas la fraction brute de la souris — sans
-		// ça l'infobulle et la ligne verticale peuvent légèrement diverger sur
-		// un graphique à faible résolution de points. Bascule à gauche du
-		// curseur passé 75% de la largeur pour ne jamais déborder à droite.
+		// Anchored on the position ACTUALLY drawn of the cursor (x/W, the nearest
+		// snapped point), not the raw fraction of the mouse — without this the
+		// tooltip and the vertical line can diverge slightly on a chart with a low
+		// point resolution. Flips to the left of the cursor past 75% of the width
+		// so as never to overflow on the right.
 		const snappedFrac = x / W;
 		const nearRightEdge = snappedFrac > 0.75;
 		tooltip.style.left = nearRightEdge ? "" : `${snappedFrac * 100}%`;
@@ -795,13 +781,13 @@ function setupPriceHistoryCrosshair(
 	plot.addEventListener("mouseleave", hide);
 }
 
-// Attribution de la source — un élément STATIQUE, à part de `body` (voir
-// renderPriceHistoryChart ci-dessus), ajouté une seule fois à la boîte
-// elle-même par chaque modale (voir renderPriceHistoryBox) plutôt que
-// reconstruit à chaque résolution du fetch : reste donc visible dès le tout
-// premier paint (pendant le chargement) et pas seulement une fois les
-// données arrivées, ce qui répond au passage à la demande "peut-on afficher
-// la source" même pendant l'attente plutôt que seulement après.
+// Attribution of the source — a STATIC element, separate from `body` (see
+// renderPriceHistoryChart above), added only once to the box itself by each
+// modal (see renderPriceHistoryBox) rather than rebuilt each time the fetch
+// resolves: it therefore stays visible from the very first paint (during
+// loading) and not only once the data has arrived, which answers the
+// passing request "can we display the source" even while waiting rather
+// than only afterwards.
 export function renderPriceHistorySourceFooter(box: HTMLElement): HTMLElement {
 	const footer = box.createDiv({ cls: "mtg-price-history-source" });
 	footer.setText("Source: cardbase.dev");
@@ -809,17 +795,16 @@ export function renderPriceHistorySourceFooter(box: HTMLElement): HTMLElement {
 	return footer;
 }
 
-// Complète le pied de page une fois l'historique résolu, avec la date de
-// fraîcheur des données cardbase (CardbasePriceHistory.asOf — voir
-// cardbase.ts pour pourquoi ça vient de la même réponse déjà récupérée,
-// aucun appel GET /status séparé). Appelé depuis le .then() de
-// renderPriceHistoryBox (les 3 modales), après renderPriceHistoryChart —
-// séparé de renderPriceHistorySourceFooter ci-dessus plutôt que fusionné,
-// puisque cette info n'est connue qu'après le fetch alors que le pied de
-// page lui-même doit exister dès le premier paint (voir son propre
-// commentaire). Un asOf absent (échec réseau, ou réponse mal formée) laisse
-// le texte "Source: cardbase.dev" existant tel quel plutôt que d'ajouter
-// une date manquante.
+// Completes the footer once the history is resolved, with the freshness
+// date of the cardbase data (CardbasePriceHistory.asOf — see cardbase.ts
+// for why it comes from the same response already fetched, no separate GET
+// /status call). Called from the .then() of renderPriceHistoryBox (the 3
+// modals), after renderPriceHistoryChart — separate from
+// renderPriceHistorySourceFooter above rather than merged, since this
+// information is only known after the fetch whereas the footer itself must
+// exist from the first paint (see its own comment). A missing asOf (network
+// failure, or malformed response) leaves the existing "Source:
+// cardbase.dev" text as is rather than adding a missing date.
 export function appendAsOfToSourceFooter(footer: HTMLElement, asOf: string | undefined) {
 	if (!asOf) return;
 	footer.setText(`Source: cardbase.dev · Data as of ${asOf}`);
@@ -832,20 +817,20 @@ export function renderLoadingDots(container: HTMLElement) {
 	container.createSpan();
 }
 
-// Petit badge "▲ +2.1%"/"▼ -1.3%" sous le prix Card Kingdom/TCGplayer/
-// Cardmarket, veille→aujourd'hui — voir getCardbaseDayChange (cardbase.ts)
-// pour le calcul. Glyphe Unicode plutôt qu'une icône Lucide/setIcon : ce
-// fichier n'a par ailleurs aucune dépendance à "obsidian" (voir son en-tête
-// de fichier — helpers de rendu purs), et un triangle plein coloré via
-// `color` suffit largement pour un indicateur aussi petit, pas besoin
-// d'introduire cette dépendance pour si peu. `undefined`/"flat" (0% exact —
-// les deux derniers points sont identiques) ne rendent rien du tout plutôt
-// qu'un badge gris "0.0%" : un jour sans mouvement n'est pas une donnée
-// intéressante à mettre en avant ici, et beaucoup de cartes n'auront tout
-// simplement pas bougé d'un jour à l'autre. Le conteneur est vidé/recoloré
-// à chaque appel (pas seulement rempli une fois) pour rester correct si
-// jamais appelé plusieurs fois sur le même élément (pas le cas aujourd'hui,
-// mais évite un piège silencieux si un futur appelant réutilise l'élément).
+// Small "▲ +2.1%"/"▼ -1.3%" badge under the Card
+// Kingdom/TCGplayer/Cardmarket price, previous day → today — see
+// getCardbaseDayChange (cardbase.ts) for the calculation. Unicode glyph
+// rather than a Lucide/setIcon icon: this file otherwise has no dependency
+// on "obsidian" (see its file header — pure rendering helpers), and a solid
+// triangle colored via `color` is more than enough for an indicator this
+// small, no need to introduce that dependency for so little.
+// `undefined`/"flat" (exactly 0% — the last two points are identical)
+// render nothing at all rather than a gray "0.0%" badge: a day without
+// movement is not interesting data to put forward here, and many cards
+// simply won't have moved from one day to the next. The container is
+// emptied/recolored on every call (not only filled once) to stay correct if
+// ever called several times on the same element (not the case today, but
+// avoids a silent trap if a future caller reuses the element).
 export function renderDayChangeBadge(container: HTMLElement, change: CardbaseDayChange | undefined) {
 	container.empty();
 	container.removeClass("is-up", "is-down");
@@ -856,16 +841,15 @@ export function renderDayChangeBadge(container: HTMLElement, change: CardbaseDay
 	container.createSpan({ text: `${sign}${change.changePct.toFixed(1)}%` });
 }
 
-// Construit une icône pour un seul symbole de mana ("W", "2", "T", "2/W"...),
-// partagée par renderManaCostIcons (coût complet) et
-// renderTextWithManaSymbols (symboles isolés au milieu d'un texte de règles)
-// ci-dessous — même lookup asynchrone (`getSymbolSvg`, en pratique
-// `plugin.getManaSymbolSvg` côté appelant, déjà utilisé pour les icônes de
-// regroupement par couleur dans view.ts — même endpoint /symbology, mêmes
-// clés "{X}"), seule la taille de rendu diffère entre les deux usages. Chaque
-// symbole non reconnu (rarissime : un tout nouveau symbole pas encore
-// synchronisé côté cache) retombe sur son propre texte brut ("{W}") plutôt
-// qu'une case vide silencieuse.
+// Builds an icon for a single mana symbol ("W", "2", "T", "2/W"...), shared
+// by renderManaCostIcons (full cost) and renderTextWithManaSymbols (isolated
+// symbols in the middle of rules text) below — same asynchronous lookup
+// (`getSymbolSvg`, in practice `plugin.getManaSymbolSvg` on the caller's
+// side, already used for the color-grouping icons in view.ts — same
+// /symbology endpoint, same "{X}" keys), only the render size differs between
+// the two uses. Each unrecognized symbol (very rare: a brand-new symbol not
+// yet synchronized in the cache) falls back to its own raw text ("{W}")
+// rather than a silent empty box.
 function buildManaSymbolIcon(
 	container: HTMLElement,
 	letter: string,
@@ -887,10 +871,10 @@ function buildManaSymbolIcon(
 	return iconEl;
 }
 
-// Découpe un coût de mana Scryfall ("{2}{W}{W}") en icônes officielles, un
-// <span> par symbole — cette fonction reste pure (pas de dépendance à
-// MTGCollectionPlugin, contrairement au reste de ce fichier) en recevant le
-// lookup en paramètre, voir buildManaSymbolIcon ci-dessus.
+// Splits a Scryfall mana cost ("{2}{W}{W}") into official icons, one <span>
+// per symbol — this function stays pure (no dependency on
+// MTGCollectionPlugin, unlike the rest of this file) by receiving the
+// lookup as a parameter, see buildManaSymbolIcon above.
 export function renderManaCostIcons(
 	container: HTMLElement,
 	manaCost: string,
@@ -905,17 +889,16 @@ export function renderManaCostIcons(
 	});
 }
 
-// Rend un texte de règles en remplaçant chaque symbole de mana isolé qu'il
-// contient (ex. "{T}: Add {W}.") par son icône officielle, comme
-// renderManaCostIcons ci-dessus mais avec du texte normal entre les
-// symboles — contrairement à un coût de mana ("{2}{W}{W}"), oracle_text
-// mélange texte brut et symboles. La regex capturante (parenthèses autour du
-// motif) fait que String.split conserve les délimiteurs dans le tableau
-// résultat, contrairement à match() utilisé par renderManaCostIcons — c'est
-// ce qui permet de reconstruire texte et icônes dans le bon ordre. Chaque
-// fragment de texte est ajouté en tant que vrai nœud texte (pas de
-// setText/balisage) pour ne jamais interpréter un `<`/`&` du texte de règles
-// comme du HTML.
+// Renders rules text by replacing each isolated mana symbol it contains
+// (e.g. "{T}: Add {W}.") with its official icon, like renderManaCostIcons
+// above but with normal text between the symbols — unlike a mana cost
+// ("{2}{W}{W}"), oracle_text mixes plain text and symbols. The capturing
+// regex (parentheses around the pattern) makes String.split keep the
+// delimiters in the resulting array, unlike match() used by
+// renderManaCostIcons — this is what allows rebuilding text and icons in the
+// right order. Each text fragment is added as a real text node (no
+// setText/markup) so as never to interpret a `<`/`&` of the rules text as
+// HTML.
 export function renderTextWithManaSymbols(
 	container: HTMLElement,
 	text: string,
@@ -933,21 +916,20 @@ export function renderTextWithManaSymbols(
 	});
 }
 
-// Bloc "Card Text" d'une carte à plusieurs faces (split, adventure, flip,
-// transform, modal_dfc...) — voir CardTextInfo.faces (scryfall.ts) pour le
-// raisonnement complet. Une section par face (nom, type+coût de mana,
-// texte de règles, stats), séparées d'une ligne discrète, plutôt que la
-// version fusionnée d'origine ("Instant // Instant", les deux coûts de
-// mana bout à bout) — retour explicite ("je préférerais que cela soit bien
-// séparé pour chaque portion de la carte... une ligne horizontale discrète"
-// plutôt qu'un "//" textuel). Réutilise renderManaCostIcons/
-// renderTextWithManaSymbols tels quels, une fois par face plutôt qu'une
-// seule fois sur la chaîne fusionnée — chaque face a son propre coût de
-// mana/texte déjà séparé à la source (card_faces), donc plus besoin
-// d'inventer une logique de découpage.
-// Appelée par les 3 modales de détail à la place de leur propre
-// header+textEl+stats habituels dès que CardTextInfo.faces est présent —
-// voir CardDetailModal.renderCardDescriptionBox pour le point d'appel.
+// "Card Text" block of a multi-faced card (split, adventure, flip,
+// transform, modal_dfc...) — see CardTextInfo.faces (scryfall.ts) for the
+// full reasoning. One section per face (name, type+mana cost, rules text,
+// stats), separated by a discreet line, rather than the original merged
+// version ("Instant // Instant", the two mana costs end to end) — explicit
+// feedback ("I'd prefer it to be clearly separated for each portion of the
+// card... a discreet horizontal line" rather than a textual "//"). Reuses
+// renderManaCostIcons/renderTextWithManaSymbols as is, once per face rather
+// than once on the merged string — each face has its own mana cost/text
+// already separated at the source (card_faces), so no more need to invent
+// splitting logic.
+// Called by the 3 detail modals in place of their own usual
+// header+textEl+stats as soon as CardTextInfo.faces is present — see
+// CardDetailModal.renderCardDescriptionBox for the call site.
 export function renderCardDescriptionFaces(
 	container: HTMLElement,
 	faces: CardTextFace[],
@@ -976,29 +958,28 @@ export function renderCardDescriptionFaces(
 	});
 }
 
-// Bouton "flip" 3D sous la carte, pour les vraies cartes double-face
-// (transform/modal_dfc — voir getDoubleFacedImages, scryfall.ts) : partagé
-// par les 3 modales de détail, mêmes DOM/CSS/interaction partout. Le guard
-// de péremption (this.card.scryfallId === l'id demandé au lancement du
-// fetch, contre une navigation prev/next pendant l'aller-retour Scryfall)
-// reste côté appelant, même convention que renderPriceHistoryChart/
-// renderDayChangeBadge plus haut dans ce fichier — cette fonction ne fait
-// que construire le DOM une fois qu'on sait déjà qu'il y a un verso à
-// montrer.
-// `tilt` doit déjà contenir tout son contenu "recto" habituel (l'image +
-// les calques foil/holo éventuels, construits par l'appelant exactement
-// comme avant pour une carte non double-face) — cette fonction déplace ces
-// enfants existants dans un nouveau conteneur de rotation plutôt que de les
-// reconstruire, donc appeler ceci APRÈS que l'appelant a fini de peupler
-// `tilt`, jamais avant. setupCardTilt (déjà appelé sur ce même `tilt` avant
-// ceci, dans les 3 modales) ne lit/n'écrit que des propriétés sur `tilt`
-// lui-même (style.transform, --holo-*, un ResizeObserver sur sa largeur) —
-// aucune hypothèse sur ses enfants, donc les réorganiser après coup ne le
-// perturbe pas.
-// Pas de dépendance à setIcon/"obsidian" ici (voir l'en-tête de ce fichier —
-// aucune des autres fonctions de rendu partagées n'en a, même raisonnement
-// que renderDayChangeBadge pour son glyphe ▲/▼) : l'icône du bouton est un
-// simple caractère Unicode plutôt qu'une icône Lucide.
+// 3D "flip" button under the card, for true double-faced cards
+// (transform/modal_dfc — see getDoubleFacedImages, scryfall.ts): shared by
+// the 3 detail modals, same DOM/CSS/interaction everywhere. The staleness
+// guard (this.card.scryfallId === the id requested when the fetch was
+// launched, against a prev/next navigation during the Scryfall round trip)
+// stays on the caller's side, same convention as
+// renderPriceHistoryChart/renderDayChangeBadge higher up in this file — this
+// function only builds the DOM once we already know there is a back face to
+// show.
+// `tilt` must already contain all its usual "front" content (the image + any
+// foil/holo layers, built by the caller exactly as before for a
+// non-double-faced card) — this function moves these existing children into
+// a new rotation container rather than rebuilding them, so call this AFTER
+// the caller has finished populating `tilt`, never before. setupCardTilt
+// (already called on this same `tilt` before this, in the 3 modals) only
+// reads/writes properties on `tilt` itself (style.transform, --holo-*, a
+// ResizeObserver on its width) — no assumption about its children, so
+// rearranging them afterwards doesn't disturb it.
+// No dependency on setIcon/"obsidian" here (see the header of this file —
+// none of the other shared rendering functions has one, same reasoning as
+// renderDayChangeBadge for its ▲/▼ glyph): the button's icon is a simple
+// Unicode character rather than a Lucide icon.
 export function setupDoubleFacedFlip(
 	imageColumn: HTMLElement,
 	tilt: HTMLElement,
@@ -1010,10 +991,10 @@ export function setupDoubleFacedFlip(
 	const frontFace = flipStage.createDiv({
 		cls: "mtg-card-detail-flip-face mtg-card-detail-flip-face-front",
 	});
-	// Array.from copie la NodeList AVANT de la vider par déplacement —
-	// appendChild retire chaque enfant de son parent d'origine (tilt) au fur
-	// et à mesure, donc itérer directement la NodeList vivante de `tilt`
-	// sauterait un enfant sur deux au fil du déplacement.
+	// Array.from copies the NodeList BEFORE emptying it by moving —
+	// appendChild removes each child from its original parent (tilt) as it
+	// goes, so iterating the live NodeList of `tilt` directly would skip every
+	// other child as the move progresses.
 	Array.from(tilt.children)
 		.filter((child) => child !== flipStage)
 		.forEach((child) => frontFace.appendChild(child));
@@ -1041,64 +1022,62 @@ export function setupDoubleFacedFlip(
 	});
 }
 
-// Ratio réel d'une image Scryfall "normal" (488×680 — voir "Card view" dans
-// CLAUDE.md pour cette référence) : hauteur = largeur × ce ratio, en
-// orientation portrait naturelle. Utilisé ici pour calculer, à une largeur
-// de `stage` donnée, la hauteur paysage naturelle d'une carte tournée
-// (largeur × 1/ce ratio) — `stage` lui-même garde toujours l'aspect-ratio
-// 488/680 inverse (styles.css), donc ce nombre n'a besoin d'être défini
-// qu'une fois ici plutôt que dupliqué des deux côtés.
+// Real ratio of a Scryfall "normal" image (488×680 — see "Card view" in
+// CLAUDE.md for this reference): height = width × this ratio, in natural
+// portrait orientation. Used here to compute, for a given `stage` width,
+// the natural landscape height of a rotated card (width × 1/this ratio) —
+// `stage` itself always keeps the inverse aspect-ratio 488/680
+// (styles.css), so this number only needs to be defined once here rather
+// than duplicated on both sides.
 const SCRYFALL_CARD_PORTRAIT_RATIO = 680 / 488;
 
-// Bouton "rotation" pour les cartes split (Fire // Ice, Never // Return...
-// — voir getSplitCardInfo, scryfall.ts) : contrairement à setupDoubleFaced-
-// Flip ci-dessus, il n'y a ici qu'UN SEUL visuel imprimé — c'est son
-// AFFICHAGE qu'il faut tourner à 90°, pas un second visuel à révéler.
-// Mêmes conventions d'appel que setupDoubleFacedFlip : `tilt` doit déjà
-// contenir tout son contenu habituel (image + calques foil/holo éventuels),
-// cette fonction déplace ces enfants existants dans un calque de rotation
-// plutôt que de les reconstruire — appeler APRÈS que l'appelant a fini de
-// peupler `tilt`, et après setupCardTilt (qui ne lit/n'écrit que des
-// propriétés sur `tilt` lui-même, aucune hypothèse sur ses enfants — même
-// raisonnement déjà établi pour setupDoubleFacedFlip). Le guard de
-// péremption (this.card.scryfallId === l'id demandé) reste côté appelant,
-// même convention que les autres boîtes async de ce panneau.
+// "Rotation" button for split cards (Fire // Ice, Never // Return... — see
+// getSplitCardInfo, scryfall.ts): unlike setupDoubleFacedFlip above, there
+// is only ONE printed visual here — it is its DISPLAY that must be rotated
+// by 90°, not a second visual to reveal.
+// Same calling conventions as setupDoubleFacedFlip: `tilt` must already
+// contain all its usual content (image + any foil/holo layers), this
+// function moves these existing children into a rotation layer rather than
+// rebuilding them — call AFTER the caller has finished populating `tilt`,
+// and after setupCardTilt (which only reads/writes properties on `tilt`
+// itself, no assumption about its children — same reasoning already
+// established for setupDoubleFacedFlip). The staleness guard
+// (this.card.scryfallId === the requested id) stays on the caller's side,
+// same convention as the other async boxes of this panel.
 //
-// **Refonte (2026-08-17)** suite à deux retours : le bouton "Rotate to
-// read"/"Reset rotation" se déplaçait verticalement selon l'état (la toute
-// première version ne réservait la hauteur paysage, plus courte, que
-// pendant qu'on était tourné), et la rotation semblait "brusque" (pas
-// animée du tout, par prudence — voir l'ancienne version de ce commentaire
-// dans l'historique git). Voir styles.css pour le détail complet du
-// nouveau calcul : `stage` garde maintenant TOUJOURS l'aspect-ratio
-// portrait (488/680), donc sa hauteur réservée ne bouge plus jamais — ce
-// qui fixe le bouton d'un coup — et `rotateLayer` est maintenant TOUJOURS
-// position:absolute + centré dans les deux états (jamais un `position` qui
-// bascule, propriété non interpolable), ce qui rend l'animation possible :
-// resize() lui fixe, en JS, une largeur/hauteur explicites dans les DEUX
-// états désormais (pas seulement quand tourné) — au repos, la taille
-// portrait naturelle de `stage` à sa largeur actuelle ; tourné, ces deux
-// valeurs inversées, pour que le rectangle peint après rotate(90deg) fasse
-// toute la largeur de `stage` à sa hauteur paysage naturelle (plus courte
-// que `stage` lui-même, désormais toujours portrait — d'où l'espace vide
-// centré au-dessus/en dessous de la carte tournée, le compromis délibéré
-// qui achète la stabilité du bouton). ResizeObserver sur `stage`, même
-// technique que setupCardTileRadiusObserver/computeCardTileRadius (view.ts,
-// voir "Card view" dans CLAUDE.md) — pas de disconnect() explicite, même
-// raisonnement déjà établi pour l'observer de setupCardTilt sur ce même
-// `tilt` : `stage` est reconstruit à neuf à chaque draw(), jamais réutilisé,
-// donc une fois l'ancien élément détaché et sans autre référence, son
-// observer devient éligible au GC de lui-même.
-// Transition animée cette fois (contrairement à la version précédente,
-// prudemment non animée par analogie avec le bug de désynchronisation de
-// .mtg-card-detail-grading-wrapper, voir "v13" dans CLAUDE.md) : ce risque
-// concernait deux ÉLÉMENTS/mécanismes de rendu distincts qui devaient
-// rester en phase (grid-template-rows d'un côté, margin d'un élément
-// voisin de l'autre) — ici tout change sur le MÊME élément
-// (`rotateLayer`), dans le MÊME batch synchrone (classe + style.width/
-// height posés dans le même tick, voir applyState ci-dessous), donc le
-// navigateur n'a qu'un seul état "avant"/"après" à interpoler, sans cette
-// classe de risque.
+// **Redesign (2026-08-17)** following two pieces of feedback: the "Rotate to
+// read"/"Reset rotation" button moved vertically depending on the state (the
+// very first version only reserved the landscape height, which is shorter,
+// while rotated), and the rotation felt "abrupt" (not animated at all, out
+// of caution — see the old version of this comment in the git history). See
+// styles.css for the full detail of the new calculation: `stage` now ALWAYS
+// keeps the portrait aspect-ratio (488/680), so its reserved height never
+// moves again — which pins the button once and for all — and `rotateLayer`
+// is now ALWAYS position:absolute + centered in both states (never a
+// `position` that toggles, a non-interpolable property), which makes the
+// animation possible: resize() now sets an explicit width/height on it, in
+// JS, in BOTH states (not only when rotated) — at rest, the natural portrait
+// size of `stage` at its current width; rotated, these two values swapped,
+// so that the rectangle painted after rotate(90deg) spans the full width of
+// `stage` at its natural landscape height (shorter than `stage` itself, now
+// always portrait — hence the empty space centered above/below the rotated
+// card, the deliberate compromise that buys the button's stability).
+// ResizeObserver on `stage`, same technique as
+// setupCardTileRadiusObserver/computeCardTileRadius (view.ts, see "Card
+// view" in CLAUDE.md) — no explicit disconnect(), same reasoning already
+// established for the setupCardTilt observer on this same `tilt`: `stage` is
+// rebuilt from scratch on every draw(), never reused, so once the old
+// element is detached with no other reference, its observer becomes eligible
+// for GC by itself.
+// Animated transition this time (unlike the previous version, cautiously not
+// animated by analogy with the desynchronization bug of
+// .mtg-card-detail-grading-wrapper, see "v13" in CLAUDE.md): that risk
+// concerned two distinct rendering ELEMENTS/mechanisms that had to stay in
+// phase (grid-template-rows on one side, the margin of a neighboring element
+// on the other) — here everything changes on the SAME element
+// (`rotateLayer`), in the SAME synchronous batch (class + style.width/height
+// set in the same tick, see applyState below), so the browser has only one
+// "before"/"after" state to interpolate, without that class of risk.
 export function setupSplitCardRotation(
 	imageColumn: HTMLElement,
 	tilt: HTMLElement,
@@ -1113,33 +1092,32 @@ export function setupSplitCardRotation(
 
 	let rotated = initiallyRotated;
 
-	// offsetWidth, PAS getBoundingClientRect().width (bug rapporté : la
-	// carte suivante s'affichait "en plus petit" en naviguant d'une carte
-	// tournée vers une autre carte split) — getBoundingClientRect() reflète
-	// la géométrie VISUELLE, donc TOUT transform CSS porté par un ANCÊTRE,
-	// y compris transitoire. `stage` vit sous `.mtg-card-detail-image-wrap`,
-	// qui porte pendant ~1-2 frames le transform d'entrée du carrousel
-	// Cover Flow (animateCardNav, translateX + rotateY, voir styles.css) —
-	// si la promesse getSplitCardInfo de la carte suivante se résout très
-	// vite (cache déjà chaud, ex. carte déjà visitée cette session : le
-	// callback .then() s'exécute en microtâche, AVANT le premier
-	// requestAnimationFrame qui retire ce transform), resize() mesurait
-	// alors la carte encore rétrécie par la perspective 3D du carrousel
-	// (rotateY déforme la largeur perçue), figeant cette taille trop
-	// petite pour de bon puisque rien ne redéclenche resize() une fois le
-	// transform retiré (un transform ne change jamais la taille de MISE EN
-	// PAGE, seulement le rendu visuel — ResizeObserver, qui observe la
-	// boîte de mise en page, ne se redéclenche donc pas quand ce transform
-	// disparaît). offsetWidth renvoie la largeur de mise en page réelle,
-	// insensible à tout transform (le sien ou celui d'un ancêtre) — la
-	// bonne mesure ici, quel que soit le moment où elle a lieu.
+	// offsetWidth, NOT getBoundingClientRect().width (reported bug: the next
+	// card displayed "smaller" when navigating from a rotated card to another
+	// split card) — getBoundingClientRect() reflects the VISUAL geometry,
+	// hence ANY CSS transform carried by an ANCESTOR, including a transient
+	// one. `stage` lives under `.mtg-card-detail-image-wrap`, which carries
+	// for ~1-2 frames the entry transform of the Cover Flow carousel
+	// (animateCardNav, translateX + rotateY, see styles.css) — if the
+	// getSplitCardInfo promise of the next card resolves very quickly (cache
+	// already warm, e.g. a card already visited this session: the .then()
+	// callback runs in a microtask, BEFORE the first requestAnimationFrame
+	// that removes this transform), resize() then measured the card still
+	// shrunk by the carousel's 3D perspective (rotateY distorts the perceived
+	// width), freezing this too-small size for good since nothing triggers
+	// resize() again once the transform is removed (a transform never changes
+	// the LAYOUT size, only the visual rendering — ResizeObserver, which
+	// observes the layout box, therefore doesn't fire again when this
+	// transform disappears). offsetWidth returns the real layout width,
+	// insensitive to any transform (its own or an ancestor's) — the right
+	// measure here, whenever it takes place.
 	const resize = () => {
 		const width = stage.offsetWidth;
 		if (width === 0) return;
 		if (rotated) {
-			// Pré-rotation : largeur/hauteur inversées pour qu'après
-			// rotate(90deg) le rectangle peint fasse toute la largeur de
-			// `stage`, à sa hauteur paysage naturelle.
+			// Pre-rotation: width/height swapped so that after rotate(90deg) the
+			// painted rectangle spans the full width of `stage`, at its natural
+			// landscape height.
 			rotateLayer.style.width = `${width / SCRYFALL_CARD_PORTRAIT_RATIO}px`;
 			rotateLayer.style.height = `${width}px`;
 		} else {
@@ -1157,14 +1135,14 @@ export function setupSplitCardRotation(
 	const observer = new ResizeObserver(() => resize());
 	observer.observe(stage);
 
-	// Réutilise .mtg-card-detail-flip-btn/-btn-icon tel quel (même pilule
-	// accent-outline sous l'image que le bouton "flip" 3D) plutôt qu'une
-	// classe dédiée — les deux boutons ne coexistent jamais (une carte est
-	// soit une vraie double-face, soit split, jamais les deux à la fois, voir
-	// getDoubleFacedImages/getSplitCardInfo), et le style visuel est
-	// générique — même raisonnement de réutilisation que .mtg-card-detail-
-	// backdrop/-close-btn ailleurs dans ce plugin (le nom ne colle pas
-	// exactement à chaque usage, mais la règle CSS elle-même est générique).
+	// Reuses .mtg-card-detail-flip-btn/-btn-icon as is (same accent-outline
+	// pill under the image as the 3D "flip" button) rather than a dedicated
+	// class — the two buttons never coexist (a card is either a true
+	// double-faced card or split, never both at once, see
+	// getDoubleFacedImages/getSplitCardInfo), and the visual style is generic
+	// — same reuse reasoning as .mtg-card-detail-backdrop/-close-btn elsewhere
+	// in this plugin (the name doesn't fit each use exactly, but the CSS rule
+	// itself is generic).
 	const btn = imageColumn.createDiv({ cls: "mtg-card-detail-flip-btn" });
 	const updateLabel = () => {
 		btn.empty();
@@ -1175,19 +1153,18 @@ export function setupSplitCardRotation(
 	btn.addEventListener("click", (evt) => {
 		evt.stopPropagation();
 		rotated = !rotated;
-		// La géométrie animée (transform + width/height tous trois en
-		// transition, voir styles.css) fait transitoirement déborder le
-		// rectangle peint au-delà de sa taille de repos — le "renflement"
-		// naturel d'un rectangle qui tourne ET change de taille en même
-		// temps, maximal autour de 45° (mesuré ~1.45× la largeur de repos
-		// dans un test isolé) — que le clip de `tilt` (dimensionné pour les
-		// DEUX états de repos, pas pour ce pic transitoire) rognait
-		// visiblement pendant la rotation (bug rapporté). Désactivé le
-		// temps de la transition (même durée que le CSS, 450ms) : à
-		// l'arrêt, le clip se réapplique proprement sur la forme finale
-		// exacte — `.mtg-card-detail-nav-viewport`, plus large que la carte
-		// et jamais touché ici, continue de contenir tout débordement dans
-		// les limites de la colonne pendant cette fenêtre.
+		// The animated geometry (transform + width/height, all three in
+		// transition, see styles.css) makes the painted rectangle transiently
+		// overflow beyond its resting size — the natural "bulge" of a rectangle
+		// that rotates AND changes size at the same time, maximal around 45°
+		// (measured ~1.45× the resting width in an isolated test) — which the clip
+		// of `tilt` (sized for the TWO resting states, not for this transient
+		// peak) visibly cropped during the rotation (reported bug). Disabled for
+		// the duration of the transition (same duration as the CSS, 450ms): once
+		// it stops, the clip is cleanly reapplied on the exact final shape —
+		// `.mtg-card-detail-nav-viewport`, wider than the card and never touched
+		// here, keeps containing any overflow within the bounds of the column
+		// during this window.
 		tilt.addClass("mtg-card-detail-tilt-rotating");
 		window.setTimeout(() => tilt.removeClass("mtg-card-detail-tilt-rotating"), 450);
 		applyState();

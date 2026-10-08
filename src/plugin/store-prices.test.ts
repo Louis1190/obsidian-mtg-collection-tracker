@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Faux réseau scripté (voir api/safe-request.test.ts).
+// Scripted fake network (see api/safe-request.test.ts).
 const net = vi.hoisted(() => ({ steps: [] as (() => unknown)[], calls: 0, platform: { isMobileApp: false } }));
 vi.mock("obsidian", () => ({
 	Platform: net.platform,
@@ -26,8 +26,8 @@ function fakePlugin() {
 
 beforeEach(() => { net.steps = []; net.calls = 0; });
 
-// Ces tarifs sont chargés UNE fois par session. Une promesse rejetée gardée en cache y restait pour toute la session : une coupure au
-// premier clic privait la carte de ses prix jusqu'au redémarrage d'Obsidian.
+// These pricelists are loaded ONCE per session. A rejected promise kept in the cache stayed there for the whole
+// session: a cut at the first click deprived the card of its prices until Obsidian restarted.
 describe("the store pricelists after a network failure", () => {
 	it("Card Kingdom: an empty answer now, the next card opened tries again and gets the prices", async () => {
 		const plugin = fakePlugin();
@@ -57,9 +57,10 @@ describe("the store pricelists after a network failure", () => {
 	});
 });
 
-// Téléphone / tablette : un tarif de 65 Mo (Card Kingdom) ou 49 Mo (Mana Pool) passé par requestUrl y est encodé en base64 puis rendu en
-// une fois, et l'application Obsidian plante faute de mémoire À L'OUVERTURE D'UNE FICHE. Card Kingdom y est lu en flux (fetch) ; Mana Pool
-// (pas de CORS, pas d'accès par carte) n'y est pas chargé du tout.
+// Phone / tablet: a 65 MB (Card Kingdom) or 49 MB (Mana Pool) pricelist passed through requestUrl is
+// base64-encoded there then returned at once, and the Obsidian app crashes for lack of memory ON OPENING A
+// SHEET. Card Kingdom is read there as a stream (fetch); Mana Pool (no CORS, no per-card access) isn't loaded
+// there at all.
 describe("on a phone or tablet", () => {
 	const fetchMock = vi.fn();
 	const body = (text: string) => {

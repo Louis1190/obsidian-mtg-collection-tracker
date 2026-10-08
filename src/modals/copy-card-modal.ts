@@ -23,55 +23,52 @@ const TAB_DEFS: { key: TabKey; label: string }[] = [
 
 export class CopyCardModal extends Modal {
 	private plugin: MTGCollectionPlugin;
-	// Toujours un tableau, même pour une seule carte (voir les sites d'appel
-	// dans card-detail-modal.ts/wantlist-card-detail-modal.ts, qui passent
-	// un tableau à 1 élément) — un seul chemin de code pour le cas simple
-	// (panneau de détail) et le cas multiple (barre d'actions groupées de
-	// My Collection, "Move to…"/"Copy to…") plutôt que deux implémentations
-	// parallèles à maintenir séparément.
+	// Always an array, even for a single card (see the call sites in
+	// card-detail-modal.ts/wantlist-card-detail-modal.ts, which pass a
+	// 1-element array) — a single code path for the simple case (detail panel)
+	// and the multiple case (My Collection's bulk-actions bar, "Move
+	// to…"/"Copy to…") rather than two parallel implementations to maintain
+	// separately.
 	private cards: (CollectionCard | WantlistCard | DeckCard)[];
-	// D'où viennent les cartes copiées/déplacées : détermine quelle méthode
-	// plugin appeler (les tableaux collection/wantlist/deck sont distincts),
-	// indépendamment de l'onglet de destination choisi ci-dessous. Toutes
-	// les cartes d'un même appel partagent la même source — la barre
-	// d'actions groupées ne mélange jamais collection et wantlist dans une
-	// même sélection, et le panneau de détail d'un deck n'ouvre jamais cette
-	// modale qu'avec une seule DeckCard à la fois (voir "deck" ci-dessous).
+	// Where the copied/moved cards come from: determines which plugin method
+	// to call (the collection/wantlist/deck arrays are distinct), regardless
+	// of the destination tab chosen below. All the cards of a single call
+	// share the same source — the bulk-actions bar never mixes collection and
+	// wantlist in the same selection, and a deck's detail panel never opens
+	// this modal with more than one DeckCard at a time (see "deck" below).
 	private sourceKind: "collection" | "wantlist" | "deck";
-	// Nécessaire uniquement quand sourceKind === "deck" : une DeckCard n'a
-	// pas de champ id propre (voir "Data model notes" dans CLAUDE.md) ni de
-	// référence à son deck parent — copyDeckCardToList/copyDeckCardToDeck/
-	// copyDeckCardToWantlist (plugin.ts) ont donc besoin qu'on leur précise
-	// explicitement d'où la carte part.
+	// Needed only when sourceKind === "deck": a DeckCard has no id field of
+	// its own (see "Data model notes" in CLAUDE.md) nor a reference to its
+	// parent deck —
+	// copyDeckCardToList/copyDeckCardToDeck/copyDeckCardToWantlist (plugin.ts)
+	// therefore need to be told explicitly where the card starts from.
 	private deckContext?: { deckId: string };
-	// "move" retire chaque carte de sa source une fois ajoutée à la
-	// destination — même galerie de destinations que "copy", seule la
-	// méthode plugin appelée diffère (voir copyToList/copyToDeck/
-	// copyToWantlist).
+	// "move" removes each card from its source once added to the destination —
+	// same gallery of destinations as "copy", only the plugin method called
+	// differs (see copyToList/copyToDeck/copyToWantlist).
 	private mode: "copy" | "move";
 	private onDone: () => void;
 	private activeTab: TabKey = "collection";
 	private galleryEl!: HTMLElement;
-	// Repartie à "" à chaque changement d'onglet (voir selectTab) — une
-	// requête tapée dans "My Decks" n'a pas de sens une fois basculé sur
-	// "My Wantlists".
+	// Reset to "" on every tab change (see selectTab) — a query typed in "My
+	// Decks" makes no sense once switched to "My Wantlists".
 	private searchQuery = "";
 	private searchInputEl!: HTMLInputElement;
-	// Onglets + indicateur construits UNE SEULE FOIS (dans buildChrome,
-	// appelé depuis onOpen) plutôt que reconstruits à chaque clic comme le
-	// reste de cette modale — demandé explicitement ("transitions plus
-	// fluides"). Une transition CSS ne peut animer un élément QUE d'un état
-	// à un autre SUR LE MÊME élément ; reconstruire les boutons à chaque
-	// clic (l'ancien comportement, hérité de renderGallery ailleurs dans ce
-	// fichier) ne laisse jamais rien à animer depuis. Ces références
-	// persistent donc pour toute la durée de vie de la modale.
+	// Tabs + indicator built ONLY ONCE (in buildChrome, called from onOpen)
+	// rather than rebuilt on every click like the rest of this modal —
+	// explicitly requested ("smoother transitions"). A CSS transition can only
+	// animate an element from one state to another ON THE SAME element;
+	// rebuilding the buttons on every click (the old behavior, inherited from
+	// renderGallery elsewhere in this file) never leaves anything to animate
+	// from. These references therefore persist for the whole lifetime of the
+	// modal.
 	private tabButtons: Partial<Record<TabKey, HTMLElement>> = {};
 	private tabIndicatorEl!: HTMLElement;
-	// Décale l'apparition des premières tuiles d'une galerie fraîchement
-	// affichée (ouverture, changement d'onglet) — jamais pendant la frappe
-	// dans la recherche, qui doit rester instantanée pour ne pas ralentir
-	// un filtrage actif. Remis à 0 au début de chaque renderGallery(),
-	// incrémenté par tuile pour espacer leur délai (voir revealTile).
+	// Staggers the appearance of the first tiles of a freshly displayed
+	// gallery (opening, tab change) — never while typing in the search, which
+	// must stay instant so as not to slow down an active filtering. Reset to 0
+	// at the start of each renderGallery(), incremented per tile to space out
+	// their delay (see revealTile).
 	private tileStaggerIndex = 0;
 	private staggerNextGallery = false;
 
@@ -94,14 +91,14 @@ export class CopyCardModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts. Demandé explicitement pour cette modale en
-		// particulier ("est-ce que la modale 'Move card' peut apparaitre de la
-		// même façon que la fenêtre de détail de carte") après quoi la même
-		// animation a été généralisée à toutes les autres modales du plugin.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts. Explicitly requested for this modal in particular
+		// ("can the 'Move card' modal appear the same way as the card detail
+		// window") after which the same animation was generalized to all the
+		// plugin's other modals.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		this.buildChrome();
 		this.renderGallery(true);
@@ -111,18 +108,18 @@ export class CopyCardModal extends Modal {
 		closeModalAnimated(this, () => super.close());
 	}
 
-	// Titre + onglets + indicateur + barre de recherche + conteneur de
-	// galerie (vide) : tout ce qui doit survivre à un changement d'onglet
-	// sans être détruit/recréé. Appelée une seule fois, depuis onOpen().
+	// Title + tabs + indicator + search bar + (empty) gallery container:
+	// everything that must survive a tab change without being
+	// destroyed/recreated. Called only once, from onOpen().
 	private buildChrome() {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass("mtg-copy-card-modal");
 		contentEl.addClass("mtg-list-actions-modal");
-		// Titre au pluriel au-delà d'une carte (même convention que
-		// MarkAsAcquiredModal : "Mark as acquired" vs "Mark N cards as
-		// acquired") — la barre d'actions groupées de My Collection peut
-		// ouvrir cette modale avec plusieurs cartes sélectionnées à la fois.
+		// Plural title beyond one card (same convention as MarkAsAcquiredModal:
+		// "Mark as acquired" vs "Mark N cards as acquired") — My Collection's
+		// bulk-actions bar can open this modal with several cards selected at
+		// once.
 		const count = this.cards.length;
 		const title =
 			this.mode === "move"
@@ -143,10 +140,10 @@ export class CopyCardModal extends Modal {
 			btn.addEventListener("click", () => this.selectTab(t.key));
 			this.tabButtons[t.key] = btn;
 		});
-		// Barre unique qui glisse d'un onglet à l'autre (voir positionIndicator)
-		// plutôt qu'une bordure par bouton activée/désactivée au clic — c'est
-		// justement ce qui permet le glissement demandé : une seule instance,
-		// jamais reconstruite, dont on change juste transform/width.
+		// Single bar that slides from one tab to the other (see positionIndicator)
+		// rather than a border per button toggled on click — this is precisely
+		// what enables the requested sliding: a single instance, never rebuilt, of
+		// which only transform/width is changed.
 		this.tabIndicatorEl = tabsEl.createDiv({ cls: "mtg-copy-card-tab-indicator" });
 
 		const searchWrap = contentEl.createDiv({ cls: "mtg-copy-card-search" });
@@ -155,12 +152,12 @@ export class CopyCardModal extends Modal {
 			type: "text",
 		});
 		this.searchInputEl.setAttribute("placeholder", this.searchPlaceholder());
-		// Ne reconstruit QUE la galerie (pas les onglets/la recherche) à chaque
-		// frappe — reconstruire ce <input> lui-même couperait le focus au milieu
-		// de la saisie (même risque documenté pour pendingFocusRestore/
-		// renderChipFilter ailleurs dans ce plugin). Jamais de délai décalé ici
-		// (staggerNextGallery reste false) : un filtrage doit réagir tout de
-		// suite, pas onduler à chaque caractère tapé.
+		// Rebuilds ONLY the gallery (not the tabs/the search) on every keystroke —
+		// rebuilding this <input> itself would cut the focus in the middle of
+		// typing (same risk documented for pendingFocusRestore/renderChipFilter
+		// elsewhere in this plugin). Never a staggered delay here
+		// (staggerNextGallery stays false): a filtering must react immediately,
+		// not ripple on every typed character.
 		this.searchInputEl.addEventListener("input", () => {
 			this.searchQuery = this.searchInputEl.value;
 			this.renderGallery();
@@ -168,10 +165,10 @@ export class CopyCardModal extends Modal {
 
 		this.galleryEl = contentEl.createDiv({ cls: "mtg-copy-card-gallery" });
 
-		// Position initiale posée de façon synchrone, dans le même passage que
-		// la construction des boutons : l'indicateur n'a encore jamais été peint
-		// à un autre endroit, donc rien à animer DEPUIS — contrairement à
-		// selectTab ci-dessous, qui s'exécute après un premier rendu déjà visible.
+		// Initial position set synchronously, in the same pass as the construction
+		// of the buttons: the indicator has never been painted anywhere else, so
+		// there is nothing to animate FROM — unlike selectTab below, which runs
+		// after a first render that is already visible.
 		this.positionIndicator(this.activeTab);
 	}
 
@@ -214,16 +211,15 @@ export class CopyCardModal extends Modal {
 		return !query || name.toLowerCase().includes(query);
 	}
 
-	// Fait apparaître une tuile fraîchement construite, une par une plutôt que
-	// toutes d'un coup, sur l'ouverture initiale et un changement d'onglet
-	// (staggerNextGallery) — demandé explicitement ("les premières suggestions
-	// pourraient apparaitre une par une"). Plafonné aux 8 premières tuiles :
-	// au-delà, même délai que la 8e plutôt qu'un étirement sans fin pour une
-	// longue liste — l'idée est de faire "arriver" les premiers résultats
-	// visibles à l'écran, pas d'animer toute une galerie de 50 lignes
-	// d'affilée. Hors stagger (recherche en cours), la classe est posée tout
-	// de suite : rien à animer depuis dans le même repaint, donc aucune
-	// transition ne se joue, exactement l'effet "instantané" voulu.
+	// Makes a freshly built tile appear, one by one rather than all at once,
+	// on the initial opening and on a tab change (staggerNextGallery) —
+	// explicitly requested ("the first suggestions could appear one by one").
+	// Capped at the first 8 tiles: beyond that, same delay as the 8th rather
+	// than an endless stretching for a long list — the idea is to make the
+	// first results visible on screen "arrive", not to animate an entire
+	// gallery of 50 rows in a row. Outside the stagger (search in progress),
+	// the class is set right away: nothing to animate from in the same
+	// repaint, so no transition plays, exactly the "instant" effect wanted.
 	private revealTile(tile: HTMLElement) {
 		if (!this.staggerNextGallery) {
 			tile.addClass("is-visible");
@@ -243,18 +239,17 @@ export class CopyCardModal extends Modal {
 		this.revealTile(tile);
 	}
 
-	// `pictogram` (nom d'icône Lucide) : uniquement pour la tuile "Inbox"
-	// (voir renderCollectionTab) — même traitement que sa tuile dans la
-	// grille principale "My Collection" (.mtg-set-tile-inbox/renderListTile) :
-	// couleur d'accent pleine, sans image/dégradé de fond, avec son petit
-	// pictogramme, demandé explicitement après qu'elle soit ressortie ici
-	// sans ce traitement (fond gris uni comme n'importe quelle autre liste).
-	// `pictogram`/`value` : uniquement pour la tuile "Inbox" (voir
-	// renderCollectionTab) — 3ᵉ ligne (valeur totale) en plus, pour
-	// reproduire fidèlement sa tuile de la grille principale "My
-	// Collection" (renderListTile : nom / "X unique · Y cards" / valeur),
-	// demandé explicitement après une première version qui ne reprenait que
-	// nom + nombre de cartes sur 2 lignes.
+	// `pictogram` (Lucide icon name): only for the "Inbox" tile (see
+	// renderCollectionTab) — same treatment as its tile in the main "My
+	// Collection" grid (.mtg-set-tile-inbox/renderListTile): solid accent
+	// color, no background image/gradient, with its small pictogram,
+	// explicitly requested after it came out here without this treatment
+	// (plain gray background like any other list).
+	// `pictogram`/`value`: only for the "Inbox" tile (see renderCollectionTab)
+	// — 3rd line (total value) in addition, to faithfully reproduce its tile
+	// of the main "My Collection" grid (renderListTile: name / "X unique · Y
+	// cards" / value), explicitly requested after a first version that only
+	// reproduced name + number of cards on 2 lines.
 	private renderTile(
 		coverImage: string,
 		name: string,
@@ -267,13 +262,13 @@ export class CopyCardModal extends Modal {
 		const tile = this.galleryEl.createDiv({
 			cls: "mtg-copy-card-gallery-tile" + (pictogram ? " mtg-copy-card-gallery-tile-inbox" : ""),
 		});
-		// Le fond vit sur sa propre couche (comme .mtg-set-tile-bg pour les
-		// tuiles de la grille "My Collection") plutôt que directement sur la
-		// tuile, pour que le zoom au survol (voir styles.css) n'affecte que
-		// l'image — le texte de l'overlay, un enfant séparé, reste stable.
-		// Jamais créée pour Inbox (même principe que renderListTile pour la
-		// grille principale) : rien à neutraliser côté fond, le plein accent
-		// vient directement de .mtg-copy-card-gallery-tile-inbox en CSS.
+		// The background lives on its own layer (like .mtg-set-tile-bg for the
+		// tiles of the "My Collection" grid) rather than directly on the tile, so
+		// that the hover zoom (see styles.css) only affects the image — the
+		// overlay text, a separate child, stays stable. Never created for Inbox
+		// (same principle as renderListTile for the main grid): nothing to
+		// neutralize on the background side, the solid accent comes directly from
+		// .mtg-copy-card-gallery-tile-inbox in CSS.
 		if (!pictogram) {
 			const bg = tile.createDiv({ cls: "mtg-copy-card-gallery-tile-bg" });
 			if (coverImage) bg.style.backgroundImage = `url("${coverImage}")`;
@@ -288,17 +283,16 @@ export class CopyCardModal extends Modal {
 				textWrap.createDiv({ cls: "mtg-copy-card-gallery-value", text: value });
 			}
 		} else if (icon) {
-			// Pictogramme choisi manuellement (ListSettingsModal, "Choose icon")
-			// — même cercle à légère opacité que la tuile Inbox ci-dessus
-			// (.mtg-copy-card-gallery-pictogram, réutilisé tel quel), posé dans
-			// une rangée imbriquée (mtg-copy-card-gallery-icon-row) plutôt que
-			// sur .mtg-copy-card-gallery-overlay lui-même : cette tuile-ci garde
-			// son image de fond + dégradé assombri vers le bas (contrairement à
-			// Inbox, fond plat), donc le texte doit rester ancré en bas de
-			// l'overlay comme avant — seul ce nouveau bloc (cercle + texte) est
-			// une rangée, pas l'overlay entier. Mana affiché tel quel (déjà
-			// coloré par Scryfall), édition recolorée en blanc pour rester
-			// lisible dans ce cercle sombre.
+			// Manually chosen pictogram (ListSettingsModal, "Choose icon") — same
+			// slightly-opaque circle as the Inbox tile above
+			// (.mtg-copy-card-gallery-pictogram, reused as is), placed in a nested row
+			// (mtg-copy-card-gallery-icon-row) rather than on
+			// .mtg-copy-card-gallery-overlay itself: this tile keeps its background
+			// image + darkened gradient toward the bottom (unlike Inbox, flat
+			// background), so the text must stay anchored at the bottom of the overlay
+			// as before — only this new block (circle + text) is a row, not the entire
+			// overlay. Mana displayed as is (already colored by Scryfall), set
+			// recolored in white to stay readable in this dark circle.
 			const iconRow = overlay.createDiv({ cls: "mtg-copy-card-gallery-icon-row" });
 			const iconCircle = iconRow.createDiv({ cls: "mtg-copy-card-gallery-pictogram" });
 			const fetchIcon =
@@ -341,15 +335,15 @@ export class CopyCardModal extends Modal {
 			this.plugin.settings.collection,
 			this.plugin.settings.priceCurrency
 		);
-		// Voir renderTile — même repérage de la liste système "Inbox" que
-		// renderListTile/renderListGrid pour la grille principale
-		// (CollectionList.isInbox). Épinglée en première tuile (juste après
-		// "+ New list") plutôt que laissée dans l'ordre alphabétique de
-		// groupByList — bug signalé : Inbox n'était première que par coïncidence
-		// (quand son nom triait avant toutes les autres listes) et se
-		// retrouvait ailleurs dès qu'une liste la précédait alphabétiquement.
-		// Même traitement que renderListGrid (view.ts) pour la grille
-		// principale : retirée du tableau, réinjectée à part en tête.
+		// See renderTile — same identification of the "Inbox" system list as
+		// renderListTile/renderListGrid for the main grid
+		// (CollectionList.isInbox). Pinned as the first tile (right after "+ New
+		// list") rather than left in the alphabetical order of groupByList —
+		// reported bug: Inbox was only first by coincidence (when its name sorted
+		// before all the other lists) and ended up elsewhere as soon as a list
+		// preceded it alphabetically. Same treatment as renderListGrid (view.ts)
+		// for the main grid: removed from the array, re-injected separately at the
+		// head.
 		const inboxListId = this.plugin.settings.lists.find((l) => l.isInbox)?.id;
 		const inboxGroup = groups.find((g) => g.id === inboxListId);
 		const otherGroups = groups.filter((g) => g.id !== inboxListId);
@@ -357,10 +351,9 @@ export class CopyCardModal extends Modal {
 			this.renderTile(
 				g.coverImage,
 				g.name,
-				// "X unique · Y cards" pour Inbox (même libellé que sa tuile de
-				// la grille principale, renderListTile) — les autres tuiles
-				// gardent leur seule ligne "N cards", pas concernées par cette
-				// demande.
+				// "X unique · Y cards" for Inbox (same label as its tile in the main grid,
+				// renderListTile) — the other tiles keep their single "N cards" line, not
+				// concerned by this request.
 				isInbox ? `${g.cards.length} unique · ${g.totalQty} cards` : `${g.totalQty} cards`,
 				() => this.copyToList(g.id, g.name),
 				isInbox ? "inbox" : undefined,
@@ -377,13 +370,12 @@ export class CopyCardModal extends Modal {
 	}
 
 	private copyToList(listId: string, name: string) {
-		// Deck → liste : à part, contrairement aux 2 branches ci-dessous —
-		// copyDeckCardToList/moveDeckCardToList (plugin.ts) sont asynchrones
-		// (aller-retour Scryfall nécessaire — CollectionCard a des champs que
-		// DeckCard n'a toujours pas, ex. releasedAt, prix mis à part depuis
-		// le 2026-09-02) et retrouvent leur ligne par scryfallId + catégorie
-		// plutôt que par id (this.deckContext.deckId fournit le deck de
-		// départ).
+		// Deck → list: separate, unlike the 2 branches below —
+		// copyDeckCardToList/moveDeckCardToList (plugin.ts) are asynchronous
+		// (Scryfall round trip needed — CollectionCard has fields that DeckCard
+		// still doesn't, e.g. releasedAt, price aside since 2026-09-02) and find
+		// their row by scryfallId + category rather than by id
+		// (this.deckContext.deckId provides the starting deck).
 		if (this.sourceKind === "deck") {
 			const deckId = this.deckContext?.deckId;
 			if (!deckId) return;
@@ -398,13 +390,12 @@ export class CopyCardModal extends Modal {
 			return;
 		}
 
-		// Boucle sur this.cards plutôt que d'appeler une méthode plugin "bulk"
-		// dédiée : copyCollectionCardToList/moveCollectionCardToList (et leurs équivalents
-		// wantlist) font déjà tout le travail nécessaire par carte (fusion
-		// avec une entrée existante, saveSettings() — debounced, donc N
-		// appels rapides ne coûtent pas N écritures disque) ; les réutiliser
-		// tels quels pour 1 carte comme pour N évite de maintenir une
-		// deuxième implémentation de la même logique de fusion.
+		// Loop over this.cards rather than calling a dedicated "bulk" plugin method:
+		// copyCollectionCardToList/moveCollectionCardToList (and their wantlist
+		// equivalents) already do all the necessary work per card (merging with an
+		// existing entry, saveSettings() — debounced, so N rapid calls don't cost N disk
+		// writes); reusing them as is for 1 card as for N avoids maintaining a second
+		// implementation of the same merge logic.
 		(this.cards as (CollectionCard | WantlistCard)[]).forEach((card) => {
 			if (this.sourceKind === "wantlist") {
 				if (this.mode === "move") {
@@ -430,18 +421,16 @@ export class CopyCardModal extends Modal {
 			}).open();
 		});
 		this.plugin.settings.decks
-			// Le deck source (sourceKind === "deck") n'a pas sa place dans sa
-			// propre galerie de destinations — "déplacer vers le deck où la
-			// carte est déjà" n'a pas de sens, et copyDeckCardToDeck/
-			// moveDeckCardToDeck (plugin.ts) traitent ce cas comme un no-op
-			// explicite plutôt que de risquer une perte de carte.
+			// The source deck (sourceKind === "deck") has no place in its own gallery
+			// of destinations — "move to the deck where the card already is" makes no
+			// sense, and copyDeckCardToDeck/moveDeckCardToDeck (plugin.ts) treat this
+			// case as an explicit no-op rather than risk losing a card.
 			.filter((deck) => deck.id !== this.deckContext?.deckId)
 			.filter((deck) => this.matchesSearch(deck.name))
 			.forEach((deck) => {
-				// Même choix manuel/automatique (Deck.coverCardId, "Choose cover
-				// image" de DeckSettingsModal) que la grille "My Decks"
-				// (renderDeckGrid) — plus la simple 1ʳᵉ carte avec une image
-				// trouvée dans deck.cards.
+				// Same manual/automatic choice (Deck.coverCardId, DeckSettingsModal's
+				// "Choose cover image") as the "My Decks" grid (renderDeckGrid) — rather
+				// than the plain 1st card with an image found in deck.cards.
 				const cover = resolveDeckCoverImage(deck.cards, deck.coverCardId);
 				const totalQty = deck.cards.reduce((s, c) => s + c.count, 0);
 				this.renderTile(
@@ -511,8 +500,8 @@ export class CopyCardModal extends Modal {
 	}
 
 	private copyToWantlist(wantlistId: string, name: string) {
-		// Voir copyToList — même raisonnement (asynchrone, aller-retour
-		// Scryfall) pour copyDeckCardToWantlist/moveDeckCardToWantlist.
+		// See copyToList — same reasoning (asynchronous, Scryfall round trip) for
+		// copyDeckCardToWantlist/moveDeckCardToWantlist.
 		if (this.sourceKind === "deck") {
 			const deckId = this.deckContext?.deckId;
 			if (!deckId) return;

@@ -37,8 +37,8 @@ import {
 	ghShardNames,
 } from "./__tests__/sync-test-harness";
 
-// Même cadre que settings-sync.test.ts : de faux appareils (système de fichiers et stockage local à
-// eux), et un faux GitHub partagé qui rejoue les règles de l'API (voir FakeGithub).
+// Same framework as settings-sync.test.ts: fake devices (their own file system and local storage),
+// and a shared fake GitHub that replays the API's rules (see FakeGithub).
 const mocks = vi.hoisted(() => ({
 	notices: [] as string[],
 	gh: null as unknown as FakeGithub,
@@ -72,8 +72,8 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-// L'état complet que GitHub porte (tous les fragments recomposés), et le fragment des cartes sans liste (les
-// cartes de test n'ont pas de listId : elles vont toutes dans celui-là).
+// The complete state GitHub holds (all the shards recomposed), and the shard of cards with no list (the test
+// cards have no listId: they all go in that one).
 const remote = () => ghState(gh);
 const LIST_SHARD = ghShard("list", "_");
 const shardTexts = () => ghShardNames(gh).map((n) => gh.text(`${GH_DIR}/${n}`)!);
@@ -81,7 +81,7 @@ const sync = async (dev: Obj, reason = "manual") => {
 	await dev.githubSync(reason);
 	await dev.persistChain; // the local save a merge triggers
 };
-// Un appareil avec ses cartes, déjà branché sur GitHub (la première synchro n'est PAS encore faite).
+// A device with its cards, already hooked up to GitHub (the first sync is NOT done yet).
 async function ghDevice(cards: Obj[], t = 1000) {
 	const dev = await seededDevice(cards, t);
 	enableGithub(dev, gh);
@@ -643,7 +643,7 @@ describe("the files on GitHub", () => {
 	});
 });
 
-// Les versions ≤ 1.0.511 gardaient tout dans UN fichier : data.json.gz (1.0.507 à 1.0.511), data.json (≤ 1.0.506).
+// Versions ≤ 1.0.511 kept everything in ONE file: data.json.gz (1.0.507 to 1.0.511), data.json (≤ 1.0.506).
 describe("migration from the single file of earlier versions", () => {
 	const legacy = () => ({
 		collection: [card("old1", { listId: "A" }), card("old2", { listId: "B" })],
@@ -1012,7 +1012,7 @@ describe("how often it polls", () => {
 		expect(GITHUB_TICK_MS).toBeLessThanOrEqual(GITHUB_POLL_ACTIVE_MS / 2); // the timer beats faster than the fastest pace
 	});
 
-	// Le minuteur réel (setupGithubSync) : un battement par seconde, un sondage seulement quand il est dû.
+	// The real timer (setupGithubSync): one beat per second, a poll only when it is due.
 	describe("the timer", () => {
 		let beat: () => void;
 		let handlers: Record<string, () => void>;
@@ -1044,7 +1044,7 @@ describe("how often it polls", () => {
 			delete (globalThis as { document?: unknown }).document;
 		});
 
-		// Fait battre le minuteur chaque seconde pendant `seconds`, rend le nombre de requêtes de lecture faites.
+		// Makes the timer beat every second for `seconds`, returns the number of read requests made.
 		const beatFor = async (seconds: number) => {
 			const before = gh.count("GET");
 			for (let i = 0; i < seconds; i++) {
@@ -1186,7 +1186,7 @@ describe("alongside Syncthing", () => {
 	});
 });
 
-/* ------------------ sessions aléatoires : trois appareils, GitHub seul ---------- */
+/* ------------------ random sessions: three devices, GitHub only ---------- */
 
 function mulberry32(seed: number) {
 	return () => {
@@ -1199,11 +1199,11 @@ function mulberry32(seed: number) {
 }
 
 describe("random sessions through GitHub", () => {
-	// Trois appareils, des centaines d'opérations, des pannes réseau, des appareils qui ne se
-	// synchronisent que de temps en temps. Invariants : convergence, aucune carte jamais supprimée
-	// perdue, aucune carte supprimée et jamais retouchée ressuscitée, et surtout STABILITÉ — une fois
-	// convergés, plus aucun envoi ni aucune écriture (pas de ping-pong avec GitHub, ni avec Syncthing
-	// quand les deux canaux sont actifs). La moitié des sessions ajoutent des livraisons Syncthing.
+	// Three devices, hundreds of operations, network outages, devices that only sync from time to
+	// time. Invariants: convergence, no card that was never deleted is ever lost, no card that was
+	// deleted and never touched again is resurrected, and above all STABILITY — once converged, no
+	// more uploads and no more writes (no ping-pong with GitHub, nor with Syncthing when both
+	// channels are active). Half of the sessions add Syncthing deliveries.
 	const MARGIN_MS = 10_000;
 	const SEEDS = Number(process.env.SYNC_STRESS_SEEDS ?? 25);
 	const STEPS = Number(process.env.SYNC_STRESS_STEPS ?? 120);
@@ -1215,8 +1215,8 @@ describe("random sessions through GitHub", () => {
 			let t = 10_000;
 			setNow(t);
 			const base = await deviceWith();
-			// Plusieurs listes : les cartes se répartissent sur plusieurs fragments, et les déplacements entre listes
-			// (une carte dans DEUX fragments un instant) font partie de la session.
+			// Several lists: the cards are spread over several shards, and moves between lists (a card in TWO shards
+			// for an instant) are part of the session.
 			const LISTS = ["L1", "L2", "L3"];
 			base.settings.collection = [card("c0", { listId: "L1" }), card("c1", { listId: "L2" }), card("c2", { listId: "L3" })];
 			base.settings.decks = [{ id: "D", name: "Deck", cards: [deckCard("d0"), deckCard("d1")] }];
@@ -1290,7 +1290,7 @@ describe("random sessions through GitHub", () => {
 				}
 			}
 
-			// Règlement : le réseau revient, chaque appareil échange jusqu'à stabilité.
+			// Settlement: the network comes back, each device exchanges until stability.
 			gh.offline = false;
 			const settled = () => devices.every((d) => settingsEqual(d.settings, devices[0].settings));
 			for (let round = 0; round < 12 && !(round > 0 && settled()); round++) {
@@ -1306,7 +1306,7 @@ describe("random sessions through GitHub", () => {
 			}
 			expect(settled(), "devices did not converge").toBe(true);
 
-			// Stabilité : deux tours de plus ne doivent plus rien envoyer ni écrire.
+			// Stability: two more turns must no longer send or write anything.
 			const puts = gh.count("PUT");
 			const writes = devices.map((d) => d.fs.dataWrites);
 			for (let extra = 0; extra < 2; extra++) {

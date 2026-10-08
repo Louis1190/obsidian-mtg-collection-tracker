@@ -60,8 +60,8 @@ describe("parseFinishValue", () => {
 	});
 
 	it("never produces etched/surged/proxy from a legacy boolean value", () => {
-		// Régression : migrateFoilToFinish (main.ts) ne doit jamais inventer une
-		// finition qui n'existait pas avant l'introduction de Finish.
+		// Regression: migrateFoilToFinish (main.ts) must never invent a finish
+		// that didn't exist before Finish was introduced.
 		for (const legacy of ["true", "false", "1", "0", "yes", "", undefined]) {
 			const result = parseFinishValue(legacy);
 			expect(["regular", "foiled"]).toContain(result);
@@ -76,10 +76,10 @@ describe("getLanguage", () => {
 	});
 
 	it("returns a virtual \"None\" entry for an unknown or empty code, without it being a member of LANGUAGES", () => {
-		// "None" a été essayé comme véritable entrée LANGUAGES[0] avant d'être
-		// retiré sur demande explicite (types.ts) — ce test protège contre une
-		// régression qui la réintroduirait dans le tableau lui-même, ce qui la
-		// ferait réapparaître comme choix dans tous les pickers de langue.
+		// "None" was tried as a real LANGUAGES[0] entry before being removed on
+		// explicit request (types.ts) — this test guards against a regression that
+		// would reintroduce it in the array itself, which would make it reappear
+		// as a choice in all the language pickers.
 		expect(LANGUAGES.some((l) => !l.code)).toBe(false);
 		expect(getLanguage("").label).toBe("None");
 		expect(getLanguage("xx").label).toBe("None");
@@ -93,8 +93,8 @@ describe("getCondition", () => {
 	});
 
 	it("returns a virtual \"None\" entry for an empty or unknown value, without it being a member of CONDITIONS", () => {
-		// Même garde-fou que pour LANGUAGES ci-dessus — "None" ne doit pas
-		// réapparaître comme choix dans le picker de condition.
+		// Same safeguard as for LANGUAGES above — "None" must not reappear as a
+		// choice in the condition picker.
 		expect(CONDITIONS.some((c) => !c.value)).toBe(false);
 		expect(getCondition("").label).toBe("None");
 		expect(getCondition("xx").label).toBe("None");

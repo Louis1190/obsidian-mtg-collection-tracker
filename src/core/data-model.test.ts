@@ -47,10 +47,10 @@ describe("isDeckCardOwned", () => {
 });
 
 describe("isDeckCommander", () => {
-	// Commander est une Function (deckFunctionOverride), pas une catégorie,
-	// depuis le 2026-09-07 — jamais auto-détectable (aucune règle de
-	// detectDeckCardFunction ne peut deviner "c'est LE commandant de CE
-	// deck"), donc uniquement via cette désignation manuelle explicite.
+	// Commander is a Function (deckFunctionOverride), not a category, since
+	// 2026-09-07 — never auto-detectable (no rule of detectDeckCardFunction
+	// can guess "this is THE commander of THIS deck"), hence only through this
+	// explicit manual designation.
 	it("is true only when deckFunctionOverride is exactly 'Commander'", () => {
 		expect(isDeckCommander(makeDeckCard({ deckFunctionOverride: "Commander" }))).toBe(true);
 	});
@@ -86,10 +86,10 @@ describe("deckBoardTabMatches", () => {
 		expect(deckBoardTabMatches(makeDeckCard({}), "sideboard")).toBe(false);
 	});
 
-	// La fusion Commander/Mainboard (confirmée explicitement) est déjà
-	// couverte pour de bon par ce cas : un Commander est structurellement
-	// une carte category "mainboard" (jamais une 4e valeur), donc déjà
-	// couvert par le test "missing category" ci-dessus et celui-ci.
+	// The Commander/Mainboard merge (explicitly confirmed) is already covered
+	// for good by this case: a Commander is structurally a "mainboard"
+	// category card (never a 4th value), so already covered by the "missing
+	// category" test above and this one.
 	it("matches a Commander card (deckFunctionOverride, still category mainboard) under the 'mainboard' tab", () => {
 		const commander = makeDeckCard({ deckFunctionOverride: "Commander" });
 		expect(deckBoardTabMatches(commander, "mainboard")).toBe(true);
@@ -132,7 +132,7 @@ describe("DEFAULT_SETTINGS", () => {
 	});
 
 	it("defaults the Home Market trends choices to 24h and all vendors", () => {
-		// "" (pas undefined) pour "tous vendeurs" : doit survivre à la sérialisation JSON de data.json.
+		// "" (not undefined) for "all vendors": must survive the JSON serialization of data.json.
 		expect(DEFAULT_SETTINGS.homeMoversPeriod).toBe("1d");
 		expect(DEFAULT_SETTINGS.homeMoversVendor).toBe("");
 		expect(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)).homeMoversVendor).toBe("");

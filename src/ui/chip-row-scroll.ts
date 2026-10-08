@@ -1,48 +1,48 @@
-// La barre de puces (.mtg-filter-chip-row-inner) ne passe jamais à la ligne, sur aucune
-// plateforme : elle défile horizontalement, sans scrollbar visible (styles.css, base de
-// `.mtg-filter-chip-row-inner`). Téléphone d'abord (2026-10-02), puis bureau et iPad
-// (2026-10-03, "partout pareil"). Deux conséquences, traitées ici :
+// The chip bar (.mtg-filter-chip-row-inner) never wraps, on any platform: it scrolls
+// horizontally, with no visible scrollbar (styles.css, base of `.mtg-filter-chip-row-inner`).
+// Phone first (2026-10-02), then desktop and iPad (2026-10-03, "the same everywhere"). Two
+// consequences, handled here:
 //
-// 1. Chaque reconstruction de la barre (renderChipFilter dans le clone détaché de
-//    render(), renderSearchChipBar à chaque puce validée/retirée) la recrée à
-//    scrollLeft = 0 : la saisie et le bouton "effacer", derniers enfants, seraient hors
-//    champ dès que les puces débordent -> scrollChipRowToEnd.
-// 2. Sans scrollbar, une souris à molette verticale n'a plus aucun moyen d'atteindre les
-//    premières puces (le trackpad et le toucher défilent déjà en horizontal tout seuls)
-//    -> la molette verticale est convertie en défilement horizontal.
+// 1. Every rebuild of the bar (renderChipFilter in the detached clone of render(),
+//    renderSearchChipBar on every chip committed/removed) recreates it at scrollLeft = 0: the
+//    input and the "clear" button, the last children, would be out of view as soon as the chips
+//    overflow -> scrollChipRowToEnd.
+// 2. Without a scrollbar, a mouse with a vertical wheel has no way left to reach the first
+//    chips (the trackpad and touch already scroll horizontally on their own) -> the vertical
+//    wheel is converted into horizontal scrolling.
 //
-// À appeler une fois la barre construite, qu'elle ait le focus ou non.
+// To be called once the bar is built, whether or not it has focus.
 //
-// Le fichier héberge aussi les briques génériques de la barre d'actions du mode
-// Sélection (2026-10-03), qui défile de la même façon : la molette
-// (setupWheelHorizontalScroll) et le fondu d'indice + la position mémorisée
-// (setupFadingScrollRow) — composées dans createBulkActionsBar (view/shared-render-helpers.ts).
+// The file also hosts the generic building blocks of the Select mode actions bar (2026-10-03),
+// which scrolls the same way: the wheel (setupWheelHorizontalScroll) and the hint fade + the
+// remembered position (setupFadingScrollRow) — composed in createBulkActionsBar
+// (view/shared-render-helpers.ts).
 export function setupChipRowScroll(inner: HTMLElement) {
 	setupWheelHorizontalScroll(inner);
 	scrollChipRowToEnd(inner);
 }
 
-// Molette verticale -> défilement horizontal, pour toute rangée à scrollbar masquée.
-// Aussi utilisée seule par la barre d'actions du mode Sélection (createBulkActionsBar,
-// view/shared-render-helpers.ts), qui défile comme la barre de puces mais démarre à
-// GAUCHE (compteur + "Select all" d'abord) : pas de scrollChipRowToEnd pour elle.
+// Vertical wheel -> horizontal scrolling, for any row with a hidden scrollbar. Also
+// used on its own by the Select mode actions bar (createBulkActionsBar,
+// view/shared-render-helpers.ts), which scrolls like the chip bar but starts on the
+// LEFT (counter + "Select all" first): no scrollChipRowToEnd for it.
 export function setupWheelHorizontalScroll(row: HTMLElement) {
-	// `row` est recréé à chaque reconstruction : un seul écouteur par élément, jamais
-	// cumulé. Non passif, sinon preventDefault() serait ignoré.
+	// `row` is recreated on every rebuild: a single listener per element, never
+	// accumulated. Non-passive, otherwise preventDefault() would be ignored.
 	row.addEventListener(
 		"wheel",
 		(evt) => {
 			const max = row.scrollWidth - row.clientWidth;
 			if (max <= 0) return;
-			// Geste surtout horizontal (trackpad, molette inclinée) : le défilement natif
-			// s'en charge déjà.
+			// Mostly horizontal gesture (trackpad, tilted wheel): native scrolling
+			// already takes care of it.
 			if (Math.abs(evt.deltaX) >= Math.abs(evt.deltaY)) return;
 			const next = Math.min(max, Math.max(0, row.scrollLeft + evt.deltaY));
-			// Déjà au bout dans ce sens : on laisse la molette défiler la page au lieu de
-			// la bloquer sur une barre qui ne peut plus bouger. Tolérance de 1px : sur un
-			// écran à ratio fractionnaire `scrollLeft` vaut p.ex. 834.5 quand
-			// scrollWidth - clientWidth (entiers arrondis) vaut 835 — un `===` croirait la
-			// barre encore mobile et avalerait un cran de molette au bout.
+			// Already at the end in this direction: we let the wheel scroll the page
+			// instead of blocking it on a bar that can no longer move. Tolerance of 1px:
+			// on a screen with a fractional ratio `scrollLeft` is e.g. 834.5 when
+			// scrollWidth - clientWidth (rounded integers) is 835 — a `===` would believe
+			// the bar still movable and swallow a wheel notch at the end.
 			if (Math.abs(next - row.scrollLeft) < 1) return;
 			row.scrollLeft = next;
 			evt.preventDefault();
@@ -51,18 +51,18 @@ export function setupWheelHorizontalScroll(row: HTMLElement) {
 	);
 }
 
-// Distance (px) de l'extrémité sur laquelle le fondu monte de 0 à 100 % : à l'arrivée au
-// bout de la rangée il s'éteint progressivement au lieu de disparaître d'un coup.
+// Distance (px) from the end over which the fade rises from 0 to 100%: on reaching the
+// end of the row it fades out progressively instead of disappearing all at once.
 const FADE_RAMP_PX = 24;
 
-// Recalcule le fondu d'une rangée défilante : `--mtg-row-fade-start`/`-end` valent 0 à 1
-// (la part du fondu CSS réellement affichée, `.mtg-bulk-actions-scroll` dans styles.css) et
-// `.is-scrollable` n'est posée que si la rangée déborde — sans elle, aucun mask-image du
-// tout. Variables continues plutôt qu'une classe par côté (le motif de setupPanelScrollFade,
-// card-detail-fx.ts) : une classe basculée au bout ferait "sauter" le dernier bouton de
-// semi-estompé à net d'un coup. À rappeler quand le CONTENU change sans que la rangée
-// change de taille ni ne défile (replaceInBulkBar) : ni l'écouteur de scroll ni le
-// ResizeObserver de setupFadingScrollRow ne s'en aperçoivent alors.
+// Recomputes the fade of a scrolling row: `--mtg-row-fade-start`/`-end` are 0 to 1 (the
+// share of the CSS fade actually displayed, `.mtg-bulk-actions-scroll` in styles.css) and
+// `.is-scrollable` is only set if the row overflows — without it, no mask-image at all.
+// Continuous variables rather than a class per side (the pattern of setupPanelScrollFade,
+// card-detail-fx.ts): a class toggled at the end would make the last button "jump" from
+// half-faded to crisp all at once. To be called again when the CONTENT changes without the
+// row changing size or scrolling (replaceInBulkBar): neither the scroll listener nor the
+// ResizeObserver of setupFadingScrollRow notice it then.
 export function refreshScrollRowFade(row: HTMLElement) {
 	const max = row.scrollWidth - row.clientWidth;
 	const scrollable = max > 1;
@@ -72,18 +72,17 @@ export function refreshScrollRowFade(row: HTMLElement) {
 	row.style.setProperty("--mtg-row-fade-end", String(ratio(max - row.scrollLeft)));
 }
 
-// Rangée défilante à fondu d'indice, qui retrouve sa position après une reconstruction.
-// `restoreLeft` : où remettre la rangée (la valeur mémorisée par `onScroll`) ; `onScroll`
-// reçoit chaque nouvelle position — y compris celle de la restauration, déjà bornée par ce
-// que la rangée peut réellement défiler.
-// Une seule mécanique pour les deux : un ResizeObserver, dont le PREMIER rappel tombe dès
-// que l'élément est dans le DOM et mis en page, avant la peinture — la rangée est
-// construite dans le clone détaché de render() (scrollWidth = 0, un `scrollLeft` posé à ce
-// moment-là ne tient pas), et aucun scintillement à gauche n'est visible. Il reste branché :
-// un changement de largeur du panneau modifie ce qui déborde, donc le fondu. Pas de
-// disconnect() explicite, même raisonnement que setupResponsiveRadius (card-detail-fx.ts) :
-// la rangée est recréée à chaque rendu, l'ancienne et son observer deviennent éligibles au
-// ramasse-miettes une fois détachées.
+// Scrolling row with a hint fade, which recovers its position after a rebuild.
+// `restoreLeft`: where to put the row back (the value remembered by `onScroll`); `onScroll`
+// receives each new position — including that of the restoration, already clamped by what
+// the row can actually scroll.
+// A single mechanism for both: a ResizeObserver, whose FIRST callback fires as soon as the
+// element is in the DOM and laid out, before painting — the row is built in the detached
+// clone of render() (scrollWidth = 0, a `scrollLeft` set at that moment doesn't stick), and
+// no flicker on the left is visible. It stays connected: a change of the panel's width
+// changes what overflows, hence the fade. No explicit disconnect(), same reasoning as
+// setupResponsiveRadius (card-detail-fx.ts): the row is recreated on every render, the old
+// one and its observer become eligible for garbage collection once detached.
 export function setupFadingScrollRow(row: HTMLElement, restoreLeft: number, onScroll: (left: number) => void) {
 	row.addEventListener("scroll", () => {
 		refreshScrollRowFade(row);
@@ -106,22 +105,22 @@ function scrollChipRowToEnd(inner: HTMLElement) {
 	};
 	const settle = () => {
 		toEnd();
-		// Les icônes des puces (symbole de mana/d'édition) arrivent via une promesse
-		// (getManaSymbolSvg/getSetIconSvg().then) et élargissent la rangée APRÈS ce
-		// premier passage ; une micro-tâche, mise en file après ces .then, recale le
-		// défilement avant la peinture. Un symbole encore jamais récupéré (réseau)
-		// arrive trop tard pour ça : le prochain rendu — la frappe suivante — remet la
-		// saisie en vue.
+		// The chips' icons (mana/set symbol) arrive through a promise
+		// (getManaSymbolSvg/getSetIconSvg().then) and widen the row AFTER this first
+		// pass; a microtask, queued after those .then calls, re-adjusts the scroll
+		// before painting. A symbol never fetched yet (network) arrives too late for
+		// that: the next render — the next keystroke — brings the input back into
+		// view.
 		queueMicrotask(toEnd);
 	};
 	if (inner.isConnected) {
 		settle();
 		return;
 	}
-	// Barre construite hors DOM (clone détaché de render()) : aucune mise en page,
-	// scrollWidth vaut 0. Le premier rappel d'un ResizeObserver tombe dès que l'élément
-	// est dans le DOM et a une taille, avant la peinture ; un seul passage suffit
-	// (disconnect), pour ne pas lutter ensuite contre un défilement fait à la main.
+	// Bar built off-DOM (detached clone of render()): no layout, scrollWidth is 0. The
+	// first callback of a ResizeObserver fires as soon as the element is in the DOM and
+	// has a size, before painting; a single pass is enough (disconnect), so as not to
+	// fight afterwards against a scroll done by hand.
 	const observer = new ResizeObserver(() => {
 		observer.disconnect();
 		settle();

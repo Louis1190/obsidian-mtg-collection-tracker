@@ -6,61 +6,60 @@ import { openPickerMenu } from "../ui/picker-menu";
 import { CopyCardModal } from "./copy-card-modal";
 
 /* -------------------------------------------------------------------------- */
-/*  Briques de l'écran principal des modales de réglages                      */
-/*  (List/Wantlist/Deck/InboxSettingsModal)                                   */
+/* Building blocks of the main screen of the settings modals */
+/* (List/Wantlist/Deck/InboxSettingsModal) */
 /* -------------------------------------------------------------------------- */
-// Les quatre modales construisaient leur écran principal avec les mêmes briques copiées : champ de nom, section
-// « Display settings », boutons « icône + libellé », menus Export/Import, Copy/Move, Merge duplicates, ligne
-// « Save and close ». Elles sont ici une seule fois ; chaque modale les assemble dans l'ordre et avec les
-// callbacks de SA section (ce qui reste propre à chacune : le champ Format du deck, la copie directe d'un deck,
-// la disposition en rangées ou en grille unique, ce que fait « Save »). Les sous-écrans (confirmation, fusion,
-// couverture, icône) sont dans entity-settings-screens.ts.
+// The four modals built their main screen with the same copied building blocks: name field, "Display settings"
+// section, "icon + label" buttons, Export/Import menus, Copy/Move, Merge duplicates, "Save and close" row. They
+// are here only once; each modal assembles them in order and with the callbacks of ITS section (what remains
+// specific to each: the deck's Format field, a deck's direct copy, the layout in rows or in a single grid, what
+// "Save" does). The sub-screens (confirmation, merge, cover, icon) are in entity-settings-screens.ts.
 
-// Champ « nom » — juste le champ, pas de bouton « Save » inline : Save vit tout en bas de la fenêtre (demandé
-// explicitement), un seul bouton pour ce qui a besoin d'être « sauvegardé » plutôt que déclenché immédiatement
-// (Copy/Move/Export/Import/Delete agissent tous sur clic, sans étape de validation).
+// "Name" field — just the field, no inline "Save" button: Save lives at the very bottom of the window
+// (explicitly requested), a single button for what needs to be "saved" rather than triggered immediately
+// (Copy/Move/Export/Import/Delete all act on click, with no validation step).
 export function renderNameField(contentEl: HTMLElement, label: string, value: string): HTMLInputElement {
 	const nameField = contentEl.createDiv({ cls: "mtg-search-field" });
 	nameField.createEl("label", { text: label });
 	const nameInput = nameField.createEl("input", { type: "text", cls: "mtg-name-input" });
 	nameInput.value = value;
-	// Le curseur atterrissait ici tout seul à l'ouverture (bug signalé) — rien dans ces modales n'appelle .focus()
-	// sur ce champ, c'est Obsidian lui-même qui semble focaliser le premier champ de formulaire d'une modale après
-	// le retour de onOpen(). setTimeout(0) (une vraie macrotâche, garantie de s'exécuter après ce focus
-	// automatique, quel que soit son propre timing exact) plutôt qu'un simple appel synchrone, qui se ferait
-	// écraser par ce focus s'il intervient après ce point de draw().
+	// The cursor landed here by itself on opening (reported bug) — nothing in these modals calls .focus() on this
+	// field, it's Obsidian itself that seems to focus the first form field of a modal after onOpen() returns.
+	// setTimeout(0) (a real macrotask, guaranteed to run after that automatic focus, whatever its own exact
+	// timing) rather than a simple synchronous call, which would get overwritten by that focus if it occurs after
+	// this point of draw().
 	window.setTimeout(() => nameInput.blur(), 0);
 	return nameInput;
 }
 
-// Titre discret séparant les rangées de boutons (« Display settings », « Actions ») — demandé explicitement,
-// à la place des <hr> qui les séparaient auparavant.
+// Discreet title separating the rows of buttons ("Display settings", "Actions") — explicitly requested, in
+// place of the <hr> that separated them before.
 export function addSectionTitle(contentEl: HTMLElement, text: string) {
 	contentEl.createDiv({ cls: "mtg-list-actions-section-title", text });
 }
 
-// Rangée d'actions « classique » : 3 boutons de largeur égale (mtg-list-actions-action-row, flex:1). Convient
-// quand le nombre de boutons est un multiple de 3 (List/Wantlist : 3 rangées de 3).
+// "Classic" row of actions: 3 buttons of equal width (mtg-list-actions-action-row, flex:1). Suitable when the
+// number of buttons is a multiple of 3 (List/Wantlist: 3 rows of 3).
 export function createActionRow(contentEl: HTMLElement): HTMLElement {
 	return contentEl.createDiv({
 		cls: "mtg-svg-btn-row mtg-list-actions-action-row mtg-list-actions-tight-row",
 	});
 }
 
-// Conteneur UNIQUE pour tous les boutons d'actions (mtg-list-actions-wrap-row, un grid à 3 colonnes fixes) :
-// le placement automatique remplit une ligne de 3 avant de passer à la suivante EN CONTINU à travers tous les
-// boutons — seule la toute DERNIÈRE ligne peut rester incomplète (3-3-2), jamais une ligne au milieu. Utilisé
-// quand le nombre de boutons n'est pas un multiple de 3 (Deck : 8, Inbox : 7), pour ne pas laisser une cellule
-// vide bien visible au milieu d'une rangée trop courte.
+// SINGLE container for all the action buttons (mtg-list-actions-wrap-row, a grid with 3 fixed columns):
+// automatic placement fills a row of 3 before moving to the next CONTINUOUSLY across all the buttons — only
+// the very LAST row can stay incomplete (3-3-2), never a row in the middle. Used when the number of buttons is
+// not a multiple of 3 (Deck: 8, Inbox: 7), so as not to leave a clearly visible empty cell in the middle of a
+// row that is too short.
 export function createWrapRow(contentEl: HTMLElement): HTMLElement {
 	return contentEl.createDiv({
 		cls: "mtg-svg-btn-row mtg-list-actions-wrap-row mtg-list-actions-tight-row",
 	});
 }
 
-// Bouton d'action « pictogramme + libellé ». `danger` lui donne la couleur de suppression (.mtg-remove-btn),
-// dont la règle CSS annule aussi align-self/font-size, pensés à l'origine pour le duo Yes/No d'un écran de
-// confirmation : dans une rangée d'actions il doit s'étirer et s'agrandir exactement comme ses voisins.
+// "Pictogram + label" action button. `danger` gives it the delete color (.mtg-remove-btn), whose CSS rule
+// also cancels align-self/font-size, originally designed for the Yes/No duo of a confirmation screen: in a
+// row of actions it must stretch and grow exactly like its neighbors.
 export function addActionButton(
 	row: HTMLElement,
 	a: { icon: string; label: string; danger?: boolean; onClick: () => void }
@@ -72,12 +71,12 @@ export function addActionButton(
 	return btn;
 }
 
-// Bouton à petite flèche de dropdown (Export / Import) proposant un menu (CSV vs TXT) : même recette que le
-// « Export CSV »/« TXT » de la barre d'actions groupées d'une grille — bouton entier cliquable, pas seulement la
-// flèche, et mtg-bulk-picker-menu pour le survol accent déjà établi sur ces menus. mtg-btn-with-icon-dropdown :
-// icône+libellé regroupés et centrés comme un tout (mtg-btn-with-icon-dropdown-label), la flèche poussée à
-// droite — même recette de colonne vide à gauche pour équilibrer visuellement la flèche (grid-template-columns:
-// 1em 1fr auto, voir le commentaire de cette règle dans styles.css).
+// Button with a small dropdown arrow (Export / Import) offering a menu (CSV vs TXT): same recipe as the "Export
+// CSV"/"TXT" of a grid's bulk-actions bar — the whole button is clickable, not only the arrow, and
+// mtg-bulk-picker-menu for the accent hover already established on these menus. mtg-btn-with-icon-dropdown:
+// icon+label grouped and centered as a whole (mtg-btn-with-icon-dropdown-label), the arrow pushed to the right —
+// same recipe of an empty column on the left to visually balance the arrow (grid-template-columns: 1em 1fr auto,
+// see the comment of this rule in styles.css).
 function addDropdownButton(
 	row: HTMLElement,
 	d: { icon: string; label: string; items: { label: string; onSelect: () => void }[] }
@@ -99,8 +98,8 @@ function addDropdownButton(
 	});
 }
 
-// Export (CSV/TXT) / Copy to clipboard / Import (CSV/TXT). Un import ferme d'abord la fenêtre (`close`) : le
-// sélecteur de fichier qui suit appartient à la vue, pas à cette modale.
+// Export (CSV/TXT) / Copy to clipboard / Import (CSV/TXT). An import first closes the window (`close`): the
+// file picker that follows belongs to the view, not to this modal.
 export function addIoButtons(
 	row: HTMLElement,
 	io: {
@@ -143,9 +142,9 @@ export function addIoButtons(
 	});
 }
 
-// « Merge duplicates » agit immédiatement, sans confirmation : ce n'est pas destructif, seules des quantités
-// identiques sont additionnées (même calcul que « Merge duplicate cards »/mergeLists, juste scopé à cette seule
-// entité). `merge` appelle la méthode du plugin de la section ; `onMerged` rafraîchit la vue.
+// "Merge duplicates" acts immediately, with no confirmation: it isn't destructive, only identical quantities
+// are added together (same computation as "Merge duplicate cards"/mergeLists, just scoped to this single
+// entity). `merge` calls the section's plugin method; `onMerged` refreshes the view.
 export function addMergeDuplicatesButton(
 	row: HTMLElement,
 	m: { noun: string; merge: () => { merged: number; removed: number }; onMerged: () => void }
@@ -165,14 +164,14 @@ export function addMergeDuplicatesButton(
 	});
 }
 
-// Copy / Move de TOUTES les cartes de l'entité : ouvrent la même fenêtre CopyCardModal (« Copy cards to »/« Move
-// cards ») que partout ailleurs dans le plugin plutôt que leur propre UI dédiée — mêmes onglets de destination
-// (liste/deck/wantlist), même « + New X », même recherche.
-//  - Copy reste ouverte derrière CopyCardModal (empilée), comme le bloc « Copy card to… » du panneau de détail
-//    d'une carte : l'entité elle-même n'a pas changé, rien ne justifie de fermer cette fenêtre.
-//  - Move : une fois toutes les cartes parties, l'entité vidée n'a plus de raison d'exister (même comportement que
-//    l'ancien flux « Move all cards… then delete ») ; c'est `afterMove` qui le vérifie plutôt que de le supposer,
-//    au cas où `cards` aurait été obsolète au moment du clic.
+// Copy / Move of ALL the entity's cards: open the same CopyCardModal window ("Copy cards to"/"Move cards") as
+// everywhere else in the plugin rather than their own dedicated UI — same destination tabs (list/deck/wantlist),
+// same "+ New X", same search.
+// - Copy stays open behind CopyCardModal (stacked), like the "Copy card to…" block of a card's detail panel: the
+//   entity itself hasn't changed, nothing justifies closing this window.
+// - Move: once all the cards have gone, the emptied entity no longer has a reason to exist (same behavior as the
+//   former "Move all cards… then delete" flow); it is `afterMove` that checks this rather than assuming it, in
+//   case `cards` was stale at the time of the click.
 export function addCopyMoveButtons(
 	row: HTMLElement,
 	c: {
@@ -180,7 +179,7 @@ export function addCopyMoveButtons(
 		plugin: MTGCollectionPlugin;
 		noun: string;
 		sourceKind: "collection" | "wantlist";
-		// Les cartes actuellement dans l'entité (relues à chaque clic).
+		// The cards currently in the entity (re-read on each click).
 		cards: () => (CollectionCard | WantlistCard)[];
 		afterCopy: () => void;
 		afterMove: () => void;
@@ -212,16 +211,15 @@ export function addCopyMoveButtons(
 	});
 }
 
-// Section « Display settings » : couverture + pictogramme, groupés avec le nom (les trois règlent la
-// présentation de l'entité dans sa grille), avant les rangées d'actions plus impactantes en dessous.
-// Le bouton d'icône est en couleur d'accent + porte une petite croix pour retirer l'icône directement d'ici (sans
-// repasser par le sélecteur) quand une icône est déjà choisie — demandé explicitement. mtg-btn-with-icon-dropdown
-// (déjà utilisée par Export/Import) regroupe et centre icône+libellé comme un tout dans la grille 1em/1fr/auto,
-// la croix prenant la 3ᵉ colonne (comme la flèche des dropdowns) plutôt que son propre margin-left:auto dans un
-// simple flex — c'est ce dernier qui décalait le groupe icône+libellé hors du centre réel du bouton (bug signalé).
-// N'appliquée QUE quand la croix existe : sans elle, le flex+justify-content:center hérité de la règle de base
-// centre déjà correctement les 2 seuls enfants, une grille à 3 colonnes dont la 3ᵉ resterait vide décentrerait au
-// contraire le libellé.
+// "Display settings" section: cover + pictogram, grouped with the name (the three set how the entity is
+// presented in its grid), before the more impactful rows of actions below. The icon button is in accent color +
+// carries a small cross to remove the icon directly from here (without going back through the picker) when an
+// icon is already chosen — explicitly requested. mtg-btn-with-icon-dropdown (already used by Export/Import)
+// groups and centers icon+label as a whole in the 1em/1fr/auto grid, the cross taking the 3rd column (like the
+// dropdowns' arrow) rather than its own margin-left:auto in a simple flex — it was the latter that shifted the
+// icon+label group off the button's real center (reported bug). Applied ONLY when the cross exists: without it,
+// the flex+justify-content:center inherited from the base rule already correctly centers the 2 only children, a
+// 3-column grid whose 3rd would stay empty would on the contrary de-center the label.
 export function renderDisplaySettings(
 	contentEl: HTMLElement,
 	d: {
@@ -229,9 +227,9 @@ export function renderDisplaySettings(
 		icon: ListIcon | undefined;
 		onChooseCover: () => void;
 		onChooseIcon: () => void;
-		// Retire l'icône (c'est la modale qui appelle la bonne méthode du plugin).
+		// Removes the icon (the modal calls the right plugin method).
 		removeIcon: () => void;
-		// Après le retrait (la modale rafraîchit la vue et redessine).
+		// After the removal (the modal refreshes the view and redraws).
 		onDone: () => void;
 	}
 ) {
@@ -254,8 +252,8 @@ export function renderDisplaySettings(
 		setIcon(removeIconBtn, "x");
 		removeIconBtn.setAttribute("title", "Remove icon");
 		removeIconBtn.addEventListener("click", (evt) => {
-			// Empêche ce clic de remonter jusqu'au bouton parent, qui ouvrirait le sélecteur en plus de retirer
-			// l'icône.
+			// Prevents this click from bubbling up to the parent button, which would open the picker in
+			// addition to removing the icon.
 			evt.stopPropagation();
 			d.removeIcon();
 			new Notice(`${d.noun.charAt(0).toUpperCase() + d.noun.slice(1)} icon removed.`);
@@ -265,10 +263,10 @@ export function renderDisplaySettings(
 	iconBtn.addEventListener("click", d.onChooseIcon);
 }
 
-// Ligne « Save and close » tout en bas de la fenêtre (demandé explicitement), alignée à droite comme
-// GradingModal.saveGrading (même recette .mtg-svg-btn-row + justify-content: flex-end). `onSave` fait ce que fait
-// « Save » pour cette section ET ferme la fenêtre : pas de view.render() explicite, onClose() (appelé par close())
-// s'en charge déjà.
+// "Save and close" row at the very bottom of the window (explicitly requested), right-aligned like
+// GradingModal.saveGrading (same .mtg-svg-btn-row + justify-content: flex-end recipe). `onSave` does what "Save"
+// does for this section AND closes the window: no explicit view.render(), onClose() (called by close()) already
+// takes care of it.
 export function renderSaveRow(contentEl: HTMLElement, onSave: () => void) {
 	const saveRow = contentEl.createDiv({ cls: "mtg-svg-btn-row mtg-list-actions-save-row" });
 	const saveBtn = saveRow.createEl("button", { text: "Save and close", cls: "mtg-search-add-btn" });

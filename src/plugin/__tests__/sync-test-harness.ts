@@ -25,29 +25,29 @@ import {
 	setupGithubSync,
 } from "../github-sync";
 
-// Outils communs aux tests de synchronisation (settings-sync.test.ts, github-sync.test.ts).
-// Ce fichier n'est importé que par des tests : jamais empaqueté dans main.js. Les
-// `vi.mock("obsidian")` restent dans chaque fichier de test (vitest les hisse par fichier).
-// Les fonctions du plugin prennent `this` en paramètre (voir CLAUDE.md, Phase 5) : un faux
-// plugin minimal suffit, deux faux appareils partagent la MÊME logique mais chacun son
-// propre système de fichiers et son propre stockage local ; "Syncthing" est simulé en
-// copiant data.json (mtime conservé) de l'un à l'autre.
+// Common tools for the synchronization tests (settings-sync.test.ts, github-sync.test.ts).
+// This file is only imported by tests: never bundled into main.js. The
+// `vi.mock("obsidian")` calls stay in each test file (vitest hoists them per file). The
+// plugin's functions take `this` as a parameter (see CLAUDE.md, Phase 5): a minimal fake
+// plugin is enough, two fake devices share the SAME logic but each have their own file
+// system and their own local storage; "Syncthing" is simulated by copying data.json (mtime
+// preserved) from one to the other.
 
 export type Obj = Record<string, any>;
 export const DIR = ".obsidian/plugins/mtg";
 export const DATA = `${DIR}/data.json`;
 
-/* ------------------------------ faux système de fichiers ------------------ */
+/* ------------------------------ fake file system ------------------ */
 
 export class FakeFs {
 	files = new Map<string, { text: string; mtime: number }>();
 	dirs = new Set<string>();
 	reads = 0;
 	dataWrites = 0;
-	// Dossiers "supprimés" : écrire dedans échoue tant qu'on ne les a pas recréés (mkdir).
+	// "Deleted" directories: writing into them fails until they've been re-created (mkdir).
 	missingDirs = new Set<string>();
-	// Appelé juste après chaque écriture de data.json : sert à simuler un autre
-	// processus qui réécrit le fichier dans la minuscule fenêtre write→stat.
+	// Called right after every write of data.json: serves to simulate another
+	// process rewriting the file in the tiny write→stat window.
 	afterWrite: ((path: string) => void) | null = null;
 	adapter = {
 		exists: async (p: string) => this.files.has(p) || this.dirs.has(p),
@@ -87,8 +87,8 @@ export class FakeFs {
 	}
 }
 
-// Syncthing : copie le fichier en conservant son mtime. Le plus récent gagne
-// (comme la résolution d'un conflit) ; renvoie true si le fichier a été remplacé.
+// Syncthing: copies the file while preserving its mtime. The most recent wins
+// (like conflict resolution); returns true if the file was replaced.
 export function deliver(from: FakeFs, to: FakeFs): boolean {
 	const f = from.data();
 	if (!f) return false;
@@ -101,7 +101,7 @@ export function deliver(from: FakeFs, to: FakeFs): boolean {
 /* -------------------------------- faux appareil --------------------------- */
 
 export function makeDevice(fs: FakeFs) {
-	// Stockage local de l'appareil (app.loadLocalStorage / saveLocalStorage) : jamais partagé.
+	// The device's local storage (app.loadLocalStorage / saveLocalStorage): never shared.
 	const store = new Map<string, unknown>();
 	const dev: Obj = {
 		manifest: { dir: DIR },
@@ -160,7 +160,7 @@ export function makeDevice(fs: FakeFs) {
 	return dev;
 }
 
-// Équivalent de loadSettings() (lifecycle.ts) sans les migrations.
+// Equivalent of loadSettings() (lifecycle.ts) without the migrations.
 export async function boot(dev: Obj) {
 	const loaded = await dev.readSettingsFromDisk();
 	dev.settings = Object.assign(structuredClone(DEFAULT_SETTINGS), loaded);
@@ -192,7 +192,7 @@ export const ids = (dev: Obj) => dev.settings.collection.map((c: Obj) => c.id).s
 
 export const setNow = (t: number) => vi.setSystemTime(t);
 
-// Un appareil prêt, démarré sur une copie du fichier `seed` (ou à vide).
+// A ready device, started on a copy of the `seed` file (or empty).
 export async function deviceWith(seed?: { text: string; mtime: number }) {
 	const fs = new FakeFs();
 	if (seed) fs.files.set(DATA, { ...seed });
@@ -201,7 +201,7 @@ export async function deviceWith(seed?: { text: string; mtime: number }) {
 	return dev;
 }
 
-// Un appareil qui a déjà écrit `cards`, et son fichier.
+// A device that has already written `cards`, and its file.
 export async function seededDevice(cards: Obj[], t = 1000) {
 	setNow(t);
 	const dev = await deviceWith();
@@ -215,7 +215,7 @@ export async function cloneDevice(src: Obj) {
 }
 
 
-// Les files d'attente et minuteries réelles d'un appareil ne doivent pas survivre à son test.
+// A device's real queues and timers must not outlive its test.
 const created: Obj[] = [];
 export function disposeDevices() {
 	for (const d of created) {
@@ -230,29 +230,29 @@ export function disposeDevices() {
 import { createHash } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
 
-// Imite les règles de l'API Contents dont le plugin dépend : authentification, lecture brute avec
-// ETag / If-None-Match (304), 404 pour un fichier absent, écriture avec compare-and-swap sur le
-// `sha` du blob git (409 si périmé, 422 si absent alors que le fichier existe) et panne réseau.
-// `beforePut` permet d'injecter l'écriture d'un autre appareil juste avant la vérification du sha.
+// Imitates the Contents API rules the plugin depends on: authentication, raw read with ETag /
+// If-None-Match (304), 404 for a missing file, write with compare-and-swap on the git blob `sha`
+// (409 if stale, 422 if missing while the file exists) and network failure. `beforePut` lets
+// another device's write be injected just before the sha check.
 export class FakeGithub {
 	repo = "louis/mtg-data";
 	branch = "main";
 	token = "github_pat_test";
 	files = new Map<string, { bytes: Buffer; sha: string; etag: string }>();
-	/** "GET 200", "GET 304", "PUT 201", "PUT 409"… dans l'ordre. */
+	/** "GET 200", "GET 304", "PUT 201", "PUT 409"… in order. */
 	calls: string[] = [];
 	offline = false;
 	isPrivate = true;
 	canPush = true;
 	forcedStatus: number | null = null;
-	/** Téléchargements du fichier lui-même / listages de son dossier (le sondage léger). */
+	/** Downloads of the file itself / listings of its folder (the lightweight polling). */
 	rawGets = 0;
-	/** Chemins téléchargés (lecture brute), dans l'ordre. */
+	/** Paths downloaded (raw reading), in order. */
 	rawPaths: string[] = [];
 	listings = 0;
-	/** Chemins écrits (PUT réussis ou refusés), dans l'ordre : l'ordre des fragments compte (le commun en dernier). */
+	/** Paths written (successful or refused PUTs), in order: the order of the shards matters (the common one last). */
 	putPaths: string[] = [];
-	/** Simule un listage de dossier inexploitable : "object" = pas un tableau, ou un statut HTTP. */
+	/** Simulates an unusable folder listing: "object" = not an array, or an HTTP status. */
 	listingFault: "object" | number | null = null;
 	beforePut: ((path: string) => void) | null = null;
 	private counter = 0;
@@ -261,7 +261,7 @@ export class FakeGithub {
 		return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 	}
 
-	// Un chemin en .gz est stocké compressé (comme le fait le plugin), tout autre tel quel.
+	// A .gz path is stored compressed (as the plugin does), any other as is.
 	setFile(path: string, text: string) {
 		this.setRaw(path, path.endsWith(".gz") ? gzipSync(Buffer.from(text, "utf8")) : Buffer.from(text, "utf8"));
 	}
@@ -318,7 +318,7 @@ export class FakeGithub {
 			if (url.searchParams.get("ref") !== this.branch) return done(404, { message: "No commit found for the provided ref." });
 			const f = this.files.get(path);
 			if (!f) {
-				// Pas un fichier : le listage d'un dossier (petite réponse, quelle que soit la taille des fichiers).
+				// Not a file: the listing of a folder (small response, whatever the size of the files).
 				const dir = path.replace(/\/+$/, "");
 				const children = [...this.files].filter(([fp]) => fp.slice(0, Math.max(0, fp.lastIndexOf("/"))) === dir);
 				if (children.length === 0) return done(404, { message: "Not Found" });
@@ -355,16 +355,16 @@ export class FakeGithub {
 
 type CachedRequest = { url: string; method?: string; headers?: Record<string, string>; body?: string | ArrayBuffer };
 
-// Imite le cache HTTP de Chromium, par lequel passent les requêtes d'Obsidian bureau (`requestUrl` =
-// `net.request` d'Electron, session par défaut) : GitHub répond `Cache-Control: private, max-age=60`, donc une
-// réponse 200 déjà reçue est RESSERVIE pendant 60 s sans interroger le serveur — même si l'appelant ajoute son
-// propre If-None-Match (Chromium ne traite que If-Unmodified-Since / If-Match / If-Range comme "passer
-// outre"). Seul un `Cache-Control: no-cache` (ou une autre URL) force la requête. Un 304 reçu rafraîchit
-// l'entrée. À brancher sur le tour d'UN appareil (chaque machine a son propre cache) :
+// Imitates Chromium's HTTP cache, which Obsidian desktop's requests go through (`requestUrl` = Electron's
+// `net.request`, default session): GitHub answers `Cache-Control: private, max-age=60`, so a 200 response
+// already received is SERVED AGAIN for 60 s without querying the server — even if the caller adds its own
+// If-None-Match (Chromium only treats If-Unmodified-Since / If-Match / If-Range as "bypass"). Only a
+// `Cache-Control: no-cache` (or another URL) forces the request. A 304 received refreshes the entry. To be
+// plugged into ONE device's turn (each machine has its own cache):
 //   gh.request = cache.wrap(real); await dev.githubSync(...); gh.request = real;
 export class HttpCache {
 	private entries = new Map<string, { at: number; res: { status: number } }>();
-	/** Réponses resservies sans toucher au serveur. */
+	/** Responses served again without touching the server. */
 	served = 0;
 
 	constructor(private maxAgeMs = 60_000) {}
@@ -388,7 +388,7 @@ export class HttpCache {
 	}
 }
 
-// Configure un faux appareil pour synchroniser via `gh` (jeton dans son stockage, réglages propres à lui).
+// Configures a fake device to synchronize through `gh` (token in its storage, settings specific to it).
 export function enableGithub(dev: Obj, gh: FakeGithub, overrides: Partial<Record<string, unknown>> = {}) {
 	dev.settings.githubSyncEnabled = true;
 	dev.settings.githubRepo = gh.repo;
@@ -398,17 +398,17 @@ export function enableGithub(dev: Obj, gh: FakeGithub, overrides: Partial<Record
 	dev.setGithubToken(gh.token);
 }
 
-// Le dossier de données du faux dépôt (githubPath = "mtg-collection", voir enableGithub).
+// The fake repository's data folder (githubPath = "mtg-collection", see enableGithub).
 export const GH_DIR = "mtg-collection";
 export const GH_CORE = `${GH_DIR}/${CORE_SHARD}`;
-// Les anciens fichiers uniques : data.json.gz (1.0.507 à 1.0.511), data.json (≤ 1.0.506).
+// The old single files: data.json.gz (1.0.507 to 1.0.511), data.json (≤ 1.0.506).
 export const GH_FILE = `${GH_DIR}/data.json.gz`;
 export const GH_LEGACY_FILE = `${GH_DIR}/data.json`;
 
-// Chemin d'un fragment dans le faux dépôt.
+// Path of a shard in the fake repository.
 export const ghShard = (kind: "list" | "wantlist" | "deck", id: string) => `${GH_DIR}/${shardFileName(kind, id)}`;
 
-// L'état complet que le faux dépôt porte : tous les fragments recomposés (ce que verrait un nouvel appareil).
+// The complete state the fake repository holds: all the shards recomposed (what a new device would see).
 export function ghState(gh: FakeGithub): Obj {
 	const shards = new Map<string, Obj>();
 	for (const path of gh.files.keys()) {
@@ -419,7 +419,7 @@ export function ghState(gh: FakeGithub): Obj {
 	return assembleShards(shards);
 }
 
-// Les fragments présents (noms de fichiers, triés).
+// The shards present (file names, sorted).
 export function ghShardNames(gh: FakeGithub): string[] {
 	return [...gh.files.keys()]
 		.filter((p) => p.startsWith(`${GH_DIR}/`) && isShardFileName(p.slice(GH_DIR.length + 1)))

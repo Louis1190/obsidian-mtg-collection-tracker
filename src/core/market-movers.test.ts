@@ -41,23 +41,23 @@ describe("shouldHideMover", () => {
 	});
 
 	it("hides a card whose lower price is under the floor (penny-stock noise)", () => {
-		// Relevé réel 2026-09-09 : Breeding Pit, +794.8 % sur une carte à quelques centimes.
+		// Real reading 2026-09-09: Breeding Pit, +794.8 % on a card worth a few cents.
 		expect(shouldHideMover(makeMover({ priceFrom: 0.58, priceTo: 5.19, currency: "EUR" }))).toBe(true);
 	});
 
 	it("treats the floor as inclusive, on the LOWER of the two prices", () => {
 		expect(shouldHideMover(makeMover({ priceFrom: MOVER_MIN_PRICE, priceTo: 4 }))).toBe(false);
 		expect(shouldHideMover(makeMover({ priceFrom: MOVER_MIN_PRICE - 0.01, priceTo: 4 }))).toBe(true);
-		// Un effondrement VERS un prix sous le plancher est masqué aussi (baisse "vers ~0").
+		// A collapse TO a price below the floor is hidden too (a drop "to ~0").
 		expect(shouldHideMover(makeMover({ priceFrom: 12, priceTo: 1.5 }))).toBe(true);
 	});
 
 	it("hides the vendor placeholder prices actually seen in the live data", () => {
-		// Les 5 premières "Losers" sur 24 h, relevé réel du 2026-09-09 (données lues le 2026-09-23).
+		// The top 5 "Losers" over 24 h, real reading of 2026-09-09 (data read on 2026-09-23).
 		expect(shouldHideMover(makeMover({ priceFrom: 99999, priceTo: 5.95, currency: "EUR" }))).toBe(true); // Monstrous Hound -100 %
 		expect(shouldHideMover(makeMover({ priceFrom: 209765.85, priceTo: 412.5 }))).toBe(true); // Bayou -99.8 %
 		expect(shouldHideMover(makeMover({ priceFrom: 999, priceTo: 24.99, currency: "EUR" }))).toBe(true); // Cut Down -97.5 %
-		// Côté hausses, sur 7 jours : le prix d'ARRIVÉE est le placeholder.
+		// On the gainers side, over 7 days: the ARRIVAL price is the placeholder.
 		expect(shouldHideMover(makeMover({ priceFrom: 33.94, priceTo: 148057.9 }))).toBe(true); // Stoneforge Mystic
 		expect(shouldHideMover(makeMover({ priceFrom: 199.99, priceTo: 10000, currency: "EUR" }))).toBe(true); // Ponder
 		expect(shouldHideMover(makeMover({ priceFrom: 0.5, priceTo: 99999, currency: "EUR" }))).toBe(true); // Stroke of Midnight
@@ -71,18 +71,18 @@ describe("shouldHideMover", () => {
 	});
 
 	it("uses a stricter ceiling from the expensive-card threshold up", () => {
-		// Relevé réel : prix "vitrine" qui passaient les deux premières règles.
+		// Real reading: "showcase" prices that passed the first two rules.
 		expect(shouldHideMover(makeMover({ priceFrom: 325, priceTo: 1200, currency: "EUR" }))).toBe(true); // Narset, Parter of Veils
 		expect(shouldHideMover(makeMover({ priceFrom: 850, priceTo: 1999 }))).toBe(true); // Word of Command
 		expect(shouldHideMover(makeMover({ priceFrom: 999.99, priceTo: 305, currency: "EUR" }))).toBe(true); // Cavern of Souls
-		// Un mouvement raisonnable sur une carte chère reste visible...
+		// A reasonable move on an expensive card stays visible...
 		expect(shouldHideMover(makeMover({ priceFrom: 400, priceTo: 400 * MOVER_HIGH_PRICE_MAX_JUMP_RATIO }))).toBe(false);
 		expect(shouldHideMover(makeMover({ priceFrom: 400, priceTo: 400 * MOVER_HIGH_PRICE_MAX_JUMP_RATIO + 1 }))).toBe(true);
-		// ... et un saut strictement entre les deux plafonds reste permis juste SOUS le seuil "cher".
+		// ... and a jump strictly between the two caps is still allowed just BELOW the "expensive" threshold.
 		const between = (MOVER_HIGH_PRICE_MAX_JUMP_RATIO + MOVER_MAX_JUMP_RATIO) / 2;
 		const justBelow = MOVER_HIGH_PRICE - 1;
 		expect(shouldHideMover(makeMover({ priceFrom: justBelow / between, priceTo: justBelow }))).toBe(false);
-		// Le seuil compte le prix le PLUS HAUT des deux : une CHUTE depuis le seuil est "chère" aussi.
+		// The threshold counts the HIGHER of the two prices: a DROP from the threshold is "expensive" too.
 		expect(shouldHideMover(makeMover({ priceFrom: MOVER_HIGH_PRICE, priceTo: MOVER_HIGH_PRICE / between }))).toBe(true);
 	});
 
@@ -102,7 +102,7 @@ describe("selectDisplayMovers", () => {
 			makeMover({ name: "B", priceFrom: 10, priceTo: 3, changePct: -70 }),
 			makeMover({ name: "C", priceFrom: 10, priceTo: 5, changePct: -50 }),
 		];
-		// Le placeholder (-100 %) est en tête de l'API mais n'occupe AUCUNE des places retenues.
+		// The placeholder (-100 %) is at the top of the API's list but takes up NONE of the retained slots.
 		expect(selectDisplayMovers(rows, "down", 2).map((m) => m.name)).toEqual(["B", "A"]);
 	});
 
@@ -135,7 +135,7 @@ describe("selectDisplayMovers", () => {
 });
 
 describe("getMoversAgeDays / isMoversDataStale", () => {
-	// 2026-09-23 14:00 UTC — le jour où l'as_of réel de cardbase datait encore du 2026-09-09.
+	// 2026-09-23 14:00 UTC — the day cardbase's real as_of was still dated 2026-09-09.
 	const now = Date.UTC(2026, 8, 23, 14, 0, 0);
 
 	it("counts whole days since midnight UTC of the as_of date", () => {
@@ -152,7 +152,7 @@ describe("getMoversAgeDays / isMoversDataStale", () => {
 		expect(getMoversAgeDays(undefined, now)).toBeUndefined();
 		expect(getMoversAgeDays("", now)).toBeUndefined();
 		expect(getMoversAgeDays("not a date", now)).toBeUndefined();
-		// Un timestamp complet n'est pas le format annoncé : se taire plutôt que deviner.
+		// A full timestamp is not the announced format: stay silent rather than guess.
 		expect(getMoversAgeDays("2026-09-09T06:38:45Z", now)).toBeUndefined();
 	});
 
@@ -169,7 +169,7 @@ describe("moverFinishOf / moverOwnershipKey", () => {
 	it("maps this plugin's finishes onto cardbase's", () => {
 		expect(moverFinishOf("regular")).toBe("normal");
 		expect(moverFinishOf("foiled")).toBe("foil");
-		// Surge Foil se cote comme un foil (voir getRawCardPrice, price.ts).
+		// Surge Foil is priced as a foil (see getRawCardPrice, price.ts).
 		expect(moverFinishOf("surged")).toBe("foil");
 		expect(moverFinishOf("etched")).toBe("etched");
 	});

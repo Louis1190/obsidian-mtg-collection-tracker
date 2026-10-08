@@ -21,13 +21,14 @@ import { MTGCollectionView } from "../view";
 import type MTGCollectionPlugin from "../plugin";
 import { CARDMARKET_ID_CACHE_FILENAME } from "./cardbase-cache";
 
-// fetchScryfallCollection rattrape les statuts HTTP (une map vide, voir son commentaire) mais PAS une erreur de transport : hors
-// ligne, inspection TLS d'un réseau d'entreprise, portail captif. Les quatre getters de ce fichier qui s'en servent alimentent
-// l'interface (boîtes de la fiche détail, vignettes de Home) et ont déjà un cas « échec confirmé » (null, ou carte absente) :
-// une erreur de transport y mène désormais aussi, au lieu de laisser la promesse rejetée — un cadre resté sur ses points de
-// chargement, une requête « en vol » (legalitiesInFlight) jamais résolue qui bloquait toute ouverture ultérieure de cette carte.
-// Les cartes déjà reçues avant l'erreur sont gardées. Les imports, migrations et rafraîchissements de prix appellent
-// fetchScryfallCollection directement et gardent l'exception : l'utilisateur doit y lire l'erreur. Aucun échec n'est mis en cache.
+// fetchScryfallCollection catches HTTP statuses (an empty map, see its comment) but NOT a transport error:
+// offline, TLS inspection on a corporate network, captive portal. The four getters of this file that use it feed
+// the interface (detail sheet boxes, Home thumbnails) and already have a "confirmed failure" case (null, or card
+// absent): a transport error now leads there too, instead of leaving the promise rejected — a frame left on its
+// loading dots, an "in-flight" request (legalitiesInFlight) never resolved that blocked any later opening of
+// that card. The cards already received before the error are kept. Imports, migrations and price refreshes call
+// fetchScryfallCollection directly and keep the exception: the user must read the error there. No failure is
+// cached.
 async function fetchCollectionOrPartial(
 	ids: string[],
 	onChunkResolved?: (chunkResults: Map<string, ScryfallCard>) => void
@@ -39,7 +40,7 @@ async function fetchCollectionOrPartial(
 			onChunkResolved?.(chunkResults);
 		});
 	} catch {
-		/* voir le commentaire ci-dessus : ce qui a été reçu est rendu, le reste est absent */
+		/* see the comment above: what was received is returned, the rest is absent */
 	}
 	return received;
 }
@@ -70,16 +71,15 @@ export async function getSetIconSvg(this: MTGCollectionPlugin, setCode: string):
 	const promise = this.setIconFetchQueue.then(() => this.fetchSetIconSvg(setCode));
 	this.setIconInFlight.set(setCode, promise);
 	void promise.finally(() => this.setIconInFlight.delete(setCode));
-	// Fait avancer la file d'un cran une fois CE fetch lancé (pas
-	// seulement une fois résolu, pour ne pas bloquer un appelant déjà en
-	// attente derrière lui) : le prochain nouveau code en attente ne
-	// pourra démarrer qu'une fois celui-ci terminé, PLUS une pause de
-	// 120ms — même pause que fetchScryfallCollection entre ses propres
-	// lots (bonne pratique Scryfall). Les deux branches du .then
-	// (succès/échec) font la même chose : fetchSetIconSvg ne rejette
-	// jamais elle-même (son propre try/catch renvoie toujours null), mais
-	// gérer les deux reste une garantie bon marché contre un futur appelant
-	// qui romprait cette invariant sans le savoir.
+	// Advances the queue one notch once THIS fetch is launched (not only once
+	// resolved, so as not to block a caller already waiting behind it): the
+	// next new code waiting can only start once this one has finished, PLUS a
+	// 120ms pause — the same pause as fetchScryfallCollection between its own
+	// batches (Scryfall best practice). Both branches of the .then
+	// (success/failure) do the same thing: fetchSetIconSvg never rejects
+	// itself (its own try/catch always returns null), but handling both
+	// remains a cheap guarantee against a future caller that would break this
+	// invariant without knowing.
 	this.setIconFetchQueue = promise.then(
 		() => sleep(120),
 		() => sleep(120)
@@ -120,14 +120,13 @@ export async function fetchSetIconSvg(this: MTGCollectionPlugin, setCode: string
 	}
 }
 
-// Ne consulte PAS isLegalitiesFresh (contrairement à bulkFetchLegalities
-// plus bas) — délibéré : le pré-chauffage périodique en arrière-plan
-// (maybeAutoRefreshLegalities, toutes les heures) garde déjà toute la
-// collection sous LEGALITIES_CACHE_TTL_MS dans l'immense majorité des
-// cas, donc une entrée trouvée ici est presque toujours fraîche de toute
-// façon ; ajouter la vérification ici forcerait un aller-retour réseau
-// à l'OUVERTURE de chaque fiche détail dans la rare fenêtre où l'entrée
-// vient tout juste d'expirer, pour un gain marginal.
+// Does NOT consult isLegalitiesFresh (unlike bulkFetchLegalities further
+// down) — deliberate: the periodic background warm-up
+// (maybeAutoRefreshLegalities, every hour) already keeps the whole
+// collection under LEGALITIES_CACHE_TTL_MS in the vast majority of cases,
+// so an entry found here is almost always fresh anyway; adding the check
+// here would force a network round trip on OPENING each detail sheet in
+// the rare window where the entry has just expired, for a marginal gain.
 
 export async function getCardLegalities(this: MTGCollectionPlugin, scryfallId: string): Promise<Record<string, string> | null> {
 	const cached = this.legalitiesCache.get(scryfallId);
@@ -142,41 +141,37 @@ export async function getCardLegalities(this: MTGCollectionPlugin, scryfallId: s
 	return promise;
 }
 
-// Lecture synchrone du cache, sans passer par une Promise — utilisé par
-// renderLegalFormatsBox pour poser les tuiles directement dans leur état
-// final (pas d'état neutre intermédiaire, donc pas de transition CSS
-// visible) quand la carte a déjà été révélée dans la fenêtre ouverte :
-// même un cache hit dans getCardLegalities reste asynchrone (une
-// fonction async renvoie toujours une Promise), ce qui suffisait à
-// laisser le navigateur peindre l'état neutre une frame avant le
-// correctif.
+// Synchronous reading of the cache, without going through a Promise — used
+// by renderLegalFormatsBox to set the tiles directly to their final state
+// (no intermediate neutral state, hence no visible CSS transition) when
+// the card has already been revealed in the open window: even a cache hit
+// in getCardLegalities stays asynchronous (an async function always
+// returns a Promise), which was enough to let the browser paint the
+// neutral state one frame before the fix.
 
 export function getCachedLegalities(this: MTGCollectionPlugin, scryfallId: string): Record<string, string> | undefined {
 	return this.legalitiesCache.get(scryfallId);
 }
 
-// Exposition en bloc de legalitiesCache pour le filtre "legal:" de My
-// Collection (card-search.ts, cardMatchesTokens/legalityTokenMatches) :
-// cardMatchesTokens tourne sur potentiellement des milliers de cartes
-// d'un coup, un aller-retour par carte via getCachedLegalities serait
-// inutilement indirect quand tout ce qu'il faut est une simple lecture
-// Map.get(scryfallId). Renvoie la Map elle-même (pas une copie) — lue,
-// jamais mutée, par les appelants, même précédent que
-// recentlyAddedCollectionCardIds (champ public exposé tel quel) plus haut dans ce
-// fichier.
+// Bulk exposure of legalitiesCache for the "legal:" filter of My Collection
+// (card-search.ts, cardMatchesTokens/legalityTokenMatches): cardMatchesTokens
+// runs on potentially thousands of cards at once, a round trip per card via
+// getCachedLegalities would be needlessly indirect when all that's needed is a
+// simple Map.get(scryfallId) read. Returns the Map itself (not a copy) — read,
+// never mutated, by the callers, same precedent as recentlyAddedCollectionCardIds
+// (public field exposed as is) higher up in this file.
 
 export function getLegalitiesCache(this: MTGCollectionPlugin): Map<string, Record<string, string>> {
 	return this.legalitiesCache;
 }
 
-// Vrai si legalitiesCache a une entrée pour cet id ET qu'elle n'a pas
-// dépassé LEGALITIES_CACHE_TTL_MS — la seule question que se posent les
-// méthodes de FETCH ci-dessous ("faut-il redemander ?"). N'est
-// délibérément consultée par AUCUN chemin d'affichage (getCachedLegalities,
-// getLegalitiesCache, le bloc Legal Formats, le filtre "legal:") : une
-// entrée expirée reste un résultat probablement encore correct et vaut
-// largement mieux affichée tout de suite qu'un état "chargement" pour
-// une donnée qui, la plupart du temps, n'a en réalité pas changé.
+// True if legalitiesCache has an entry for this id AND it hasn't exceeded
+// LEGALITIES_CACHE_TTL_MS — the only question that the FETCH methods below
+// ask themselves ("do we need to ask again?"). Deliberately consulted by NO
+// display path (getCachedLegalities, getLegalitiesCache, the Legal Formats
+// block, the "legal:" filter): an expired entry remains a probably still
+// correct result and is worth far more displayed right away than a
+// "loading" state for data that, most of the time, has in fact not changed.
 
 export function isLegalitiesFresh(this: MTGCollectionPlugin, scryfallId: string): boolean {
 	const fetchedAt = this.legalitiesFetchedAt.get(scryfallId);
@@ -185,20 +180,19 @@ export function isLegalitiesFresh(this: MTGCollectionPlugin, scryfallId: string)
 
 
 export function legalitiesCacheFilePath(this: MTGCollectionPlugin): string | null {
-	// this.manifest.dir n'est en principe jamais absent pour un plugin
-	// effectivement chargé, mais son type Obsidian le déclare optionnel —
-	// dégradation silencieuse vers un cache session-only (comportement
-	// d'avant cette fonctionnalité) plutôt qu'une erreur si jamais.
+	// this.manifest.dir is in principle never absent for a plugin actually
+	// loaded, but its Obsidian type declares it optional — silent degradation
+	// to a session-only cache (behavior from before this feature) rather than
+	// an error if ever.
 	return this.manifest.dir ? `${this.manifest.dir}/${LEGALITIES_CACHE_FILENAME}` : null;
 }
 
-// Recharge, au démarrage, le cache écrit par une session précédente
-// (voir scheduleLegalitiesPersist/flushLegalitiesPersist plus bas) —
-// avant que maybeAutoRefreshLegalities ne décide quoi (re)demander à
-// Scryfall. Un fichier absent (première utilisation), corrompu, ou une
-// entrée mal formée n'est jamais traité comme une erreur bloquante :
-// dans tous ces cas on démarre simplement avec un cache vide, exactement
-// le comportement d'avant cette fonctionnalité.
+// Reloads, at startup, the cache written by a previous session (see
+// scheduleLegalitiesPersist/flushLegalitiesPersist further down) — before
+// maybeAutoRefreshLegalities decides what to (re)request from Scryfall. A
+// missing file (first use), a corrupted one, or a malformed entry is never
+// treated as a blocking error: in all these cases we simply start with an
+// empty cache, exactly the behavior from before this feature.
 
 export async function loadPersistedLegalitiesCache(this: MTGCollectionPlugin): Promise<void> {
 	const path = this.legalitiesCacheFilePath();
@@ -216,15 +210,15 @@ export async function loadPersistedLegalitiesCache(this: MTGCollectionPlugin): P
 			this.legalitiesFetchedAt.set(scryfallId, entry.fetchedAt);
 		}
 	} catch {
-		// Silencieux par design — voir le commentaire de la méthode.
+		// Silent by design — see the method's comment.
 	}
 }
 
-// Écriture différée (voir LEGALITIES_PERSIST_DEBOUNCE_MS) déclenchée par
-// tout fetch réussi (fetchCardLegalities/bulkFetchLegalities ci-dessous),
-// même idiome que pendingSaveTimer/saveSettings (src/plugin/lifecycle.ts)
-// — regrouper les résolutions rapprochées d'un pré-fetch en une
-// seule écriture, pas une par carte.
+// Deferred write (see LEGALITIES_PERSIST_DEBOUNCE_MS) triggered by any
+// successful fetch (fetchCardLegalities/bulkFetchLegalities below), same
+// idiom as pendingSaveTimer/saveSettings (src/plugin/lifecycle.ts) —
+// grouping the close resolutions of a pre-fetch into a single write, not
+// one per card.
 
 export function scheduleLegalitiesPersist(this: MTGCollectionPlugin) {
 	if (this.legalitiesPersistTimer !== null) window.clearTimeout(this.legalitiesPersistTimer);
@@ -241,19 +235,19 @@ export async function flushLegalitiesPersist(this: MTGCollectionPlugin): Promise
 	const out: Record<string, { legalities: Record<string, string>; fetchedAt: number }> = {};
 	this.legalitiesCache.forEach((legalities, scryfallId) => {
 		const fetchedAt = this.legalitiesFetchedAt.get(scryfallId);
-		// Une entrée sans horodatage ne peut venir que d'un futur appelant
-		// qui écrirait dans legalitiesCache sans passer par
-		// fetchCardLegalities/bulkFetchLegalities — n'existe pas
-		// aujourd'hui, mais mieux vaut l'omettre silencieusement du
-		// fichier persisté que planter sur une entrée mal formée.
+		// An entry with no timestamp can only come from a future caller that would
+		// write into legalitiesCache without going through
+		// fetchCardLegalities/bulkFetchLegalities — doesn't exist today, but
+		// better to silently omit it from the persisted file than crash on a
+		// malformed entry.
 		if (fetchedAt !== undefined) out[scryfallId] = { legalities, fetchedAt };
 	});
 	try {
 		await this.app.vault.adapter.write(path, JSON.stringify(out));
 	} catch {
-		// Écriture ratée (disque plein, synchronisation en cours…) : la
-		// Map en mémoire reste correcte pour le reste de la session, et
-		// la prochaine mutation du cache retentera l'écriture.
+		// Failed write (disk full, sync in progress…): the in-memory Map stays
+		// correct for the rest of the session, and the next mutation of the cache
+		// will retry the write.
 	}
 }
 
@@ -275,28 +269,28 @@ export async function flushLegalitiesPersist(this: MTGCollectionPlugin): Promise
 /*  than per-entry.                                                    */
 /* ------------------------------------------------------------------ */
 
-// Un seul Map de timers de debounce, partagé par les 4 caches ci-dessus —
-// clé = nom de fichier, évite un champ de timer dédié par cache (7
-// aujourd'hui, potentiellement plus demain).
+// A single Map of debounce timers, shared by the 4 caches above — key =
+// file name, avoids a dedicated timer field per cache (7 today,
+// potentially more tomorrow).
 
 
 export function immutableCacheFilePath(this: MTGCollectionPlugin, filename: string): string | null {
-	// Même dégradation silencieuse que legalitiesCacheFilePath ci-dessus
-	// (manifest.dir absent -> cache session-only, comportement d'avant
-	// cette fonctionnalité) si jamais.
+	// Same silent degradation as legalitiesCacheFilePath above (manifest.dir
+	// absent -> session-only cache, behavior from before this feature) if
+	// ever.
 	return this.manifest.dir ? `${this.manifest.dir}/${filename}` : null;
 }
 
-// Recharge, au démarrage, un cache écrit par une session précédente —
-// avant le premier rendu de la vue, pour qu'un maximum de lignes/boîtes
-// affichent leur contenu dès la première frame plutôt que d'attendre un
-// aller-retour Scryfall. Un fichier absent (première utilisation),
-// corrompu, ou une entrée mal formée (isValid) n'est jamais traité comme
-// une erreur bloquante : dans tous ces cas on démarre simplement avec un
-// cache vide pour cette clé — même posture que loadPersistedLegalitiesCache.
-// isValid est un simple prédicat booléen (pas un garde de type TypeScript)
-// — voir le commentaire des validateurs isStringOrNull/isNumberOrNull/
-// isObjectOrNull/isStringArray en tête de fichier pour pourquoi.
+// Reloads, at startup, a cache written by a previous session — before the
+// view's first render, so that as many rows/boxes as possible display their
+// content from the first frame rather than waiting for a Scryfall round
+// trip. A missing file (first use), corrupted, or a malformed entry
+// (isValid) is never treated as a blocking error: in all these cases we
+// simply start with an empty cache for that key — same posture as
+// loadPersistedLegalitiesCache. isValid is a simple boolean predicate (not a
+// TypeScript type guard) — see the comment of the validators
+// isStringOrNull/isNumberOrNull/isObjectOrNull/isStringArray at the top of
+// the file for why.
 
 export function scheduleMapCachePersist(this: MTGCollectionPlugin, filename: string, map: ReadonlyMap<string, unknown>): void {
 	const existing = this.immutableCachePersistTimers.get(filename);
@@ -315,19 +309,18 @@ export async function flushMapCachePersist(this: MTGCollectionPlugin, filename: 
 	try {
 		await this.app.vault.adapter.write(path, JSON.stringify(Object.fromEntries(map)));
 	} catch {
-		// Écriture ratée : la Map en mémoire reste correcte pour le reste de
-		// la session, la prochaine mutation retentera l'écriture — même
-		// raisonnement que flushLegalitiesPersist ci-dessus.
+		// Failed write: the in-memory Map stays correct for the rest of the
+		// session, the next mutation will retry the write — same reasoning as
+		// flushLegalitiesPersist above.
 	}
 }
 
-// Force l'écriture immédiate de tout debounce encore en attente pour l'un
-// des 4 caches ci-dessus (voir onunload) — non attendu (onunload() n'est
-// pas garanti d'attendre une Promise par Obsidian), mais mieux que de
-// perdre silencieusement les dernières entrées résolues juste avant la
-// fermeture. Liste explicite plutôt qu'un registre dynamique
-// filename->Map : seulement 4 entrées, plus lisible/grep-able qu'une
-// indirection pour un si petit nombre.
+// Forces the immediate write of any debounce still pending for one of the
+// 4 caches above (see onunload) — not awaited (Obsidian isn't guaranteed
+// to await a Promise in onunload()), but better than silently losing the
+// last entries resolved just before closing. Explicit list rather than a
+// dynamic filename->Map registry: only 4 entries, more readable/greppable
+// than an indirection for such a small number.
 
 export function flushPendingImmutableCaches(this: MTGCollectionPlugin): void {
 	const caches: [string, ReadonlyMap<string, unknown>][] = [
@@ -350,14 +343,13 @@ export function allSetsCacheFilePath(this: MTGCollectionPlugin): string | null {
 	return this.manifest.dir ? `${this.manifest.dir}/${ALL_SETS_CACHE_FILENAME}` : null;
 }
 
-// Recharge, au démarrage, la liste d'éditions persistée si elle est
-// encore fraîche (ALL_SETS_CACHE_TTL_MS) — contrairement aux 4 caches
-// ci-dessus, une liste expirée n'est PAS chargée du tout : allSetsCache
-// reste `null`, et getAllScryfallSets() (plus bas) retombe alors sur son
-// comportement déjà existant (fetch réseau au premier appel de la
-// session). Un fichier absent, corrompu, ou une entrée mal formée n'est
-// jamais traité comme une erreur bloquante — même posture que les autres
-// caches persistés de ce fichier.
+// Reloads, at startup, the persisted list of sets if it is still fresh
+// (ALL_SETS_CACHE_TTL_MS) — unlike the 4 caches above, an expired list is
+// NOT loaded at all: allSetsCache stays `null`, and getAllScryfallSets()
+// (further down) then falls back to its already existing behavior (network
+// fetch on the first call of the session). A missing file, a corrupted
+// one, or a malformed entry is never treated as a blocking error — same
+// posture as the other persisted caches of this file.
 
 export async function loadPersistedAllSetsCache(this: MTGCollectionPlugin): Promise<void> {
 	const path = this.allSetsCacheFilePath();
@@ -370,16 +362,16 @@ export async function loadPersistedAllSetsCache(this: MTGCollectionPlugin): Prom
 		if (Date.now() - parsed.fetchedAt >= ALL_SETS_CACHE_TTL_MS) return;
 		this.allSetsCache = parsed.sets;
 	} catch {
-		// Silencieux par design — voir le commentaire de la méthode.
+		// Silent by design — see the method's comment.
 	}
 }
 
-// Écrit immédiatement (pas de debounce ici, contrairement aux 4 caches
-// ci-dessus) : un seul appel par session au maximum déclenche ceci
-// (getAllScryfallSets ne re-fetch qu'une fois allSetsCache vidé/expiré),
-// pas une rafale de résolutions rapprochées à regrouper. Fire-and-forget
-// depuis son unique appelant (getAllScryfallSets) — ne doit pas retarder
-// la réponse déjà obtenue pour l'appelant réel.
+// Writes immediately (no debounce here, unlike the 4 caches above): at
+// most one call per session triggers this (getAllScryfallSets only
+// re-fetches once allSetsCache is emptied/expired), not a burst of close
+// resolutions to group. Fire-and-forget from its only caller
+// (getAllScryfallSets) — must not delay the response already obtained for
+// the real caller.
 
 export async function persistAllSetsCache(this: MTGCollectionPlugin): Promise<void> {
 	const path = this.allSetsCacheFilePath();
@@ -390,8 +382,8 @@ export async function persistAllSetsCache(this: MTGCollectionPlugin): Promise<vo
 			JSON.stringify({ fetchedAt: Date.now(), sets: this.allSetsCache })
 		);
 	} catch {
-		// Écriture ratée : allSetsCache reste correct en mémoire pour le
-		// reste de la session, seule la persistance sur disque a échoué.
+		// Failed write: allSetsCache stays correct in memory for the rest of the
+		// session, only the persistence to disk failed.
 	}
 }
 
@@ -406,10 +398,10 @@ export async function maybeAutoRefreshLegalities(this: MTGCollectionPlugin): Pro
 	);
 	if (uniqueIds.length === 0) return;
 	const fetchedSomething = await this.bulkFetchLegalities(uniqueIds);
-	// Même geste que maybeAutoRefreshPrices (price-refresh.ts) : une vue déjà
-	// ouverte (restaurée par Obsidian au démarrage) doit refléter les
-	// données fraîchement arrivées — un simple render(), rien de plus
-	// intrusif qu'un rafraîchissement de prix ne l'est déjà.
+	// Same gesture as maybeAutoRefreshPrices (price-refresh.ts): a view
+	// already open (restored by Obsidian at startup) must reflect the freshly
+	// arrived data — a simple render(), nothing more intrusive than a price
+	// refresh already is.
 	if (fetchedSomething) {
 		this.app.workspace.getLeavesOfType(VIEW_TYPE_MTG_COLLECTION).forEach((leaf) => {
 			if (leaf.view instanceof MTGCollectionView) leaf.view.render();
@@ -417,47 +409,42 @@ export async function maybeAutoRefreshLegalities(this: MTGCollectionPlugin): Pro
 	}
 }
 
-// Pré-remplissage en arrière-plan de legalitiesCache pour toute une
-// liste, déclenché par MTGCollectionView dès qu'un jeton "legal:" est
-// actif dans le filtre de My Collection (voir tokensNeedLegalityData,
-// card-search.ts) — contrairement à getCardLegalities/fetchCardLegalities
-// ci-dessus (un aller-retour par carte, pour le bloc "Legal Formats" d'une
-// seule fiche détail), ce filtre a potentiellement besoin des légalités de
-// toute une liste (voire "All Cards") d'un coup. Également le point
-// d'entrée du pré-chauffage silencieux au démarrage (voir
-// maybeAutoRefreshLegalities juste au-dessus) — un seul chemin de fetch
-// groupé pour les deux usages plutôt que deux implémentations à tenir
-// synchronisées. fetchScryfallCollection segmente déjà en lots de 75
-// avec une pause entre chaque lot (bonne pratique Scryfall) — pas besoin
-// de reproduire cette logique ici, un seul appel suffit quelle que soit
-// la taille de la liste.
-// "Manquant" veut maintenant dire "absent OU expiré" (voir
-// isLegalitiesFresh), pas seulement "absent" comme avant l'ajout du
-// cache persisté/TTL — une entrée fraîche (chargée depuis le disque ou
-// déjà refetchée cette session) est un no-op immédiat.
-// Renvoie `true` seulement si au moins un id manquant/expiré a été
-// demandé (donc si le cache a effectivement pu changer) : les deux
-// appelants (renderListDetail, maybeAutoRefreshLegalities) s'en servent
-// pour ne déclencher un nouveau rendu que lorsque c'est réellement
-// utile, plutôt qu'à chaque passage (un rendu inconditionnel depuis
-// renderListDetail bouclerait, puisque ce rendu lui-même rappelle cette
-// méthode).
-// Bug rapporté deux fois — une carte nouvellement ajoutée n'affichait
-// aucune légalité, et plus généralement rien ne s'affichait avant que
-// TOUT le fetch (potentiellement toute la collection, ~134 lots de 75)
-// soit terminé — root-causé jusqu'à `fetchScryfallCollection` : la
-// version précédente de cette méthode dérivait la Promise de CHAQUE id
-// d'une seule Promise partagée sur tout `missing`, elle-même résolue
-// seulement après le TOUT DERNIER lot — même la carte dont les données
-// arrivaient dans le premier lot devait donc attendre les ~133 lots
-// suivants (plusieurs dizaines de secondes sur une grosse collection).
-// Une carte nouvellement ajoutée n'était pas différente en soi — elle
-// se retrouvait simplement, par malchance, à faire partie d'un même
-// gros lot partagé (le pré-chauffage silencieux au démarrage, ou le
-// fetch de toute une liste filtrée par "legal:") plutôt que d'obtenir
-// sa propre requête isolée. Fixé en résolvant chaque id dès que SON
-// PROPRE lot de 75 revient (voir onChunkResolved, fetchScryfallCollection)
-// plutôt qu'à la toute fin de l'ensemble.
+// Background pre-fill of legalitiesCache for a whole list, triggered by
+// MTGCollectionView as soon as a "legal:" token is active in My
+// Collection's filter (see tokensNeedLegalityData, card-search.ts) —
+// unlike getCardLegalities/fetchCardLegalities above (one round trip per
+// card, for the "Legal Formats" block of a single detail sheet), this
+// filter potentially needs the legalities of a whole list (even "All
+// Cards") at once. Also the entry point of the silent warm-up at startup
+// (see maybeAutoRefreshLegalities just above) — a single grouped fetch
+// path for both uses rather than two implementations to keep in sync.
+// fetchScryfallCollection already splits into batches of 75 with a pause
+// between each batch (Scryfall best practice) — no need to reproduce that
+// logic here, a single call is enough whatever the size of the list.
+// "Missing" now means "absent OR expired" (see isLegalitiesFresh), not
+// just "absent" as before the persisted cache/TTL was added — a fresh
+// entry (loaded from disk or already refetched this session) is an
+// immediate no-op.
+// Returns `true` only if at least one missing/expired id was requested
+// (hence if the cache could actually have changed): the two callers
+// (renderListDetail, maybeAutoRefreshLegalities) use it to trigger a new
+// render only when it is really useful, rather than on every pass (an
+// unconditional render from renderListDetail would loop, since that render
+// itself calls this method again).
+// Bug reported twice — a newly added card displayed no legality, and more
+// generally nothing displayed before the WHOLE fetch (potentially the
+// entire collection, ~134 batches of 75) was finished — root-caused down
+// to `fetchScryfallCollection`: the previous version of this method
+// derived the Promise of EACH id from a single Promise shared over all of
+// `missing`, itself resolved only after the VERY LAST batch — even the
+// card whose data arrived in the first batch therefore had to wait for the
+// ~133 following batches (several tens of seconds on a big collection). A
+// newly added card was not different in itself — it simply happened, by
+// bad luck, to be part of the same big shared batch (the silent warm-up at
+// startup, or the fetch of a whole list filtered by "legal:") rather than
+// getting its own isolated request. Fixed by resolving each id as soon as
+// ITS OWN batch of 75 comes back (see onChunkResolved,
+// fetchScryfallCollection) rather than at the very end of the whole set.
 
 export async function bulkFetchLegalities(this: MTGCollectionPlugin, scryfallIds: string[]): Promise<boolean> {
 	const missing = Array.from(new Set(scryfallIds)).filter(
@@ -465,11 +452,11 @@ export async function bulkFetchLegalities(this: MTGCollectionPlugin, scryfallIds
 	);
 	if (missing.length === 0) return false;
 
-	// Un resolver par id (motif Promise-avec-executor-externe) plutôt
-	// qu'une Promise dérivée d'un résultat final unique — c'est ce qui
-	// permet à onChunkResolved ci-dessous de résoudre chaque id
-	// individuellement, dès que son propre lot revient, au lieu de tout
-	// le monde attendant le dernier lot ensemble.
+	// One resolver per id (external-executor Promise pattern) rather than a
+	// Promise derived from a single final result — this is what allows
+	// onChunkResolved below to resolve each id individually, as soon as its
+	// own batch comes back, instead of everyone waiting for the last batch
+	// together.
 	const resolvers = new Map<string, (legalities: Record<string, string> | null) => void>();
 	missing.forEach((id) => {
 		const perId = new Promise<Record<string, string> | null>((resolve) => resolvers.set(id, resolve));
@@ -488,25 +475,24 @@ export async function bulkFetchLegalities(this: MTGCollectionPlugin, scryfallIds
 		});
 	});
 
-	// Un id encore non résolu ici (lot raté — voir le commentaire de
-	// fetchCardLegalities plus bas — ou carte introuvable côté Scryfall)
-	// doit quand même voir sa Promise se terminer, sans quoi
-	// legalitiesInFlight le garderait "en vol" indéfiniment, bloquant
-	// silencieusement tout futur appel pour ce même id.
+	// An id still unresolved here (failed batch — see the comment of
+	// fetchCardLegalities further down — or a card not found on Scryfall's
+	// side) must still see its Promise end, otherwise legalitiesInFlight would
+	// keep it "in flight" indefinitely, silently blocking any future call for
+	// that same id.
 	resolvers.forEach((resolve) => resolve(null));
 
 	this.scheduleLegalitiesPersist();
 	return true;
 }
 
-// Un aller-retour raté (limite de requêtes, coupure réseau) sur ce point
-// d'accès groupé renvoie une map vide sans lever d'erreur (voir
-// fetchScryfallCollection) — sans nouvelle tentative, la carte ratait
-// alors silencieusement sa légalité pour toute la durée de cette fenêtre
-// (aucun cache écrit sur échec, donc un futur réouverture aurait fini par
-// réessayer, mais pas l'ouverture en cours). Une unique retentative après
-// une courte pause suffit à absorber l'immense majorité des ratés
-// purement transitoires.
+// A failed round trip (rate limit, network cut) on this grouped endpoint
+// returns an empty map without throwing (see fetchScryfallCollection) —
+// without a new attempt, the card would then silently miss its legality
+// for the whole duration of that window (no cache written on failure, so a
+// future reopening would eventually retry, but not the current opening). A
+// single retry after a short pause is enough to absorb the vast majority
+// of purely transient failures.
 
 export async function fetchCardLegalities(this: MTGCollectionPlugin, scryfallId: string): Promise<Record<string, string> | null> {
 	for (let attempt = 0; attempt < 2; attempt++) {
@@ -523,19 +509,18 @@ export async function fetchCardLegalities(this: MTGCollectionPlugin, scryfallId:
 	return null;
 }
 
-// Point d'entrée partagé par les 4 dérivations ci-dessous (getTcgplayerUrl/
-// getCardTextInfo/getCardFaceImages/getSplitCardInfo) — cache + requête en
-// vol partagée + retentative, même idiome que getCardLegalities plus haut.
-// L'in-flight dedup fait tout le travail pour éviter une rafale : les 4
-// méthodes publiques appellent chacune celle-ci indépendamment (elles
-// n'ont pas connaissance les unes des autres) quand une fiche carte
-// s'ouvre, mais comme aucune n'attend de résultat réseau avant que les 3
-// autres n'aient elles-mêmes appelé cette méthode dans le même tick
-// synchrone, seule la PREMIÈRE déclenche réellement fetchScryfallCollection
-// — les 3 suivantes retrouvent la promesse déjà posée dans
-// scryfallImmutableInFlight et l'attendent à la place d'un nouvel appel
-// réseau. Voir ScryfallImmutableSnapshot (scryfall.ts) pour le détail des
-// champs conservés/exclus.
+// Entry point shared by the 4 derivations below
+// (getTcgplayerUrl/getCardTextInfo/getCardFaceImages/getSplitCardInfo) —
+// cache + shared in-flight request + retry, same idiom as getCardLegalities
+// higher up. The in-flight dedup does all the work to avoid a burst: the 4
+// public methods each call this one independently (they don't know about
+// each other) when a card sheet opens, but since none awaits a network
+// result before the 3 others have themselves called this method in the same
+// synchronous tick, only the FIRST actually triggers
+// fetchScryfallCollection — the following 3 find the promise already set in
+// scryfallImmutableInFlight and wait on it instead of a new network call.
+// See ScryfallImmutableSnapshot (scryfall.ts) for the detail of the fields
+// kept/excluded.
 
 export async function getScryfallImmutableSnapshot(this: MTGCollectionPlugin, 
 	scryfallId: string
@@ -552,7 +537,7 @@ export async function getScryfallImmutableSnapshot(this: MTGCollectionPlugin,
 	return promise;
 }
 
-// Même logique de retentative que fetchCardLegalities ci-dessus.
+// Same retry logic as fetchCardLegalities above.
 
 export async function fetchScryfallImmutableSnapshot(this: MTGCollectionPlugin, 
 	scryfallId: string
@@ -590,23 +575,24 @@ export async function fetchScryfallImmutableSnapshot(this: MTGCollectionPlugin,
 	return null;
 }
 
-// Variante lot de la fonction ci-dessus, pour Home's Market Trends
-// (renderHomeMarketTrends, view/home-render.ts) : jusqu'à 10 movers
-// (gainers+losers) affichés à la fois, chacun avec sa propre image/édition/
-// rareté à afficher — les résoudre un par un via getScryfallImmutableSnapshot
-// ferait 10 aller-retours HTTP séquentiels (même goulet que
-// fetchScryfallImmutableSnapshot ci-dessus, qui appelle déjà /cards/
-// collection mais avec un seul id à chaque fois) alors qu'un seul appel à
-// fetchScryfallCollection avec tous les ids couvre déjà ce volume en un seul
-// lot de 75. Partage le MÊME cache que la version singulière (un id résolu
-// par l'une profite à l'autre) plutôt qu'un cache séparé — voir "Scryfall API
-// usage" dans CLAUDE.md ("un seul cache partagé plutôt que N séparés").
-// cached.set !== undefined (pas juste cached !== undefined) : un snapshot mis
-// en cache par une session AVANT l'élargissement de ScryfallImmutableSnapshot
-// (set/set_name/collector_number/rarity, voir son propre commentaire dans
-// scryfall.ts) n'a pas ces champs en pratique — le traiter comme un cache miss
-// re-fetch et complète cette entrée pour de bon, plutôt que de renvoyer un
-// snapshot incomplet ou d'invalider tout le cache disque existant.
+// Batch variant of the function above, for Home's Market Trends
+// (renderHomeMarketTrends, view/home-render.ts): up to 10 movers
+// (gainers+losers) displayed at once, each with its own image/set/rarity to
+// display — resolving them one by one via getScryfallImmutableSnapshot would
+// make 10 sequential HTTP round trips (same bottleneck as
+// fetchScryfallImmutableSnapshot above, which already calls /cards/collection
+// but with a single id each time) whereas a single call to
+// fetchScryfallCollection with all the ids already covers this volume in a
+// single batch of 75. Shares the SAME cache as the singular version (an id
+// resolved by one benefits the other) rather than a separate cache — see
+// "Scryfall API usage" in CLAUDE.md ("a single shared cache rather than N
+// separate ones"). cached.set !== undefined (not just cached !== undefined): a
+// snapshot cached by a session BEFORE the widening of
+// ScryfallImmutableSnapshot (set/set_name/collector_number/rarity, see its own
+// comment in scryfall.ts) doesn't have these fields in practice — treating it
+// as a cache miss re-fetches and completes that entry for good, rather than
+// returning an incomplete snapshot or invalidating the whole existing disk
+// cache.
 export async function getScryfallImmutableSnapshots(this: MTGCollectionPlugin,
 	scryfallIds: string[]
 ): Promise<Map<string, ScryfallImmutableSnapshot>> {
@@ -647,51 +633,49 @@ export async function getScryfallImmutableSnapshots(this: MTGCollectionPlugin,
 	return result;
 }
 
-// Lien produit TCGplayer (ligne "TCGplayer" de la box Store Prices).
-// `null` est une réponse valide (carte sans lien TCGplayer, ex. token/art
-// card) ; un snapshot introuvable après retentative renvoie aussi `null`
-// mais sans être mis en cache par getScryfallImmutableSnapshot lui-même,
-// pour permettre une nouvelle tentative plus tard dans la session.
+// TCGplayer product link ("TCGplayer" row of the Store Prices box). `null`
+// is a valid answer (card with no TCGplayer link, e.g. token/art card); a
+// snapshot not found after retry also returns `null` but without being
+// cached by getScryfallImmutableSnapshot itself, to allow a new attempt
+// later in the session.
 
 export async function getTcgplayerUrl(this: MTGCollectionPlugin, scryfallId: string): Promise<string | null> {
 	const snapshot = await this.getScryfallImmutableSnapshot(scryfallId);
 	return snapshot?.purchase_uris?.tcgplayer ?? null;
 }
 
-// Texte de règles + stats (bloc "Card Text" du détail) — voir
-// buildCardTextInfo (scryfall.ts) pour le repli card_faces sur les cartes
-// double-face. `null` uniquement si le snapshot lui-même est introuvable ;
-// un oracle_text vide (créature vanille) est un CardTextInfo bien réel.
+// Rules text + stats ("Card Text" block of the detail) — see
+// buildCardTextInfo (scryfall.ts) for the card_faces fallback on
+// double-faced cards. `null` only if the snapshot itself is not found; an
+// empty oracle_text (vanilla creature) is a very real CardTextInfo.
 
 export async function getCardTextInfo(this: MTGCollectionPlugin, scryfallId: string): Promise<CardTextInfo | null> {
 	const snapshot = await this.getScryfallImmutableSnapshot(scryfallId);
 	return snapshot ? buildCardTextInfo(snapshot) : null;
 }
 
-// Bouton "flip" 3D sous la carte (transform/modal_dfc uniquement — voir
-// getDoubleFacedImages, scryfall.ts, pour comment cette fonction
-// distingue une vraie carte recto/verso physique d'un layout split/
-// adventure/flip/meld, qui a aussi une card_faces[] mais un seul visuel
-// imprimé).
+// 3D "flip" button under the card (transform/modal_dfc only — see
+// getDoubleFacedImages, scryfall.ts, for how this function tells a real
+// physical front/back card from a split/adventure/flip/meld layout, which
+// also has a card_faces[] but only one printed visual).
 
 export async function getCardFaceImages(this: MTGCollectionPlugin, scryfallId: string): Promise<DoubleFacedImages | null> {
 	const snapshot = await this.getScryfallImmutableSnapshot(scryfallId);
 	return snapshot ? getDoubleFacedImages(snapshot) : null;
 }
 
-// Bouton "rotation" des cartes split (voir getSplitCardInfo, scryfall.ts,
-// et setupSplitCardRotation, card-detail-fx.ts).
+// "Rotation" button of split cards (see getSplitCardInfo, scryfall.ts, and
+// setupSplitCardRotation, card-detail-fx.ts).
 
 export async function getSplitCardInfo(this: MTGCollectionPlugin, scryfallId: string): Promise<SplitCardInfo | null> {
 	const snapshot = await this.getScryfallImmutableSnapshot(scryfallId);
 	return snapshot ? getSplitCardInfoFromScry(snapshot) : null;
 }
 
-// Liste complète des éditions existantes (nom + code + symbole), récupérée
-// une seule fois par session via l'unique point d'accès groupé de Scryfall
-// — évite un aller-retour par édition. Sert à l'autocomplétion du champ
-// "Set" dans la recherche d'ajout, à la place d'un code à connaître par
-// cœur.
+// Complete list of existing sets (name + code + symbol), fetched once per
+// session via Scryfall's single grouped endpoint — avoids a round trip per
+// set. Serves for the autocompletion of the "Set" field in the add search,
+// in place of a code to know by heart.
 
 export async function getAllScryfallSets(this: MTGCollectionPlugin): Promise<ScryfallSetSummary[]> {
 	if (this.allSetsCache) return this.allSetsCache;
@@ -703,11 +687,10 @@ export async function getAllScryfallSets(this: MTGCollectionPlugin): Promise<Scr
 		});
 		if (res.status !== 200) return [];
 		const sets = (res.json as { data?: ScryfallSetSummary[] }).data ?? [];
-		// Les éditions numériques (Arena) n'ont pas de sens pour un plugin de
-		// cartes physiques.
+		// Digital sets (Arena) make no sense for a physical-card plugin.
 		this.allSetsCache = sets.filter((s) => !s.digital);
-		// Fire-and-forget : ne retarde pas la réponse déjà obtenue pour
-		// l'appelant réel, voir le commentaire de persistAllSetsCache.
+		// Fire-and-forget: doesn't delay the response already obtained for the
+		// real caller, see the comment of persistAllSetsCache.
 		void this.persistAllSetsCache();
 		return this.allSetsCache;
 	} catch {
@@ -715,20 +698,20 @@ export async function getAllScryfallSets(this: MTGCollectionPlugin): Promise<Scr
 	}
 }
 
-// Lecture synchrone du cache déjà chargé (pour l'affichage immédiat d'une
-// puce "set:xyz" sans attendre un aller-retour réseau). Renvoie undefined
-// si le cache n'est pas encore chaud — l'appelant se rabat alors sur le
-// code brut en majuscules.
+// Synchronous reading of the already loaded cache (for the immediate
+// display of a "set:xyz" chip without waiting for a network round trip).
+// Returns undefined if the cache is not warm yet — the caller then falls
+// back on the raw uppercase code.
 
 export function getCachedSetSummary(this: MTGCollectionPlugin, code: string): ScryfallSetSummary | undefined {
 	return this.allSetsCache?.find((s) => s.code.toLowerCase() === code.toLowerCase());
 }
 
-// Charge (une fois par session) la table complète des symboles Scryfall.
-// N'écrit symbologyCache qu'en cas de succès confirmé : un échec
-// transitoire ne doit pas figer une table vide pour le reste de la
-// session (ça privait alors TOUS les symboles de mana d'icône, pas
-// seulement celui demandé au moment de l'échec).
+// Loads (once per session) the complete table of Scryfall symbols. Only
+// writes symbologyCache on a confirmed success: a transient failure must
+// not freeze an empty table for the rest of the session (it then deprived
+// ALL mana symbols of an icon, not only the one requested at the time of
+// the failure).
 
 export async function loadSymbology(this: MTGCollectionPlugin): Promise<Map<string, string>> {
 	if (this.symbologyCache) return this.symbologyCache;
@@ -754,8 +737,8 @@ export async function loadSymbology(this: MTGCollectionPlugin): Promise<Map<stri
 	return this.symbologyFetchPromise;
 }
 
-// Récupère l'icône officielle d'un symbole de mana (W/U/B/R/G/C...) fournie
-// par Scryfall via son endpoint "symbology", prévu pour cet usage tiers.
+// Retrieves the official icon of a mana symbol (W/U/B/R/G/C...) supplied by
+// Scryfall via its "symbology" endpoint, designed for this third-party use.
 
 export async function getManaSymbolSvg(this: MTGCollectionPlugin, colorLetter: string): Promise<string | null> {
 	const cacheKey = `mana:${colorLetter}`;
@@ -777,8 +760,8 @@ export async function fetchManaSymbolSvg(this: MTGCollectionPlugin, colorLetter:
 		const symbology = await this.loadSymbology();
 		const uri = symbology.get(`{${colorLetter}}`);
 		if (!uri) {
-			// Lettre qui ne correspond à aucun symbole Scryfall connu : pas
-			// une histoire de réseau, pas la peine de réessayer.
+			// A letter that matches no known Scryfall symbol: not a network matter, no
+			// point retrying.
 			this.setIconCache.set(cacheKey, null);
 			this.scheduleMapCachePersist(ICON_CACHE_FILENAME, this.setIconCache);
 			return null;
@@ -796,9 +779,9 @@ export async function fetchManaSymbolSvg(this: MTGCollectionPlugin, colorLetter:
 	}
 }
 
-// Certaines éditions (Alpha, Beta...) n'ont existé qu'en anglais. On
-// interroge Scryfall pour ne proposer, dans le sélecteur de langue, que
-// les langues réellement imprimées pour cette édition + numéro donnés.
+// Some sets (Alpha, Beta...) only existed in English. We query Scryfall to
+// offer, in the language picker, only the languages actually printed for
+// this given set + number.
 
 export async function getAvailableLanguages(this: MTGCollectionPlugin, setCode: string, collectorNumber: string): Promise<string[]> {
 	const cacheKey = `${setCode.toLowerCase()}:${collectorNumber}`;
@@ -815,17 +798,16 @@ export async function getAvailableLanguages(this: MTGCollectionPlugin, setCode: 
 			throw: false,
 		});
 		if (res.status !== 200) {
-			// Échec HTTP — pas forcément transitoire (ex. 404 pour une
-			// combinaison set/numéro invalide) mais pas non plus une réponse
-			// Scryfall confirmée. Bug trouvé en ajoutant la persistance sur
-			// disque de ce cache : cette branche mettait ["en"] en cache
-			// jusqu'ici, ce qui — en mémoire, le temps d'une session — était
-			// déjà discutable (une panne réseau ponctuelle pouvait figer
-			// ["en"] pour le reste de la session), mais serait devenu bien
-			// pire une fois persisté (une panne ponctuelle aurait figé
-			// ["en"] pour cette impression dans TOUTES les sessions futures).
-			// Corrigé : ne met plus rien en cache ici, seul un 200 confirmé
-			// (même avec un résultat vide, voir plus bas) est mémorisé.
+			// HTTP failure — not necessarily transient (e.g. 404 for an invalid
+			// set/number combination) but not a confirmed Scryfall response either.
+			// Bug found while adding disk persistence to this cache: this branch used
+			// to cache ["en"] until now, which — in memory, for the length of a
+			// session — was already debatable (a one-off network outage could freeze
+			// ["en"] for the rest of the session), but would have become far worse
+			// once persisted (a one-off outage would have frozen ["en"] for this
+			// printing in ALL future sessions). Fixed: nothing is cached here any
+			// more, only a confirmed 200 (even with an empty result, see further down)
+			// is remembered.
 			return ["en"];
 		}
 		const langs = Array.from(
@@ -839,9 +821,9 @@ export async function getAvailableLanguages(this: MTGCollectionPlugin, setCode: 
 		);
 		return result;
 	} catch {
-		// Échec réseau/parsing — transitoire par nature, jamais mis en
-		// cache (même règle que getSetIconSvg/getCardLegalities ailleurs
-		// dans ce fichier, et même raisonnement que la branche ci-dessus).
+		// Network/parsing failure — transient by nature, never cached (same rule
+		// as getSetIconSvg/getCardLegalities elsewhere in this file, and same
+		// reasoning as the branch above).
 		return ["en"];
 	}
 }
@@ -866,12 +848,12 @@ export async function loadPersistedMapCache<T>(this: MTGCollectionPlugin,
 			map.set(key, value as T);
 		}
 	} catch {
-		// Silencieux par design — voir le commentaire de la méthode.
+		// Silent by design — see the method's comment.
 	}
 }
 
-// Écriture différée (regroupe les résolutions rapprochées d'un rendu
-// initial en une seule écriture, même idiome que scheduleLegalitiesPersist)
-// — map est déjà exactement la forme qu'on veut écrire (clé -> valeur),
-// pas besoin d'un wrapper {valeur, horodatage} par entrée comme pour les
-// légalités, qui ont un TTL à faire respecter.
+// Deferred write (groups the close resolutions of an initial render into a
+// single write, same idiom as scheduleLegalitiesPersist) — map is already
+// exactly the shape we want to write (key -> value), no need for a {value,
+// timestamp} wrapper per entry as for the legalities, which have a TTL to
+// enforce.

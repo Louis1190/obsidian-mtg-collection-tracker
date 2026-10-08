@@ -1,16 +1,16 @@
 import { requestUrl, RequestUrlParam, RequestUrlResponse } from "obsidian";
 
 /* -------------------------------------------------------------------------- */
-/*  requestUrl qui ne lève jamais                                             */
+/* requestUrl that never throws */
 /* -------------------------------------------------------------------------- */
-// `requestUrl({ throw: false })` ne couvre que les statuts HTTP (404, 429, 500…) : une erreur de TRANSPORT — hors ligne, DNS,
-// pare-feu ou inspection TLS d'un réseau d'entreprise, portail captif — fait quand même rejeter la promesse. Les fetchers des
-// sources de données (cardbase, Card Kingdom, Mana Pool) promettent « une valeur d'échec, jamais une exception » (undefined
-// ou Map vide : l'interface a une branche pour ça, « — » ou « No price history available yet. ») ; sans ceci, la promesse
-// rejetée n'arrivait jamais jusqu'à cette branche : le cadre restait sur ses points de chargement, et pour les tarifs Card
-// Kingdom / Mana Pool la promesse REJETÉE restait en cache pour toute la session.
-// Renvoie null à la place de la réponse quand la requête n'a pas pu aboutir : l'appelant traite null comme n'importe quel
-// échec (le même chemin qu'un statut non 200).
+// `requestUrl({ throw: false })` only covers HTTP statuses (404, 429, 500…): a TRANSPORT error — offline, DNS, a
+// corporate network's firewall or TLS inspection, captive portal — still makes the promise reject. The
+// data-source fetchers (cardbase, Card Kingdom, Mana Pool) promise "a failure value, never an exception"
+// (undefined or an empty Map: the interface has a branch for that, "—" or "No price history available yet.");
+// without this, the rejected promise never reached that branch: the frame stayed on its loading dots, and for
+// the Card Kingdom / Mana Pool pricelists the REJECTED promise stayed cached for the whole session.
+// Returns null instead of the response when the request could not complete: the caller treats null like any
+// other failure (the same path as a non-200 status).
 export async function requestUrlOrNull(params: Omit<RequestUrlParam, "throw">): Promise<RequestUrlResponse | null> {
 	try {
 		return await requestUrl({ ...params, throw: false });

@@ -51,81 +51,78 @@ export class CardDetailModal extends Modal {
 	private view: MTGCollectionView;
 	private card: CollectionCard;
 	private confirmingDelete = false;
-	// Liste ordonnée (filtre/tri/groupement courants) dans laquelle ce card
-	// a été ouvert — sert uniquement à la navigation précédent/suivant et au
-	// "Card X of Y", capturée telle quelle à l'ouverture (pas mise à jour en
-	// direct si la liste change pendant que la fenêtre est ouverte).
+	// Ordered list (current filter/sort/grouping) in which this card was
+	// opened — only serves for previous/next navigation and the "Card X of Y",
+	// captured as is at opening (not updated live if the list changes while
+	// the window is open).
 	private navCards: CollectionCard[];
-	// Id utilisé pour calculer la position "Card X of Y"/l'activation des
-	// flèches — distinct de this.card.id : cliquer une vignette "Other in
-	// Lists" change this.card (l'affichage) sans toucher à cet ancrage, pour
-	// que la barre de navigation garde la continuité de la liste d'origine
-	// plutôt que de disparaître (l'autre exemplaire n'appartient pas à
-	// navCards). Mis à jour uniquement par les flèches précédent/suivant
-	// elles-mêmes.
+	// Id used to compute the "Card X of Y" position/the activation of the
+	// arrows — distinct from this.card.id: clicking an "Other in Lists"
+	// thumbnail changes this.card (the display) without touching this anchor,
+	// so that the navigation bar keeps the continuity of the original list
+	// rather than disappearing (the other copy doesn't belong to navCards).
+	// Updated only by the previous/next arrows themselves.
 	private navAnchorId: string;
-	// Empêche un second clic prev/next de couper court à l'animation en cours
-	// (voir animateCardNav) — levé dès le lancement de la transition d'entrée,
-	// pas forcément une fois celle-ci visuellement terminée.
+	// Prevents a second prev/next click from cutting short the animation in
+	// progress (see animateCardNav) — lifted as soon as the entrance
+	// transition starts, not necessarily once it is visually finished.
 	private navAnimating = false;
 	private bg = new BackgroundCrossfader();
-	// Tuile active du carrousel "Copies in Lists" (voir renderCopiesInListsBox)
-	// — capturée pour que refreshQuantityAndPrice puisse retoucher son "Nx ·
-	// prix" directement, en plus du stepper et de la ligne de prix
-	// principale. Sans ça, changer la quantité laissait ce carrousel affiché
-	// avec l'ancien nombre : c'est une mise à jour ciblée du DOM (pas un
-	// this.draw() complet, pour ne pas perdre le focus/faire clignoter le
-	// panneau), donc toute valeur affichée ailleurs doit être retouchée
-	// explicitement plutôt que de compter sur un nouveau rendu.
+	// Active tile of the "Copies in Lists" carousel (see
+	// renderCopiesInListsBox) — captured so that refreshQuantityAndPrice can
+	// touch up its "Nx · price" directly, in addition to the stepper and the
+	// main price line. Without it, changing the quantity left this carousel
+	// displaying the old number: it is a targeted DOM update (not a complete
+	// this.draw(), so as not to lose focus/make the panel flicker), so any
+	// value displayed elsewhere must be touched up explicitly rather than
+	// counting on a new render.
 	private copiesActiveTileMetaEl: HTMLElement | null = null;
-	// Affiche/masque la rangée Graded/Custom Price — recalculé depuis les
-	// données de la carte à chaque fois que this.card change (constructeur +
-	// les 3 endroits où this.card est réassigné plus bas), pour que le bloc
-	// s'ouvre déjà déplié sur une carte qui a déjà ces infos, mais que
-	// naviguer vers une autre carte reparte bien de SES propres données —
-	// pas un simple défaut statique comme confirmingDelete, qui lui n'a pas
-	// de sens par carte.
+	// Shows/hides the Graded/Custom Price row — recomputed from the card's
+	// data every time this.card changes (constructor + the 3 places where
+	// this.card is reassigned further down), so that the block opens already
+	// expanded on a card that already has this information, but navigating to
+	// another card starts again from ITS own data — not a simple static
+	// default like confirmingDelete, which makes no sense per card.
 	private gradingExpanded: boolean;
-	// Distingue "gradingExpanded vient de passer à true suite à un clic sur le
-	// toggle" d'un draw() déclenché pour toute autre raison pendant que le
-	// bloc est déjà ouvert (changer le finish, sauvegarder le grading, etc.) —
-	// sans ça, CHAQUE redessin rejouerait l'animation d'ouverture du bloc au
-	// lieu de le rendre directement dans son état final. Consommé (remis à
-	// false) dès qu'il a servi une fois, dans draw() lui-même.
+	// Distinguishes "gradingExpanded has just turned true following a click on
+	// the toggle" from a draw() triggered for any other reason while the block
+	// is already open (changing the finish, saving the grading, etc.) —
+	// without it, EVERY redraw would replay the block's opening animation
+	// instead of rendering it directly in its final state. Consumed (reset to
+	// false) as soon as it has served once, in draw() itself.
 	private gradingJustOpened = false;
-	// Distingue "premier affichage des légalités pour cette carte" d'un
-	// draw() déclenché pour toute autre raison pendant que la même carte est
-	// affichée (changer le finish, sauvegarder le grading, etc.) — sans ça,
-	// CHAQUE redessin reconstruisait les 8 tuiles dans leur état neutre et
-	// rejouait la vague au complet, même si la donnée sous-jacente (déjà en
-	// cache, voir MTGCollectionPlugin.legalitiesCache) n'avait pas changé
-	// (bug rapporté : la boîte "Legal Formats" semblait se "mettre à jour" à
-	// chaque changement de finish, alors que les informations affichées
-	// restaient identiques).
+	// Distinguishes "first display of the legalities for this card" from a
+	// draw() triggered for any other reason while the same card is displayed
+	// (changing the finish, saving the grading, etc.) — without it, EVERY
+	// redraw rebuilt the 8 tiles in their neutral state and replayed the whole
+	// wave, even though the underlying data (already cached, see
+	// MTGCollectionPlugin.legalitiesCache) hadn't changed (reported bug: the
+	// "Legal Formats" box seemed to "update" on every finish change, while the
+	// information displayed stayed identical).
 	private legalFormatsState: LegalFormatsState = { shownFor: null };
-	// État du bouton "flip" 3D (voir setupDoubleFacedFlip) — comme
-	// gradingExpanded ci-dessus, réinitialisé à chaque fois que this.card
-	// change de référence (constructeur + les 3 endroits où this.card est
-	// réassigné plus bas) : naviguer vers une autre carte doit toujours
-	// repartir face avant, jamais garder le verso affiché pour une carte
-	// différente. `false` couvre déjà le constructeur (valeur initiale du
-	// champ), pas besoin de le réaffecter explicitement là.
+	// State of the 3D "flip" button (see setupDoubleFacedFlip) — like
+	// gradingExpanded above, reset every time this.card changes reference
+	// (constructor + the 3 places where this.card is reassigned further down):
+	// navigating to another card must always start from the front face, never
+	// keep the back displayed for a different card. `false` already covers the
+	// constructor (initial value of the field), no need to reassign it
+	// explicitly there.
 	private flipped = false;
-	// État du bouton "rotation" des cartes split (voir setupSplitCardRotation/
-	// getSplitCardInfo) — même réinitialisation que flipped ci-dessus aux 3
-	// mêmes endroits, MAIS `null` (pas `false`) : contrairement au flip, dont
-	// l'état par défaut est un simple false constant, l'orientation par
-	// défaut d'une carte split dépend d'une donnée async (classique → tourné,
-	// Aftermath → portrait, voir getSplitCardInfo) — `null` distingue "pas
-	// encore déterminé pour cette carte" d'un choix explicite (défaut
-	// appliqué ou clic manuel sur le bouton), pour qu'un redessin de la MÊME
-	// carte (changer le finish, sauvegarder le grading...) ne réapplique pas
-	// le défaut par-dessus un choix déjà fait.
+	// State of the "rotation" button of split cards (see
+	// setupSplitCardRotation/getSplitCardInfo) — same reset as flipped above
+	// at the same 3 places, BUT `null` (not `false`): unlike flip, whose
+	// default state is a plain constant false, the default orientation of a
+	// split card depends on async data (classic → rotated, Aftermath →
+	// portrait, see getSplitCardInfo) — `null` distinguishes "not yet
+	// determined for this card" from an explicit choice (default applied or
+	// manual click on the button), so that a redraw of the SAME card (changing
+	// the finish, saving the grading...) doesn't reapply the default over a
+	// choice already made.
 	private splitRotated: boolean | null = null;
-	// Débounce du préchargement en arrière-plan des cartes voisines (voir
-	// schedulePrefetchNeighbors) — une navigation rapide en Cover Flow annule
-	// la planification précédente au lieu d'empiler des lots de requêtes
-	// cardbase pour des cartes déjà quittées.
+	// Debounce of the background preloading of neighboring cards (see
+	// schedulePrefetchNeighbors) — a fast Cover Flow navigation cancels the
+	// previous scheduling instead of stacking batches of cardbase requests for
+	// cards already left.
 	private prefetchTimeout: number | null = null;
 
 	constructor(
@@ -141,23 +138,23 @@ export class CardDetailModal extends Modal {
 		this.card = card;
 		this.navCards = navCards;
 		this.navAnchorId = card.id;
-		// gradingCompany n'indique plus "gradée" à lui seul : GradingModal
-		// présélectionne PSA par défaut et l'enregistre même sans note/condition
-		// saisie, donc sa seule présence ne distingue plus une carte vraiment
-		// gradée d'une carte jamais touchée — seules note et condition comptent.
+		// gradingCompany no longer indicates "graded" on its own: GradingModal
+		// preselects PSA by default and saves it even with no grade/condition
+		// entered, so its mere presence no longer distinguishes a truly graded
+		// card from a card never touched — only grade and condition count.
 		this.gradingExpanded = !!(card.gradingGrade != null || card.gradingLabel || card.customPrice);
 	}
 
 	onOpen() {
 		this.modalEl.addClass("mtg-card-detail-modal-frame");
-		// Masque la croix native d'Obsidian (classe partagée par toutes les
-		// modales du plugin qui ont leur propre croix perso — voir modal-
-		// animation.ts) : ce bouton lui-même vit dans contentEl, rebâti à
-		// chaque draw() (voir plus bas), donc PAS ajouté via addModalCloseButton
-		// ici — seule cette classe de masquage est nécessaire dans onOpen().
+		// Hides Obsidian's native cross (class shared by all of the plugin's
+		// modals that have their own custom cross — see modal-animation.ts): this
+		// button itself lives in contentEl, rebuilt on every draw() (see below),
+		// so NOT added via addModalCloseButton here — only this hiding class is
+		// needed in onOpen().
 		this.modalEl.addClass("mtg-modal-hides-native-close");
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
 		this.draw();
 	}
@@ -166,12 +163,12 @@ export class CardDetailModal extends Modal {
 		closeModalAnimated(this, () => super.close());
 	}
 
-	// Nom de la carte centré au-dessus des deux colonnes, flanqué de flèches
-	// précédent/suivant qui parcourent this.navCards (la liste filtrée/triée
-	// telle qu'elle était affichée à l'ouverture de la fenêtre), avec le
-	// repère "Card X of Y" en dessous. this.card change de référence sur
-	// navigation puis redessine toute la fenêtre via draw() — la stepper de
-	// quantité, le foil, etc. reflètent alors la carte nouvellement affichée.
+	// Card name centered above the two columns, flanked by previous/next
+	// arrows that walk through this.navCards (the filtered/sorted list as it
+	// was displayed when the window opened), with the "Card X of Y" marker
+	// below. this.card changes reference on navigation then redraws the whole
+	// window via draw() — the quantity stepper, the foil, etc. then reflect
+	// the newly displayed card.
 	private renderNavHeader(contentEl: HTMLElement) {
 		renderCardNavHeader(contentEl, {
 			cards: this.navCards,
@@ -198,16 +195,15 @@ export class CardDetailModal extends Modal {
 
 	draw() {
 		const { contentEl } = this;
-		// On préserve le calque de fond (voir BackgroundCrossfader) : seul un
-		// vidage sélectif (pas contentEl.empty()) permet le fondu enchaîné
-		// entre deux illustrations lors de la navigation précédent/suivant.
+		// We preserve the background layer (see BackgroundCrossfader): only a
+		// selective clearing (not contentEl.empty()) allows the cross-fade between
+		// two illustrations during previous/next navigation.
 		this.bg.clearSiblingsIn(contentEl);
 		contentEl.addClass("mtg-card-detail-modal");
-		// Hauteur fixe (pas seulement plafonnée) — voir styles.css pour le
-		// raisonnement complet ; DeckCardDetailModal/WantlistCardDetailModal
-		// ajoutent maintenant la même classe (harmonisation 2026-08-17), donc
-		// les 3 modales de détail se comportent identiquement de ce point de
-		// vue malgré leur contenu différent.
+		// Fixed height (not just capped) — see styles.css for the full reasoning;
+		// DeckCardDetailModal/WantlistCardDetailModal now add the same class
+		// (harmonization 2026-08-17), so the 3 detail modals behave identically
+		// from this point of view despite their different content.
 		contentEl.addClass("mtg-card-detail-modal-fixed-height");
 
 		const closeBtn = contentEl.createDiv({ cls: "mtg-card-detail-close-btn" });
@@ -215,8 +211,8 @@ export class CardDetailModal extends Modal {
 		closeBtn.setAttribute("title", "Close");
 		closeBtn.addEventListener("click", () => this.close());
 
-		// Fond flouté : l'illustration seule (art crop), pas la carte entière
-		// avec son cadre/texte — plus immersif et lisible une fois floutée.
+		// Blurred background: the artwork alone (art crop), not the whole card
+		// with its frame/text — more immersive and readable once blurred.
 		if (this.card.artCropUrl) {
 			this.bg.update(contentEl, this.card.artCropUrl);
 		} else {
@@ -255,22 +251,22 @@ export class CardDetailModal extends Modal {
 		const isAlpha = isAlphaSet(this.card.setCode);
 		const imageColumn = layout.createDiv({ cls: "mtg-card-detail-image-column" });
 
-		// Condition/langue sont affichées à deux endroits — les icônes au-dessus
-		// de l'image, et les boîtes du panneau (dans la section repliable, voir
-		// gradingExpanded plus bas) — choisir une valeur dans l'un des deux doit
-		// mettre à jour l'autre. applyCondition/applyLanguage centralisent la
-		// mutation + le rafraîchissement des deux emplacements ; les références
-		// ci-dessous ne sont renseignées que si l'élément correspondant a
-		// effectivement été créé (l'image seulement si this.card.imageUrl est
-		// défini ; les boîtes du panneau seulement si gradingExpanded est vrai).
-		// HTMLElement, pas plus précis : condGlyphImageEl/langFlagImageEl tiennent
-		// soit un badge/drapeau (valeur réelle), soit l'icône Lucide de repli
-		// "aucune valeur choisie" (createConditionIcon/createLanguageIcon,
-		// types.ts) — deux formes DOM différentes (span texte vs span+svg
-		// injecté), jamais interchangeables par simple .setText()/.style.color
-		// en place. applyCondition/applyLanguage ci-dessous reconstruisent donc
-		// systématiquement l'élément (remove + recreate) au lieu de le muter,
-		// contrairement à l'ancien code d'avant l'ajout de ce repli.
+		// Condition/language are displayed in two places — the icons above the
+		// image, and the panel's boxes (in the collapsible section, see
+		// gradingExpanded further down) — choosing a value in one of the two must
+		// update the other. applyCondition/applyLanguage centralize the mutation +
+		// the refresh of both locations; the references below are only filled in
+		// if the corresponding element was actually created (the image only if
+		// this.card.imageUrl is defined; the panel boxes only if gradingExpanded
+		// is true). HTMLElement, nothing more precise:
+		// condGlyphImageEl/langFlagImageEl hold either a badge/flag (real value),
+		// or the fallback Lucide icon "no value chosen"
+		// (createConditionIcon/createLanguageIcon, types.ts) — two different DOM
+		// shapes (text span vs span+injected svg), never interchangeable by a
+		// simple in-place .setText()/.style.color. applyCondition/applyLanguage
+		// below therefore systematically rebuild the element (remove + recreate)
+		// instead of mutating it, unlike the old code from before this fallback
+		// was added.
 		let condGlyphImageEl: HTMLElement | null = null;
 		let condBtnImageEl: HTMLElement | null = null;
 		let langFlagImageEl: HTMLElement | null = null;
@@ -348,10 +344,9 @@ export class CardDetailModal extends Modal {
 		};
 
 		if (this.card.imageUrl) {
-			// Condition/langue au-dessus de l'image (pas en incrustation) : ce
-			// sont des attributs de l'exemplaire physique, au même titre que le
-			// foil déjà incrusté sur l'image, mais placées à côté plutôt que
-			// par-dessus pour ne jamais masquer l'illustration.
+			// Condition/language above the image (not overlaid): they are attributes
+			// of the physical copy, just like the foil already overlaid on the image,
+			// but placed alongside rather than on top so as never to hide the artwork.
 			const imageIcons = imageColumn.createDiv({ cls: "mtg-card-detail-image-icons" });
 
 			const condBtn = imageIcons.createDiv({ cls: "mtg-card-detail-image-icon-btn" });
@@ -387,36 +382,33 @@ export class CardDetailModal extends Modal {
 			cls: isAlpha ? "mtg-card-detail-image-wrap mtg-card-detail-image-wrap-alpha" : "mtg-card-detail-image-wrap",
 		});
 		if (this.card.imageUrl) {
-			// Le tilt/scintillement holographique (setupCardTilt) est posé sur
-			// ce niveau imbriqué, pas directement sur imageWrap : imageWrap
-			// porte déjà le transform du carrousel Cover Flow (animateCardNav)
-			// pour la navigation précédent/suivant, et les deux se
-			// disputeraient la même propriété transform s'ils visaient le même
-			// élément. Le tilt 3D lui-même s'applique à toutes les finitions —
-			// seuls les calques de couleur (foil-overlay/holo-shine/holo-sweep)
-			// restent réservés au foil/etched, puisqu'une carte regular ne
-			// scintille pas physiquement mais peut quand même être inclinée.
+			// The holographic tilt/shimmer (setupCardTilt) is set on this nested
+			// level, not directly on imageWrap: imageWrap already carries the
+			// transform of the Cover Flow carousel (animateCardNav) for previous/next
+			// navigation, and the two would fight over the same transform property if
+			// they targeted the same element. The 3D tilt itself applies to all
+			// finishes — only the color layers (foil-overlay/holo-shine/holo-sweep)
+			// remain reserved for foil/etched, since a regular card doesn't physically
+			// shimmer but can still be tilted.
 			const tilt = imageWrap.createDiv({ cls: "mtg-card-detail-tilt" });
 			tilt.createEl("img", {
 				cls: "mtg-card-detail-image",
 				attr: { src: this.card.imageUrl },
 			});
 			if (finishHasFoilLook(this.card.finish)) {
-				// Etched ne disperse pas la lumière comme foiled/surged — son
-				// halo ambiant reste neutre/argenté (mtg-foil-overlay-etched)
-				// plutôt que le dégradé arc-en-ciel partagé par les deux
-				// autres finitions.
+				// Etched doesn't scatter light like foiled/surged — its ambient halo stays
+				// neutral/silvery (mtg-foil-overlay-etched) rather than the rainbow
+				// gradient shared by the other two finishes.
 				tilt.createDiv({
 					cls:
 						this.card.finish === "etched"
 							? "mtg-foil-overlay-etched"
 							: "mtg-foil-overlay mtg-foil-overlay-large",
 				});
-				// Surge Foil obtient le reflet multi-calques façon carte Pokémon
-				// "V" (voir styles.css) ; Etched obtient un effet paillettes
-				// (voir styles.css) plutôt que le reflet arc-en-ciel simple
-				// utilisé pour foiled — demandé explicitement, etched "ne
-				// disperse pas la lumière" comme un vrai holo.
+				// Surge Foil gets the multi-layer shine in the style of the Pokémon "V"
+				// card (see styles.css); Etched gets a glitter effect (see styles.css)
+				// rather than the simple rainbow shine used for foiled — explicitly
+				// requested, etched "doesn't scatter light" like a real holo.
 				tilt.createDiv({
 					cls:
 						this.card.finish === "surged"
@@ -429,14 +421,13 @@ export class CardDetailModal extends Modal {
 			}
 			setupCardTilt(imageWrap, tilt);
 
-			// Bouton "flip" 3D — uniquement pour une vraie carte double-face
-			// physique (transform/modal_dfc), voir getDoubleFacedImages
-			// (scryfall.ts). Le guard de péremption suit la même convention que
-			// les autres boîtes de ce panneau qui dépendent d'un aller-retour
-			// Scryfall (Legal Formats, Store Prices, Price History plus bas) :
-			// requestedId capturé au lancement, comparé à this.card.scryfallId
-			// une fois la promesse résolue, pour ignorer une réponse arrivée
-			// après une navigation prev/next vers une autre carte.
+			// 3D "flip" button — only for a real physical double-faced card
+			// (transform/modal_dfc), see getDoubleFacedImages (scryfall.ts). The
+			// staleness guard follows the same convention as the other boxes of this
+			// panel that depend on a Scryfall round trip (Legal Formats, Store Prices,
+			// Price History further down): requestedId captured at launch, compared to
+			// this.card.scryfallId once the promise has resolved, to ignore a response
+			// that arrived after a prev/next navigation to another card.
 			const flipRequestedId = this.card.scryfallId;
 			void this.plugin.getCardFaceImages(flipRequestedId).then((images) => {
 				if (!images || this.card.scryfallId !== flipRequestedId) return;
@@ -445,11 +436,11 @@ export class CardDetailModal extends Modal {
 				});
 			});
 
-			// Bouton "rotation" — uniquement pour un layout split (Fire // Ice,
-			// Never // Return...), voir getSplitCardInfo (scryfall.ts). Mutuellement
-			// exclusif avec le flip ci-dessus (une carte est soit une vraie
-			// double-face, soit split, jamais les deux — voir getDoubleFacedImages/
-			// getSplitCardInfo), même guard de péremption que lui.
+			// "Rotation" button — only for a split layout (Fire // Ice, Never //
+			// Return...), see getSplitCardInfo (scryfall.ts). Mutually exclusive with
+			// the flip above (a card is either a real double-faced card or split,
+			// never both — see getDoubleFacedImages/getSplitCardInfo), same staleness
+			// guard as it.
 			const splitRequestedId = this.card.scryfallId;
 			void this.plugin.getSplitCardInfo(splitRequestedId).then((info) => {
 				if (!info || this.card.scryfallId !== splitRequestedId) return;
@@ -548,12 +539,11 @@ export class CardDetailModal extends Modal {
 		setIcon(copyBox, "copy");
 		copyBox.setAttribute("title", "Copy card to…");
 		copyBox.addEventListener("click", () => {
-			// this.draw() (pas seulement this.view.render()) : la modale reste
-			// ouverte après une copie (contrairement au déplacement plus bas, qui
-			// se ferme puisque la carte quitte cette liste) — sans réafficher son
-			// propre contenu, le bloc "Copies in Lists" restait sur l'instantané
-			// capturé à l'ouverture de la modale, sans la copie qui vient d'être
-			// créée (bug signalé).
+			// this.draw() (not only this.view.render()): the modal stays open after a
+			// copy (unlike the move further down, which closes since the card leaves
+			// this list) — without redrawing its own content, the "Copies in Lists"
+			// block stayed on the snapshot captured when the modal opened, without the
+			// copy that was just created (reported bug).
 			new CopyCardModal(this.app, this.plugin, [this.card], "collection", () => {
 				this.view.render();
 				this.draw();
@@ -565,37 +555,36 @@ export class CardDetailModal extends Modal {
 		});
 		setIcon(gradingToggleBox, this.gradingExpanded ? "chevron-up" : "chevron-down");
 		gradingToggleBox.setAttribute("title", "Grading & custom price");
-		// Le wrapper est rempli plus bas (uniquement si gradingExpanded est déjà
-		// vrai à ce point du draw()) — la fermeture s'appuie dessus directement
-		// (retirer is-expanded déclenche la transition CSS) sans repasser par
-		// draw(), donc cette closure doit voir la valeur à jour au moment du
-		// clic, pas seulement à la création. Ça marche : gradingWrapperEl est
-		// affecté plus bas dans ce même appel synchrone à draw(), donc par le
-		// temps où un clic peut réellement arriver, il pointe déjà vers le bon
-		// élément (ou reste null si le bloc n'était pas ouvert).
+		// The wrapper is filled in further down (only if gradingExpanded is
+		// already true at this point of draw()) — closing relies on it directly
+		// (removing is-expanded triggers the CSS transition) without going back
+		// through draw(), so this closure must see the up-to-date value at click
+		// time, not only at creation. It works: gradingWrapperEl is assigned
+		// further down in this same synchronous call to draw(), so by the time a
+		// click can actually arrive, it already points to the right element (or
+		// stays null if the block wasn't open).
 		let gradingWrapperEl: HTMLElement | null = null;
 		gradingToggleBox.addEventListener("click", () => {
 			if (this.gradingExpanded) {
 				this.gradingExpanded = false;
 				setIcon(gradingToggleBox, "chevron-down");
 				if (gradingWrapperEl) {
-					// Anime la fermeture sur l'élément existant (déjà peint), sans
-					// attendre un draw() complet — puis, une fois la transition
-					// terminée, un draw() retardé retire le bloc du DOM pour de bon
-					// (même minuterie de 300ms que toggleGroupRows pour les groupes).
-					// Fige la hauteur actuelle (mesurée, "auto" ne s'anime pas) en
-					// pixels explicites avant de retirer is-expanded, sinon la
-					// transition "height" n'a rien de concret à partir duquel
-					// interpoler. La lecture de offsetHeight qui suit force le
-					// navigateur à appliquer cette valeur AVANT le changement
-					// suivant (sans quoi les deux se fondent en une seule opération
-					// et la transition ne voit jamais l'état de départ).
+					// Animates the closing on the existing element (already painted), without
+					// waiting for a complete draw() — then, once the transition has finished,
+					// a delayed draw() removes the block from the DOM for good (same 300ms
+					// timer as toggleGroupRows for groups). Freezes the current height
+					// (measured, "auto" doesn't animate) as explicit pixels before removing
+					// is-expanded, otherwise the "height" transition has nothing concrete to
+					// interpolate from. The offsetHeight read that follows forces the browser
+					// to apply this value BEFORE the next change (without which the two merge
+					// into a single operation and the transition never sees the starting
+					// state).
 					const currentHeight = gradingWrapperEl.getBoundingClientRect().height;
 					gradingWrapperEl.style.height = `${currentHeight}px`;
 					void gradingWrapperEl.offsetHeight;
 					gradingWrapperEl.removeClass("is-expanded");
-					// Plus de hauteur en ligne : la classe de base fait height:0 (styles.css), la transition part de
-					// la valeur en pixels posée juste au-dessus.
+					// No more inline height: the base class has height:0 (styles.css), the transition starts from
+					// the pixel value set just above.
 					gradingWrapperEl.style.removeProperty("height");
 					window.setTimeout(() => {
 						if (!this.gradingExpanded) this.draw();
@@ -614,15 +603,13 @@ export class CardDetailModal extends Modal {
 		if (this.gradingExpanded) {
 			const gradingWrapper = panel.createDiv({ cls: "mtg-card-detail-grading-wrapper" });
 			gradingWrapperEl = gradingWrapper;
-			// Regroupe visuellement tout ce que le toggle révèle (Condition/
-			// Language + Graded/Custom Price) dans un seul contour en pointillé,
-			// pour qu'on comprenne au premier coup d'œil que ces boîtes forment
-			// un bloc à part plutôt que de simplement continuer la liste des
-			// boîtes toujours visibles au-dessus. Purement cosmétique — depuis
-			// le passage à une hauteur en pixels mesurée (voir plus bas et
-			// styles.css), gradingWrapper n'a plus besoin d'un enfant unique
-			// pour s'animer, contrairement à l'ancienne technique grid-
-			// template-rows.
+			// Visually groups everything the toggle reveals (Condition/Language +
+			// Graded/Custom Price) in a single dotted outline, so that it's understood
+			// at a glance that these boxes form a separate block rather than simply
+			// continuing the list of always-visible boxes above. Purely cosmetic —
+			// since the switch to a measured pixel height (see below and styles.css),
+			// gradingWrapper no longer needs a single child to animate, unlike the old
+			// grid-template-rows technique.
 			const gradingContent = gradingWrapper.createDiv({ cls: "mtg-card-detail-grading-content" });
 
 			const conditionLanguageRow = gradingContent.createDiv({ cls: "mtg-card-detail-box-row" });
@@ -671,19 +658,19 @@ export class CardDetailModal extends Modal {
 			});
 			gradedBox.setAttribute("title", "Set grading");
 			gradedBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Graded" });
-			// Pas de flèche ici (contrairement à Condition/Language/Finish) :
-			// demandé explicitement — "Graded" ouvre GradingModal en raccourci, ce
-			// n'est pas un picker inline, donc pas de gouttière 1em/auto à équilibrer
-			// (voir mtg-card-detail-finish-value-row-no-caret en CSS pour le
-			// recentrage à une seule colonne que ça implique).
+			// No arrow here (unlike Condition/Language/Finish): explicitly requested —
+			// "Graded" opens GradingModal as a shortcut, it's not an inline picker, so
+			// no 1em/auto gutter to balance (see
+			// mtg-card-detail-finish-value-row-no-caret in CSS for the single-column
+			// re-centering this implies).
 			const gradedValueRow = gradedBox.createDiv({
 				cls: "mtg-card-detail-finish-value-row mtg-card-detail-finish-value-row-no-caret",
 			});
 			gradedValueRow.createSpan({
 				cls: "mtg-card-detail-finish-value",
-				// gradingCompany seul ne suffit plus à dire "gradée" (voir
-				// gradingExpanded plus haut) — GradingModal présélectionne PSA par
-				// défaut et l'enregistre même sans note/condition saisie.
+				// gradingCompany alone is no longer enough to say "graded" (see
+				// gradingExpanded above) — GradingModal preselects PSA by default and
+				// saves it even with no grade/condition entered.
 				text:
 					this.card.gradingGrade != null || this.card.gradingLabel
 						? `${this.card.gradingCompany ?? ""} ${this.card.gradingGrade ?? ""} ${
@@ -700,13 +687,12 @@ export class CardDetailModal extends Modal {
 				}).open();
 			});
 
-			// Pas de modale ici (contrairement à gradedBox) : l'utilisateur tape
-			// son prix directement dans la boîte, sauvegardé via setCollectionCardCustomPrice
-			// au blur/Entrée. Ne jamais appeler this.draw()/this.view.render()
-			// depuis ces handlers — un redessin en plein milieu de la frappe
-			// couperait le focus (même risque que pendingFocusRestore documenté
-			// ailleurs dans ce fichier), et rien d'autre dans le panneau n'affiche
-			// customPrice à mettre à jour en retour.
+			// No modal here (unlike gradedBox): the user types their price directly in the
+			// box, saved via setCollectionCardCustomPrice on blur/Enter. Never call
+			// this.draw()/this.view.render() from these handlers — a redraw in the middle of
+			// typing would cut the focus (same risk as the pendingFocusRestore documented
+			// elsewhere in this file), and nothing else in the panel displays customPrice
+			// that would need updating in return.
 			const customPriceBox = gradingRow.createDiv({
 				cls: "mtg-card-detail-box mtg-card-detail-finish-box mtg-card-detail-customprice-box",
 			});
@@ -725,45 +711,43 @@ export class CardDetailModal extends Modal {
 				if (evt.key === "Enter") priceInput.blur();
 			});
 
-			// La toute première ouverture part de l'état replié (voir la classe de
-			// base dans styles.css) puis passe à is-expanded une frame plus tard,
-			// pour que la transition CSS ait un changement d'état réel à animer —
-			// sans le rAF, l'élément apparaîtrait déjà dans son état final dès sa
-			// première peinture, sans transition visible. Un draw() qui retombe
-			// ici pour une tout autre raison (bloc déjà ouvert) saute directement
-			// à l'état final, sans rejouer l'animation d'entrée.
+			// The very first opening starts from the collapsed state (see the base
+			// class in styles.css) then switches to is-expanded one frame later, so
+			// that the CSS transition has a real state change to animate — without the
+			// rAF, the element would appear already in its final state from its first
+			// paint, with no visible transition. A draw() that falls through here for
+			// a completely different reason (block already open) jumps straight to the
+			// final state, without replaying the entrance animation.
 			if (this.gradingJustOpened) {
 				this.gradingJustOpened = false;
-				// scrollHeight mesure la hauteur naturelle du contenu déjà
-				// construit ci-dessus MALGRÉ le height:0/overflow:hidden actuel
-				// (posé par la classe de base en CSS) — c'est justement ce que
-				// scrollHeight est fait pour rapporter. Posée en même temps que
-				// is-expanded, dans le même callback rAF, pour que height/
-				// margin-bottom/opacity démarrent tous les trois leur transition
-				// depuis le même état peint, au même instant (voir styles.css
-				// pour pourquoi ça remplace l'ancienne technique grid-template-
-				// rows, qui n'a pas gardé ces propriétés parfaitement en phase
-				// malgré une durée/courbe déclarée identique).
+				// scrollHeight measures the natural height of the content already built
+				// above DESPITE the current height:0/overflow:hidden (set by the base
+				// class in CSS) — which is precisely what scrollHeight is made to report.
+				// Set at the same time as is-expanded, in the same rAF callback, so that
+				// height/margin-bottom/opacity all three start their transition from the
+				// same painted state, at the same instant (see styles.css for why this
+				// replaces the old grid-template-rows technique, which didn't keep these
+				// properties perfectly in phase despite an identical declared
+				// duration/curve).
 				const targetHeight = gradingWrapper.scrollHeight;
 				window.requestAnimationFrame(() => {
 					gradingWrapper.addClass("is-expanded");
 					gradingWrapper.style.height = `${targetHeight}px`;
 				});
 				window.setTimeout(() => {
-					// Repasse à "auto" une fois la transition terminée : une valeur
-					// figée en pixels resterait fausse si le contenu change de
-					// hauteur ensuite (ex. sélectionner une mention de note plus
-					// longue dans Graded) sans repasser par ce chemin d'ouverture.
-					// "auto" est celui de .is-expanded (styles.css) : on retire la
-					// valeur en pixels. Sur un bloc refermé entre-temps (il n'a plus
-					// is-expanded) la hauteur reste donc 0 — l'ancien code le rouvrait
-					// d'un coup en posant "auto" en ligne.
+					// Goes back to "auto" once the transition is over: a value frozen in
+					// pixels would stay wrong if the content later changes height (e.g.
+					// selecting a longer grade label in Graded) without going back through
+					// this opening path. "auto" is that of .is-expanded (styles.css): we
+					// remove the pixel value. On a block closed in the meantime (it no longer
+					// has is-expanded) the height therefore stays 0 — the old code would
+					// reopen it abruptly by setting an inline "auto".
 					gradingWrapper.style.removeProperty("height");
 				}, 300);
 			} else {
-				// Redessin pendant que le bloc est déjà ouvert (changer le finish,
-				// sauvegarder le grading…) : pas d'animation à rejouer, la hauteur
-				// suit directement le contenu (height:auto de .is-expanded).
+				// Redraw while the block is already open (changing the finish, saving the
+				// grading…): no animation to replay, the height directly follows the
+				// content (height:auto of .is-expanded).
 				gradingWrapper.addClass("is-expanded");
 			}
 		}
@@ -903,8 +887,8 @@ export class CardDetailModal extends Modal {
 		);
 	}
 
-	// Les boîtes ci-dessous sont communes aux trois fenêtres de détail (voir shared-detail-boxes.ts) :
-	// ces méthodes ne font que leur donner ce qui est propre à CETTE section.
+	// The boxes below are common to the three detail windows (see shared-detail-boxes.ts): these
+	// methods only give them what is specific to THIS section.
 	private detailHost(): DetailBoxHost {
 		return { plugin: this.plugin, currentScryfallId: () => this.card.scryfallId };
 	}
@@ -935,12 +919,12 @@ export class CardDetailModal extends Modal {
 		renderCardDescriptionBox(this.detailHost(), panel, this.card);
 	}
 
-	// Voir MTGCollectionPlugin.prefetchCardbaseNeighbors pour le raisonnement
-	// complet (fenêtre selon clé API, séquentiel, dédoublonné par cache). Le
-	// debounce ici (500ms) évite qu'une navigation rapide en Cover Flow
-	// n'empile une planification de préchargement par carte traversée — seule
-	// la dernière carte réellement restée affichée un instant déclenche un
-	// vrai lot de requêtes.
+	// See MTGCollectionPlugin.prefetchCardbaseNeighbors for the full reasoning
+	// (window depending on API key, sequential, deduplicated by cache). The
+	// debounce here (500ms) prevents a fast Cover Flow navigation from
+	// stacking one preload scheduling per card traversed — only the last card
+	// that actually stayed displayed for a moment triggers a real batch of
+	// requests.
 	private schedulePrefetchNeighbors() {
 		if (this.prefetchTimeout != null) window.clearTimeout(this.prefetchTimeout);
 		const centerIndex = this.navCards.findIndex((c) => c.id === this.navAnchorId);

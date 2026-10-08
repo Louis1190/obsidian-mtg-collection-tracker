@@ -4,31 +4,31 @@ import { detectDeckCardFunction, deckFunctionSortKey } from "./deck-function";
 /*  Group by / Sort by                                                        */
 /* -------------------------------------------------------------------------- */
 
-// "stacks" (2026-09-02) — vue "piles de cartes" façon Archidekt, My Decks
-// uniquement (voir renderDeckStacksView, view.ts) : une colonne par groupe,
-// cartes empilées avec chevauchement plutôt qu'une ligne/tuile par carte.
-// Le type reste commun aux trois sections (comme les 4 valeurs existantes)
-// même si ce mode n'est jamais proposé pour list/wantlist — même raison que
-// pour CardViewMode lui-même : un 2e type juste pour une valeur en plus
-// aurait été plus de mécanique que la garde par scope qu'il remplace.
+// "stacks" (2026-09-02) — Archidekt-style "card piles" view, My Decks only
+// (see renderDeckStacksView, view.ts): one column per group, cards stacked
+// with overlap rather than one row/tile per card. The type stays common to
+// the three sections (like the 4 existing values) even though this mode is
+// never offered for list/wantlist — same reason as for CardViewMode itself:
+// a 2nd type just for one extra value would have been more machinery than
+// the per-scope guard it replaces.
 export type CardViewMode = "list" | "grid" | "table" | "card" | "stacks";
 
-// Sur téléphone, seuls List et Card sont proposés (le CSS masque les boutons
-// Grid/Table/Stacks, voir `.is-phone .mtg-view-toggle` dans styles.css) — mais
-// collectionViewMode/deckViewMode/wantlistViewMode sont UN réglage synchronisé
-// entre appareils (data.json) : un "grid" posé sur le Mac, ou sur le téléphone
-// avant cette restriction, s'appliquait quand même au rendu, sans aucun bouton
-// actif dans la barre. On ne réécrit PAS le réglage (la préférence Mac/iPad
-// survit à une visite sur téléphone) : seul l'affichage retombe sur "list".
+// On phone, only List and Card are offered (the CSS hides the
+// Grid/Table/Stacks buttons, see `.is-phone .mtg-view-toggle` in styles.css) —
+// but collectionViewMode/deckViewMode/wantlistViewMode are ONE setting synced
+// between devices (data.json): a "grid" set on the Mac, or on the phone before
+// this restriction, was still applied to the rendering, with no active button
+// in the bar. We do NOT rewrite the setting (the Mac/iPad preference survives
+// a visit on the phone): only the display falls back to "list".
 export const PHONE_VIEW_MODES: readonly CardViewMode[] = ["list", "card"];
 
 export function effectiveViewMode(mode: CardViewMode, isPhone: boolean): CardViewMode {
 	return isPhone && !PHONE_VIEW_MODES.includes(mode) ? "list" : mode;
 }
 
-// Lu à chaque rendu (pas figé au chargement) : `.is-phone` est une classe de
-// <body> qu'Obsidian bascule en direct au redimensionnement, comme le CSS qui
-// masque les boutons — les deux restent ainsi d'accord.
+// Read at each render (not frozen at load): `.is-phone` is a <body> class
+// that Obsidian toggles live on resize, like the CSS that hides the buttons —
+// the two thus stay in agreement.
 export function phoneAwareViewMode(mode: CardViewMode): CardViewMode {
 	return effectiveViewMode(mode, document.body.classList.contains("is-phone"));
 }
@@ -36,10 +36,10 @@ export function phoneAwareViewMode(mode: CardViewMode): CardViewMode {
 export function viewModeClass(mode: CardViewMode, scope: "list" | "deck" | "wantlist"): string {
 	if (mode === "grid") return " mtg-collection-list-grid";
 	if (mode === "card") return " mtg-collection-list-cards";
-	// Vue "stacks" : pas de grille de tuiles de taille égale ni de lignes
-	// empilées verticalement (.mtg-card-row-outer) — renderDeckStacksView
-	// construit sa propre structure de colonnes directement, cette classe ne
-	// sert qu'à cadrer le style CSS du conteneur (.mtg-deck-stacks).
+	// "stacks" view: no grid of equal-sized tiles nor vertically stacked rows
+	// (.mtg-card-row-outer) — renderDeckStacksView builds its own column
+	// structure directly, this class only serves to frame the container's CSS
+	// styling (.mtg-deck-stacks).
 	if (mode === "stacks") return " mtg-collection-list-stacks";
 	if (mode === "table") {
 		if (scope === "deck") return " mtg-collection-list-table mtg-collection-list-table-deck";
@@ -49,13 +49,12 @@ export function viewModeClass(mode: CardViewMode, scope: "list" | "deck" | "want
 	return "";
 }
 
-// Intitulés de colonnes affichés en mode Tableau, selon le contexte. "Mana
-// Value" juste après "Name" (ordre de lecture le plus naturel — le coût
-// d'une carte se lit traditionnellement juste après son nom) : cet ordre de
-// colonnes DOIT rester synchronisé avec l'ordre dans lequel chaque
-// buildCollectionCardRow/buildDeckCardRow/buildWantlistCardRow insère ses cellules dans le DOM
-// (voir le commentaire sur .mtg-collection-list-table dans styles.css — sans
-// grid-column explicite, l'ordre visuel des cellules suit l'ordre du DOM).
+// Column headings shown in Table mode, depending on context. "Mana Value" right after "Name"
+// (the most natural reading order — a card's cost is traditionally read right after its name):
+// this column order MUST stay in sync with the order in which each
+// buildCollectionCardRow/buildDeckCardRow/buildWantlistCardRow inserts its cells in the DOM
+// (see the comment on .mtg-collection-list-table in styles.css — without an explicit
+// grid-column, the visual order of the cells follows the DOM order).
 export const TABLE_COLUMNS_COLLECTION = [
 	"Name",
 	"Mana value",
@@ -66,14 +65,14 @@ export const TABLE_COLUMNS_COLLECTION = [
 	"Qty",
 	"Price",
 ];
-// "Legality" (le point coloré, voir deckLegalityBadge dans card-search.ts et
-// la colonne dédiée de buildDeckCardRow, view.ts) n'existe QUE pour Deck — un
-// deck a un format déclaré (Deck.format), pas une liste ni une wantlist,
-// donc pas de colonne équivalente pour TABLE_COLUMNS_COLLECTION/_WANTLIST.
-// "Language"/"Condition" — harmonisation My Decks/My Collection (2026-08-25) :
-// DeckCard porte maintenant les mêmes champs (voir data-model.ts), mêmes 2
-// colonnes que TABLE_COLUMNS_COLLECTION, au même endroit dans l'ordre
-// (juste après "Number").
+// "Legality" (the colored dot, see deckLegalityBadge in card-search.ts and the
+// dedicated column of buildDeckCardRow, view.ts) exists ONLY for Deck — a deck
+// has a declared format (Deck.format), a list or a wantlist does not, so no
+// equivalent column for TABLE_COLUMNS_COLLECTION/_WANTLIST.
+// "Language"/"Condition" — My Decks/My Collection harmonization (2026-08-25):
+// DeckCard now carries the same fields (see data-model.ts), the same 2 columns
+// as TABLE_COLUMNS_COLLECTION, at the same place in the order (right after
+// "Number").
 export const TABLE_COLUMNS_DECK = [
 	"Name",
 	"Mana value",
@@ -92,10 +91,10 @@ export type GroupByOption =
 	| "artist"
 	| "color"
 	| "dateAdded"
-	// My Decks uniquement (voir DECK_GROUP_BY_OPTIONS ci-dessous) : "fonction"
-	// de la carte dans le deck (Ramp/Removal/Draw/Tokens/etc.), détectée
-	// automatiquement depuis oracleText/keywords (detectDeckCardFunction,
-	// ./deck-function) — voir SortableCard plus bas pour les champs requis.
+	// My Decks only (see DECK_GROUP_BY_OPTIONS below): the card's "function"
+	// in the deck (Ramp/Removal/Draw/Tokens/etc.), detected automatically from
+	// oracleText/keywords (detectDeckCardFunction, ./deck-function) — see
+	// SortableCard further down for the required fields.
 	| "function"
 	| "manaValue"
 	| "name"
@@ -133,14 +132,13 @@ export const GROUP_BY_OPTIONS: { value: GroupByOption; label: string }[] = [
 	{ value: "type", label: "Type" },
 ];
 
-// My Decks uniquement — GROUP_BY_OPTIONS + "Function", juste après "Don't
-// Group". Portait aussi "Category" (Commander/Mainboard/Sideboard/
-// Maybeboard) jusqu'au 2026-09-07 : retiré sur demande explicite ("Commander
-// n'est pas une catégorie") au profit des onglets de board (DeckBoardTab,
-// data-model.ts, voir renderDeckBoardTabs dans view.ts) — le seul
-// regroupement encore propre aux decks est donc "Function" désormais. List/
-// Wantlist gardent GROUP_BY_OPTIONS tel quel (renderGroupSortBar choisit
-// entre les deux selon `scope`).
+// My Decks only — GROUP_BY_OPTIONS + "Function", right after "Don't Group".
+// Also carried "Category" (Commander/Mainboard/Sideboard/Maybeboard) until
+// 2026-09-07: removed on explicit request ("Commander is not a category") in
+// favor of the board tabs (DeckBoardTab, data-model.ts, see
+// renderDeckBoardTabs in view.ts) — the only grouping still specific to
+// decks is therefore "Function" now. List/Wantlist keep GROUP_BY_OPTIONS as
+// is (renderGroupSortBar chooses between the two according to `scope`).
 export const DECK_GROUP_BY_OPTIONS: { value: GroupByOption; label: string }[] = [
 	GROUP_BY_OPTIONS[0],
 	{ value: "function", label: "Function" },
@@ -171,22 +169,22 @@ export const LIST_GRID_SORT_OPTIONS: { value: "name" | "dateCreated" | "cardCoun
 	{ value: "price", label: "Price" },
 ];
 
-// Pas de "price" ici : les cartes de deck n'ont pas de prix (voir plus bas).
+// No "price" here: deck cards have no price (see further down).
 export const DECK_GRID_SORT_OPTIONS: { value: "name" | "dateCreated" | "cardCount"; label: string }[] = [
 	{ value: "name", label: "Alphabetical" },
 	{ value: "dateCreated", label: "Date created" },
 	{ value: "cardCount", label: "Number of cards" },
 ];
 
-// Les cartes de deck n'ont ni prix, ni liste d'appartenance, ni date de
-// sortie enregistrée : ces critères n'ont pas de sens pour un deck.
+// Deck cards have no price, no list membership, no recorded release date:
+// these criteria make no sense for a deck.
 export const DECK_SORT_BY_OPTIONS = SORT_BY_OPTIONS.filter(
 	(o) => o.value !== "price" && o.value !== "listName" && o.value !== "releasedAt"
 );
 
-// Les cartes de wantlist gardent prix et date de sortie, mais "listName"
-// résout contre settings.lists (les listes de My Collection) : pas
-// de sens pour une carte qui vit dans une wantlist.
+// Wantlist cards keep price and release date, but "listName" resolves
+// against settings.lists (the My Collection lists): meaningless for a card
+// that lives in a wantlist.
 export const WANTLIST_SORT_BY_OPTIONS = SORT_BY_OPTIONS.filter((o) => o.value !== "listName");
 
 export const RARITY_ORDER: Record<string, number> = {
@@ -207,8 +205,8 @@ export const COLOR_NAMES: Record<string, string> = {
 	G: "Green",
 };
 
-// Teinte indicative par couleur de mana, utilisée pour accentuer visuellement
-// les en-têtes de groupe quand on groupe/trie par Couleur.
+// Indicative hue per mana color, used to visually accent group headers when
+// grouping/sorting by Color.
 export const COLOR_HEX: Record<string, string> = {
 	W: "#d8c988",
 	U: "#4a90d9",
@@ -217,8 +215,8 @@ export const COLOR_HEX: Record<string, string> = {
 	G: "#4f9e5c",
 };
 
-// Même principe, mais par libellé de groupe : couvre aussi les catégories qui
-// n'ont pas de lettre de couleur unique (Land, Multicolor, Colorless).
+// Same principle, but per group label: also covers categories that have no
+// single color letter (Land, Multicolor, Colorless).
 export const GROUP_LABEL_HEX: Record<string, string> = {
 	White: COLOR_HEX.W,
 	Blue: COLOR_HEX.U,
@@ -253,9 +251,9 @@ export function isLand(typeLine: string): boolean {
 	return /\bLand\b/.test(typeLine || "");
 }
 
-// Champs communs nécessaires au tri/groupement, partagés par les cartes de
-// collection (CollectionCard) et les cartes de deck (DeckCard). priceUsd/listId
-// sont optionnels car absents des cartes de deck.
+// Common fields needed for sorting/grouping, shared by collection cards
+// (CollectionCard) and deck cards (DeckCard). priceUsd/listId are optional
+// because absent from deck cards.
 export interface SortableCard {
 	name: string;
 	setName: string;
@@ -271,35 +269,35 @@ export interface SortableCard {
 	dateModified: number;
 	priceUsd?: string;
 	listId?: string;
-	// Absent d'un DeckCard (le tri "Release Date" n'est pas proposé dans un deck, voir DECK_SORT_BY_OPTIONS).
+	// Absent from a DeckCard (the "Release Date" sort isn't offered in a deck, see DECK_SORT_BY_OPTIONS).
 	releasedAt?: string;
-	// "Group by Function" (My Decks uniquement, voir deck-function.ts) —
-	// oracleText/keywords existent déjà sur CollectionCard/WantlistCard/
-	// DeckCard (voir types.ts/data-model.ts), donc rien à ajouter côté
-	// appelant pour que les 3 satisfassent structurellement ce champ ; seul
-	// deckFunctionOverride est propre à DeckCard (absent ailleurs, donc
-	// toujours undefined en dehors d'un deck).
+	// "Group by Function" (My Decks only, see deck-function.ts) —
+	// oracleText/keywords already exist on
+	// CollectionCard/WantlistCard/DeckCard (see types.ts/data-model.ts), so
+	// nothing to add on the caller side for all 3 to structurally satisfy this
+	// field; only deckFunctionOverride is specific to DeckCard (absent
+	// elsewhere, hence always undefined outside a deck).
 	oracleText?: string;
 	keywords?: string[];
 	deckFunctionOverride?: string;
 }
 
-// 0-4 pour une couleur unique (ordre WUBRG), 5.xx pour chaque combinaison
-// multicolore précise (sous-classée par bitmask WUBRG pour un ordre stable
-// et cohérent entre les groupes), 6 terrain, 7 incolore.
+// 0-4 for a single color (WUBRG order), 5.xx for each precise multicolor
+// combination (sub-sorted by WUBRG bitmask for a stable, consistent order
+// between groups), 6 land, 7 colorless.
 export function colorSortKey(card: SortableCard): number {
 	if (isLand(card.typeLine)) return 6;
 	const colors = card.colors ?? [];
 	if (colors.length === 0) return 7;
 	if (colors.length === 1) return COLOR_LETTER_ORDER[colors[0]] ?? 7;
 	const mask = colors.reduce((m, c) => m | (1 << (COLOR_LETTER_ORDER[c] ?? 0)), 0);
-	return 5 + mask / 100; // reste dans (5,6), entre "couleur unique" et "Land"
+	return 5 + mask / 100; // stays within (5,6), between "single color" and "Land"
 }
 
-// Les terrains ont leur propre catégorie "Land" plutôt que d'être noyés dans
-// "Colorless", qui ne concerne alors que les artefacts/incolores non-terrain.
-// Les cartes multicolores sont sous-classées par combinaison exacte de
-// couleurs (ex. "Green/Red") plutôt que noyées dans un seul bac "Multicolor".
+// Lands get their own "Land" category rather than being drowned in
+// "Colorless", which then only concerns non-land artifacts/colorless cards.
+// Multicolor cards are sub-sorted by exact color combination (e.g.
+// "Green/Red") rather than drowned in a single "Multicolor" bucket.
 export function colorGroupLabel(card: SortableCard): string {
 	if (isLand(card.typeLine)) return "Land";
 	const colors = card.colors ?? [];
@@ -311,23 +309,22 @@ export function colorGroupLabel(card: SortableCard): string {
 	return sorted.map((c) => COLOR_NAMES[c] ?? c).join("/");
 }
 
-// Union des couleurs de toutes les cartes d'un deck (chaque carte porte déjà
-// son propre `colors` — voir DeckCard/DeckSourceCard, data-model.ts), triée
-// WUBRG — la "color identity" affichée sur la vignette du deck dans My Decks
-// (mtg-deck-tile-colors, renderDeckGrid), sur le modèle des pastilles
-// affichées par Moxfield. Volontairement l'union des couleurs des cartes
-// elles-mêmes, pas la "commander color identity" (qui inclurait aussi les
-// symboles de coût de mana sur le texte de règles) — ce plugin n'a pas cette
-// donnée à disposition par carte, seul `colors` (issu du champ Scryfall du
-// même nom) est stocké.
+// Union of the colors of all the cards in a deck (each card already carries
+// its own `colors` — see DeckCard/DeckSourceCard, data-model.ts), sorted
+// WUBRG — the "color identity" shown on the deck's thumbnail in My Decks
+// (mtg-deck-tile-colors, renderDeckGrid), modeled on the pips shown by
+// Moxfield. Deliberately the union of the cards' own colors, not the
+// "commander color identity" (which would also include the mana cost symbols
+// in the rules text) — this plugin doesn't have that data per card, only
+// `colors` (from the Scryfall field of the same name) is stored.
 export function deckColorIdentity(cards: { colors: string[] }[]): string[] {
 	const seen = new Set<string>();
 	cards.forEach((c) => (c.colors ?? []).forEach((letter) => seen.add(letter)));
 	return [...seen].sort((a, b) => (COLOR_LETTER_ORDER[a] ?? 9) - (COLOR_LETTER_ORDER[b] ?? 9));
 }
 
-// Comparaison numérique quand possible (les numéros de collector peuvent
-// contenir des lettres, ex. "23a"), sinon alphabétique.
+// Numeric comparison when possible (collector numbers can contain letters,
+// e.g. "23a"), otherwise alphabetical.
 export function collectorNumberCompare(a: string, b: string): number {
 	const na = parseInt(a, 10);
 	const nb = parseInt(b, 10);
@@ -335,8 +332,8 @@ export function collectorNumberCompare(a: string, b: string): number {
 	return (a || "").localeCompare(b || "");
 }
 
-// Seul `id`/`name` des listes de My Collection compte ici (pas le plugin entier) : ce module reste ainsi
-// pur, sans dépendance à Obsidian ni à la couche plugin.
+// Only the `id`/`name` of the My Collection lists matter here (not the whole plugin): this module thus
+// stays pure, with no dependency on Obsidian or the plugin layer.
 export type ListNameSource = readonly { id: string; name: string }[];
 
 export function getListNameFor(lists: ListNameSource, card: { listId?: string }): string {
@@ -385,12 +382,12 @@ export function compareCardsBy<T extends SortableCard>(
 
 export function groupSortValue<T extends SortableCard>(groupBy: GroupByOption, card: T): number | string {
 	switch (groupBy) {
-		// Toujours une CHAÎNE (jamais un nombre nu) — voir deckFunctionSortKey
-		// (deck-function.ts) : groupOrderCmp (plus bas dans ce fichier) ne
-		// compare deux valeurs comme des nombres que si les DEUX côtés sont
-		// typeof "number" ; mélanger nombre et chaîne dans le même groupBy
-		// retomberait sur une comparaison alphabétique du nombre converti en
-		// texte, pas l'ordre voulu.
+		// Always a STRING (never a bare number) — see deckFunctionSortKey
+		// (deck-function.ts): groupOrderCmp (further down in this file) only
+		// compares two values as numbers if BOTH sides are typeof "number"; mixing
+		// numbers and strings in the same groupBy would fall back to an
+		// alphabetical comparison of the number converted to text, not the
+		// intended order.
 		case "function":
 			return deckFunctionSortKey(
 				card.deckFunctionOverride || detectDeckCardFunction(card) || primaryType(card.typeLine)
@@ -422,10 +419,10 @@ export function groupLabelFor<T extends SortableCard>(groupBy: GroupByOption, ca
 	switch (groupBy) {
 		case "artist":
 			return card.artist || "Unknown artist";
-		// Repli en 3 temps (override manuel > détection auto > type de carte)
-		// — voir getDeckCardFunction (data-model.ts) pour la même chaîne
-		// réimplémentée pour un DeckCard précis plutôt qu'un SortableCard
-		// générique (utilisée par le panneau de détail, pas ce fichier).
+		// 3-step fallback (manual override > auto detection > card type) — see
+		// getDeckCardFunction (data-model.ts) for the same chain reimplemented for
+		// a specific DeckCard rather than a generic SortableCard (used by the
+		// detail panel, not this file).
 		case "function":
 			return card.deckFunctionOverride || detectDeckCardFunction(card) || primaryType(card.typeLine);
 		case "color":
@@ -454,105 +451,100 @@ export interface CardGroup<T> {
 	colorKeys?: string[];
 	manaValueKey?: number;
 	setCodeKey?: string;
-	// Marque le groupe "Recently Added" épinglé en tête de renderListDetail
-	// (voir plus bas) — jamais posé par groupAndSortCards lui-même. Un
-	// booléen dédié plutôt qu'un test sur `label === "Recently Added"` :
-	// matcher sur le texte du label serait fragile (un vrai groupe par
-	// type/rareté/etc. pourrait en théorie porter ce même libellé).
+	// Marks the "Recently Added" group pinned at the top of renderListDetail
+	// (see further down) — never set by groupAndSortCards itself. A dedicated
+	// boolean rather than a test on `label === "Recently Added"`: matching on
+	// the label text would be fragile (a real group by type/rarity/etc. could
+	// in theory carry that same label).
 	isRecentlyAdded?: boolean;
 	cards: T[];
 }
 
-// Répartition en pistes de la vue Stacks (updateDeckStacksLayout,
-// src/view/deck-render.ts, 2026-09-13) — voir docs/history/deck-stats-
-// and-stacks-views.md pour l'historique complet de pourquoi CSS
-// `columns`/`column-fill: balance` (utilisé de 2026-09-11 à 2026-09-13,
-// "rounds 6-8") a été abandonné : sa hauteur de colonne cible ne peut
-// jamais descendre sous la hauteur de la pile la PLUS HAUTE (chaque pile
-// est un bloc non-fragmentable, break-inside: avoid) — donc dès qu'un seul
-// groupe est nettement plus long que les autres (ex. "Creature" en 45
-// exemplaires côté "Group by Type", quand "Group by Function" répartit ce
-// même contenu en bien plus de piles courtes), cette hauteur cible devient
-// largement suffisante pour loger tout le reste en une poignée de
-// colonnes — laissant les pistes potentielles restantes (déterminées par
-// la largeur seule) entièrement vides, quel que soit column-count/-width
-// (confirmé empiriquement : forcer column-count à 8 ou 24 ne change RIEN
-// au nombre de colonnes réellement peuplées pour un contenu donné — balance
-// ne recalcule jamais son propre minimum de colonnes à partir de
-// column-count/-width, seulement l'inverse). updateDeckStacksLayout fait
-// donc lui-même la répartition (glouton "piste la plus courte d'abord"),
-// en s'appuyant sur cette estimation de hauteur PURE (aucune mesure DOM —
-// un simple calcul à partir du nombre de cartes, comme le -120%/le ratio
-// 488/680 déjà utilisés en CSS pour la même pile, voir le commentaire sur
-// .mtg-deck-stack-card dans styles.css) pour décider, AVANT tout rendu,
-// quelle piste est actuellement la plus courte.
+// Distribution into tracks for the Stacks view (updateDeckStacksLayout,
+// src/view/deck-render.ts, 2026-09-13) — see
+// docs/history/deck-stats-and-stacks-views.md for the full history of why CSS
+// `columns`/`column-fill: balance` (used from 2026-09-11 to 2026-09-13,
+// "rounds 6-8") was abandoned: its target column height can never drop below
+// the height of the TALLEST pile (each pile is an unfragmentable block,
+// break-inside: avoid) — so as soon as a single group is clearly longer than
+// the others (e.g. "Creature" with 45 copies under "Group by Type", whereas
+// "Group by Function" spreads that same content over many more short piles),
+// that target height becomes large enough to fit everything else into a
+// handful of columns — leaving the remaining potential tracks (determined by
+// width alone) entirely empty, whatever column-count/-width is (confirmed
+// empirically: forcing column-count to 8 or 24 changes NOTHING about the
+// number of columns actually populated for a given content — balance never
+// recomputes its own minimum number of columns from column-count/-width, only
+// the other way round). updateDeckStacksLayout therefore does the
+// distribution itself (greedy "shortest track first"), relying on this PURE
+// height estimate (no DOM measurement — a simple computation from the card
+// count, like the -120%/the 488/680 ratio already used in CSS for the same
+// pile, see the comment on .mtg-deck-stack-card in styles.css) to decide,
+// BEFORE any rendering, which track is currently the shortest.
 //
-// STACK_TRACK_MIN_WIDTH_PX sert D'ABORD à estimer la hauteur relative d'une
-// pile avant répartition (une vraie largeur mesurée ici créerait une
-// dépendance circulaire avec le choix de trackCount, voir plus bas). La
-// hauteur d'une pile étant affine en cette largeur pour TOUTES les piles de
-// la même vue (même formule, même constante), la valeur précise choisie ici
-// ne change jamais l'ORDRE relatif des piles par hauteur — seule cette
-// comparaison relative compte pour la répartition gloutonne ; elle sert
-// aussi de largeur MINIMALE de piste dans le calcul de trackCount
-// (updateDeckStacksLayout, src/view/deck-render.ts), reprenant le rôle que
-// `column-width: 220px` jouait dans l'ancien mécanisme CSS. Elle n'a
-// longtemps jamais influencé la largeur RENDUE d'une piste (qui vaut
-// availableWidth/trackCount une fois trackCount choisi) — ce n'est plus tout
-// à fait vrai depuis le 2026-09-16 (voir le commentaire de
-// .mtg-deck-stack-track dans styles.css et celui de updateDeckStacksLayout) :
-// cette même constante sert désormais AUSSI de plancher au plafond de
-// largeur d'une piste, pour qu'un panneau étroit ne voie jamais ce plafond
-// descendre sous cette largeur de confort minimale déjà établie.
-// STACK_TRACK_GAP_PX, lui, DOIT rester strictement égal au `gap` littéral
-// de .mtg-collection-list-stacks (styles.css) — exprimé en px des deux
-// côtés (pas em) précisément pour que JS et CSS ne puissent pas diverger
-// silencieusement l'un de l'autre.
+// STACK_TRACK_MIN_WIDTH_PX FIRST serves to estimate the relative height of a
+// pile before distribution (a real measured width here would create a
+// circular dependency with the choice of trackCount, see further down). Since
+// a pile's height is affine in this width for ALL piles of the same view
+// (same formula, same constant), the precise value chosen here never changes
+// the relative ORDER of piles by height — only that relative comparison
+// matters for the greedy distribution; it also serves as the MINIMUM track
+// width in the computation of trackCount (updateDeckStacksLayout,
+// src/view/deck-render.ts), taking over the role that `column-width: 220px`
+// played in the old CSS mechanism. For a long time it never influenced the
+// RENDERED width of a track (which is availableWidth/trackCount once
+// trackCount is chosen) — that is no longer quite true since 2026-09-16 (see
+// the comment of .mtg-deck-stack-track in styles.css and that of
+// updateDeckStacksLayout): this same constant now ALSO serves as the floor of
+// the track width cap, so that a narrow panel never sees that cap drop below
+// this minimum comfort width already established.
+// STACK_TRACK_GAP_PX, for its part, MUST stay strictly equal to the literal
+// `gap` of .mtg-collection-list-stacks (styles.css) — expressed in px on both
+// sides (not em) precisely so that JS and CSS cannot silently diverge from
+// each other.
 export const STACK_TRACK_MIN_WIDTH_PX = 220;
 export const STACK_TRACK_GAP_PX = 20;
 
-// Hauteur mesurée (Browser pane, CSS réelle de ce fichier) de
-// .mtg-deck-stack-header + sa propre margin-bottom — TOUJOURS la même quel
-// que soit le libellé du groupe : .mtg-deck-stack-header-title est en
-// white-space: nowrap + text-overflow: ellipsis (styles.css), ne passe
-// donc jamais sur 2 lignes. Une constante calibrée une fois via une vraie
-// mesure est donc exacte, pas juste approximative.
+// Measured height (Browser pane, this file's real CSS) of
+// .mtg-deck-stack-header + its own margin-bottom — ALWAYS the same
+// whatever the group's label: .mtg-deck-stack-header-title is white-space:
+// nowrap + text-overflow: ellipsis (styles.css), so it never wraps onto 2
+// lines. A constant calibrated once via a real measurement is therefore
+// exact, not just approximate.
 const STACK_HEADER_BLOCK_HEIGHT_PX = 47;
-// 680/488 (ratio de l'image "tile", voir "Card view" dans CLAUDE.md) moins
-// le recouvrement de 120% (.mtg-deck-stack-card + .mtg-deck-stack-card,
-// styles.css) — même dérivation que le commentaire de cette règle CSS,
-// reprise ici en JS pour estimer une hauteur de pile sans la mesurer dans
-// le DOM.
+// 680/488 (ratio of the "tile" image, see "Card view" in CLAUDE.md) minus
+// the 120% overlap (.mtg-deck-stack-card + .mtg-deck-stack-card,
+// styles.css) — same derivation as the comment of that CSS rule, repeated
+// here in JS to estimate a pile's height without measuring it in the DOM.
 const STACK_CARD_HEIGHT_RATIO = 680 / 488;
 const STACK_SLIVER_HEIGHT_RATIO = STACK_CARD_HEIGHT_RATIO - 1.2;
 
-// cardCount = nombre de LIGNES distinctes du groupe (cardGroup.cards.length
-// — une carte par élément fanné dans le DOM), PAS la quantité totale
-// (somme de count) : un deck Commander singleton confond les deux pour
-// toute carte hors terrain de base (count vaut toujours 1), mais un deck
-// "4-of" classique ne les confond pas — "4x Lightning Bolt" reste UNE
-// seule ligne/carte fannée (avec un badge "×4"), jamais 4 cartes distinctes
-// empilées. Utiliser la quantité totale surestimerait fortement la hauteur
-// réelle de tout groupe contenant des cartes multi-exemplaires.
+// cardCount = number of distinct ROWS of the group (cardGroup.cards.length
+// — one card per fanned element in the DOM), NOT the total quantity (sum of
+// count): a singleton Commander deck conflates the two for every
+// non-basic-land card (count is always 1), but a classic "4-of" deck does
+// not — "4x Lightning Bolt" remains ONE single fanned row/card (with an
+// "×4" badge), never 4 distinct stacked cards. Using the total quantity
+// would strongly overestimate the real height of any group containing
+// multi-copy cards.
 export function estimateStackColumnHeight(cardCount: number): number {
 	const cardHeight = STACK_TRACK_MIN_WIDTH_PX * STACK_CARD_HEIGHT_RATIO;
 	const sliverHeight = STACK_TRACK_MIN_WIDTH_PX * STACK_SLIVER_HEIGHT_RATIO;
 	return STACK_HEADER_BLOCK_HEIGHT_PX + cardHeight + Math.max(0, cardCount - 1) * sliverHeight;
 }
 
-// Nombre de lignes rendues dans le DOM à la fois : sur une grosse collection
-// (dizaines de milliers de cartes), construire un vrai nœud DOM (image,
-// stepper, boutons, écouteurs...) pour chaque carte d'un coup fige
-// l'interface pendant plusieurs secondes et charge autant d'images en
-// parallèle. Une liste s'ouvre donc avec seulement les RENDER_BATCH_SIZE
-// premières cartes ; le reste apparaît par lots au fur et à mesure du
-// défilement (voir renderLoadMoreSentinel).
+// Number of rows rendered in the DOM at a time: on a big collection (tens of
+// thousands of cards), building a real DOM node (image, stepper, buttons,
+// listeners...) for every card at once freezes the interface for several
+// seconds and loads as many images in parallel. A list therefore opens with
+// only the first RENDER_BATCH_SIZE cards; the rest appears in batches as the
+// user scrolls (see renderLoadMoreSentinel).
 export const RENDER_BATCH_SIZE = 150;
 
-// Tronque une liste de groupes déjà triés à un nombre total de cartes donné,
-// en coupant le dernier groupe visible en plein milieu si besoin (plutôt que
-// d'exclure des groupes entiers), pour que le nombre de lignes réellement
-// affichées corresponde exactement à la limite demandée.
+// Truncates an already-sorted list of groups to a given total number of
+// cards, cutting the last visible group in the middle if needed (rather than
+// excluding whole groups), so that the number of rows actually displayed
+// matches the requested limit exactly.
 export function sliceGroupsForRender<T>(groups: CardGroup<T>[], limit: number): CardGroup<T>[] {
 	const result: CardGroup<T>[] = [];
 	let remaining = limit;
@@ -617,9 +609,8 @@ export function groupAndSortCards<T extends SortableCard>(
 					? [...groupColors].sort(
 							(a, b) => (COLOR_LETTER_ORDER[a] ?? 9) - (COLOR_LETTER_ORDER[b] ?? 9)
 					  )
-					// "Colorless" a son propre symbole officiel ({C}, via Scryfall) ;
-					// "Land" n'en a pas (ce n'est pas une couleur de mana), reste en
-					// texte seul.
+					// "Colorless" has its own official symbol ({C}, via Scryfall); "Land" has
+					// none (it isn't a mana color), stays as text only.
 					: groupBy === "color" && label === "Colorless"
 					  ? ["C"]
 					  : undefined,

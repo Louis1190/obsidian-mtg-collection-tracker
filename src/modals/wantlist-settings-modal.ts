@@ -27,21 +27,19 @@ import {
 /* -------------------------------------------------------------------------- */
 /*  Wantlist actions modal ("...")                                            */
 /* -------------------------------------------------------------------------- */
-// Recalquée sur ListSettingsModal (demandé explicitement, "peut être
-// exactement comme List settings") — mêmes écrans/mêmes drapeaux
-// (confirmingDelete/confirmingClear/pickingMergeTarget/pickingCoverImage/
-// pickingIcon) et même état de sélecteur d'icône (iconPicker) ; les sous-écrans
-// eux-mêmes sont COMMUNS aux trois modales de réglages (entity-settings-screens.ts),
-// même section "Display settings" (Choose cover image/Choose icon — voir
-// Wantlist.coverCardId/listIcon, data-model.ts, ajoutés pour l'occasion
-// en miroir de CollectionList), mêmes 3 rangées d'actions pleine largeur
-// (Copy/Move/Delete, Clear/Merge duplicates/Merge wantlists, Export/Copy to
-// clipboard/Import), même "Save and close" tout en bas. Contrairement à
-// InboxSettingsModal (une variante volontairement réduite de List settings,
-// deux actions en moins) : ici AUCUNE exclusion, une wantlist ordinaire n'a
-// ni le concept "Inbox" (donc pas de filtre isInbox dans la galerie de
-// fusion) ni le garde-fou deleteList/renameList qui justifiait ces
-// exclusions côté Inbox.
+// Modeled on ListSettingsModal (explicitly requested, "can be exactly like List
+// settings") — same screens/same flags
+// (confirmingDelete/confirmingClear/pickingMergeTarget/pickingCoverImage/pickingIcon)
+// and same icon-picker state (iconPicker); the sub-screens themselves are COMMON to
+// the three settings modals (entity-settings-screens.ts), same "Display settings"
+// section (Choose cover image/Choose icon — see Wantlist.coverCardId/listIcon,
+// data-model.ts, added for the occasion as a mirror of CollectionList), same 3 rows
+// of full-width actions (Copy/Move/Delete, Clear/Merge duplicates/Merge wantlists,
+// Export/Copy to clipboard/Import), same "Save and close" at the very bottom. Unlike
+// InboxSettingsModal (a deliberately reduced variant of List settings, two actions
+// fewer): here NO exclusion, an ordinary wantlist has neither the "Inbox" concept
+// (hence no isInbox filter in the merge gallery) nor the deleteList/renameList
+// safeguard that justified those exclusions on the Inbox side.
 
 export class WantlistSettingsModal extends Modal {
 	private plugin: MTGCollectionPlugin;
@@ -52,7 +50,7 @@ export class WantlistSettingsModal extends Modal {
 	private pickingMergeTarget = false;
 	private pickingCoverImage = false;
 	private pickingIcon = false;
-	// État du sélecteur d'icône (choix en cours, onglet, éditions dédupliquées), voir IconPickerState.
+	// State of the icon picker (current choice, tab, deduplicated sets), see IconPickerState.
 	private iconPicker = newIconPickerState();
 
 	constructor(app: App, plugin: MTGCollectionPlugin, view: MTGCollectionView, wantlistId: string) {
@@ -63,11 +61,11 @@ export class WantlistSettingsModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		this.draw();
 	}
@@ -108,9 +106,9 @@ export class WantlistSettingsModal extends Modal {
 			return;
 		}
 
-		// Même écran de confirmation plein-format que « Delete wantlist? » ci-dessus (pas le swap Delete/Cancel en place
-		// de la barre d'actions groupées) — cohérent avec l'autre action destructive de cette fenêtre. L'entité
-		// elle-même n'est pas supprimée, donc pas de close*IfOpen/close() ici, juste un rafraîchissement.
+		// Same full-format confirmation screen as "Delete wantlist?" above (not the in-place Delete/Cancel swap of the
+		// bulk-actions bar) — consistent with the other destructive action in this window. The entity itself is not
+		// deleted, so no close*IfOpen/close() here, just a refresh.
 		if (this.confirmingClear) {
 			const cardCount = this.plugin.settings.wantlist.filter(
 				(c) => c.listId === wantlist.id
@@ -134,8 +132,8 @@ export class WantlistSettingsModal extends Modal {
 			return;
 		}
 
-		// Écran de choix de la 2ᵉ entité (renderMergeTargetScreen, entity-settings-screens.ts) ; la fusion elle-même
-		// est déléguée à MergeWantlistsModal (merge-modals.ts).
+		// Screen for choosing the 2nd entity (renderMergeTargetScreen, entity-settings-screens.ts); the merge itself
+		// is delegated to MergeWantlistsModal (merge-modals.ts).
 		if (this.pickingMergeTarget) {
 			const otherWantlists = this.plugin.settings.wantlists.filter((w) => w.id !== wantlist.id);
 			renderMergeTargetScreen(contentEl, {
@@ -154,7 +152,7 @@ export class WantlistSettingsModal extends Modal {
 			return;
 		}
 
-		// Écran « Choose cover image » (renderCoverPickerScreen, entity-settings-screens.ts).
+		// "Choose cover image" screen (renderCoverPickerScreen, entity-settings-screens.ts).
 		if (this.pickingCoverImage) {
 			renderCoverPickerScreen(contentEl, {
 				noun: "wantlist",
@@ -177,8 +175,8 @@ export class WantlistSettingsModal extends Modal {
 			return;
 		}
 
-		// Écran « Choose icon » (renderIconPickerScreen, entity-settings-screens.ts) ; son état (choix en cours, onglet,
-		// éditions dédupliquées) vit dans this.iconPicker pour survivre aux changements d'onglet.
+		// "Choose icon" screen (renderIconPickerScreen, entity-settings-screens.ts); its state (current choice, tab,
+		// deduplicated sets) lives in this.iconPicker to survive tab changes.
 		if (this.pickingIcon) {
 			renderIconPickerScreen(contentEl, {
 				plugin: this.plugin,
@@ -223,9 +221,9 @@ export class WantlistSettingsModal extends Modal {
 
 		addSectionTitle(contentEl, "Actions");
 
-		// 3 rangées de 3 boutons pleine largeur (mtg-list-actions-action-row) : Copy/Move/Delete,
-		// Clear/Merge duplicates/Merge wantlists, Export/Copy to clipboard/Import. Voir entity-settings-controls.ts pour
-		// ce que fait chaque bouton ; ici seulement ce qui est propre à une wantlist.
+		// 3 rows of 3 full-width buttons (mtg-list-actions-action-row): Copy/Move/Delete, Clear/Merge duplicates/Merge
+		// wantlists, Export/Copy to clipboard/Import. See entity-settings-controls.ts for what each button does; here
+		// only what is specific to a wantlist.
 		const copyMoveRow = createActionRow(contentEl);
 		addCopyMoveButtons(copyMoveRow, {
 			app: this.app,
@@ -238,8 +236,8 @@ export class WantlistSettingsModal extends Modal {
 				this.draw();
 			},
 			afterMove: () => {
-				// Même comportement que l'ancien flux (« Move all cards… then delete this wantlist ») : voir le commentaire
-				// équivalent de ListSettingsModal. Pas de view.render() explicite : onClose() s'en charge déjà.
+				// Same behavior as the old flow ("Move all cards… then delete this wantlist"): see the equivalent comment
+				// of ListSettingsModal. No explicit view.render(): onClose() already takes care of it.
 				if (this.plugin.settings.wantlist.every((c) => c.listId !== wantlist.id)) {
 					this.plugin.deleteWantlist(wantlist.id);
 				}
@@ -257,8 +255,8 @@ export class WantlistSettingsModal extends Modal {
 			},
 		});
 
-		// Clear vide la wantlist (la garde, voir clearWantlist) via le même écran de confirmation plein-format que Delete ;
-		// Merge wantlists ouvre l'écran pickingMergeTarget ci-dessus, qui délègue à MergeWantlistsModal.
+		// Clear empties the wantlist (keeps it, see clearWantlist) via the same full-format confirmation screen as
+		// Delete; Merge wantlists opens the pickingMergeTarget screen above, which delegates to MergeWantlistsModal.
 		const clearMergeRow = createActionRow(contentEl);
 		addActionButton(clearMergeRow, {
 			icon: "eraser",

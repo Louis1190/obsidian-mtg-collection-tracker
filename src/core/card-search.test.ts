@@ -127,8 +127,8 @@ describe("languageTokenMatches", () => {
 describe("conditionTokenMatches", () => {
 	it("matches via any of a condition's known keywords", () => {
 		expect(conditionTokenMatches(makeSearchableCard({ condition: "NM" }), "near")).toBe(true);
-		// "mint" seul désigne désormais MT (Mint), un palier distinct de NM
-		// depuis le passage à l'échelle Cardmarket — voir CONDITION_SEARCH_ENTRIES.
+		// "mint" alone now designates MT (Mint), a tier distinct from NM since the
+		// switch to the Cardmarket scale — see CONDITION_SEARCH_ENTRIES.
 		expect(conditionTokenMatches(makeSearchableCard({ condition: "MT" }), "mint")).toBe(true);
 	});
 
@@ -178,9 +178,8 @@ describe("legalityTokenMatches", () => {
 	it("resolves the format by prefix, on either the key or the display label", () => {
 		const card = makeSearchableCard({ scryfallId: "abc123" });
 		expect(legalityTokenMatches(card, "legal:mod", legalMap)).toBe(true);
-		// "tlr" (key) a pour libellé "Tiny Leaders" — ne commence pas par "tlr"
-		// mais bien par "tiny", donc seule la résolution par libellé peut
-		// faire matcher ce préfixe.
+		// "tlr" (key) has the label "Tiny Leaders" — it doesn't start with "tlr"
+		// but with "tiny", so only label resolution can make this prefix match.
 		const tinyLeadersMap: Map<string, Record<string, string>> = new Map([["abc123", { tlr: "legal" }]]);
 		expect(legalityTokenMatches(card, "legal:tiny", tinyLeadersMap)).toBe(true);
 	});
@@ -202,10 +201,10 @@ describe("legalityTokenMatches", () => {
 	});
 
 	it("covers every LEGALITY_SEARCH_FORMATS key against a real legalities-shaped object", () => {
-		// Une clé absente/mal orthographiée dans LEGALITY_SEARCH_FORMATS ne
-		// casserait rien de visible (juste "jamais légal") — ce test la
-		// détecterait en vérifiant explicitement chaque format contre un objet
-		// où toutes les clés valent "legal".
+		// A key missing/misspelled in LEGALITY_SEARCH_FORMATS wouldn't break
+		// anything visible (just "never legal") — this test would catch it by
+		// explicitly checking each format against an object where all the keys are
+		// "legal".
 		const allLegal = Object.fromEntries(LEGALITY_SEARCH_FORMATS.map((f) => [f.key, "legal"]));
 		const map = new Map([["abc123", allLegal]]);
 		const card = makeSearchableCard({ scryfallId: "abc123" });
@@ -214,9 +213,9 @@ describe("legalityTokenMatches", () => {
 		});
 	});
 
-	// "banned:"/"restricted:" partagent legalityTokenMatches avec "legal:"
-	// (voir LEGALITY_STATUS_PREFIXES, card-search.ts) — vérifie que le
-	// statut recherché est bien celui comparé, pas toujours "legal".
+	// "banned:"/"restricted:" share legalityTokenMatches with "legal:" (see
+	// LEGALITY_STATUS_PREFIXES, card-search.ts) — checks that the status
+	// searched for is the one actually compared, not always "legal".
 	it("matches 'banned:'/'restricted:' against their own status, not 'legal'", () => {
 		const card = makeSearchableCard({ scryfallId: "abc123" });
 		expect(legalityTokenMatches(card, "banned:legacy", legalMap)).toBe(true);
@@ -317,11 +316,11 @@ describe("borderTokenMatches", () => {
 	it("resolves the option by prefix, on either the value or the display label", () => {
 		const card = makeSearchableCard({ borderColor: "borderless" });
 		expect(borderTokenMatches(card, "border:border")).toBe(true);
-		// "showcase" (value) et son libellé "Showcase" coïncident ici, donc on
-		// vérifie plutôt un cas où seul le libellé distingue (ex. "Extended
-		// Art" a un espace, "extended" seul n'apparaît que dans value/label
-		// tous deux — utilisé "yellow" vs son libellé "Yellow Border" à la
-		// place, "yellow bo" ne matche que via le libellé).
+		// "showcase" (value) and its label "Showcase" coincide here, so we rather
+		// check a case where only the label tells them apart (e.g. "Extended Art"
+		// has a space, "extended" alone only appears in value/label both — used
+		// "yellow" vs its label "Yellow Border" instead, "yellow bo" only matches
+		// through the label).
 		expect(borderTokenMatches(makeSearchableCard({ borderColor: "yellow" }), "border:yellow bo")).toBe(true);
 	});
 
@@ -339,10 +338,9 @@ describe("borderTokenMatches", () => {
 	});
 
 	it("covers every BORDER_SEARCH_OPTIONS entry against a real card-shaped object", () => {
-		// Même filet de sécurité que le test équivalent pour
-		// LEGALITY_SEARCH_FORMATS ci-dessus — une entrée dont matches() ne
-		// matche jamais rien (faute de frappe sur un nom de champ, par ex.) ne
-		// casserait rien de visible, juste "jamais trouvée".
+		// Same safety net as the equivalent test for LEGALITY_SEARCH_FORMATS above
+		// — an entry whose matches() never matches anything (a typo in a field
+		// name, for example) wouldn't break anything visible, just "never found".
 		BORDER_SEARCH_OPTIONS.forEach((o) => {
 			const card = makeSearchableCard({
 				borderColor: o.value,
@@ -373,9 +371,9 @@ describe("oracleTokenMatches", () => {
 	});
 
 	it("matches embedded mana symbol notation literally, not the English word", () => {
-		// Scryfall écrit les symboles de mana "{C}"/"{X}" dans oracle_text —
-		// documenté comme limite connue plutôt que normalisé (voir le
-		// commentaire de oracleTokenMatches).
+		// Scryfall writes the mana symbols "{C}"/"{X}" in oracle_text — documented
+		// as a known limitation rather than normalized (see the comment of
+		// oracleTokenMatches).
 		const card = makeSearchableCard({ oracleText: "{T}: Add {C}." });
 		expect(oracleTokenMatches(card, "oracle:{c}")).toBe(true);
 		expect(oracleTokenMatches(card, "oracle:add mana")).toBe(false);
@@ -549,8 +547,8 @@ describe("isExactToken / stripExact", () => {
 		expect(isExactToken("=blue")).toBe(true);
 		expect(isExactToken("=")).toBe(false);
 		expect(isExactToken("blue")).toBe(false);
-		// Mutuellement exclusif avec la négation : un "-=blue" ne commence pas
-		// par "=" (il commence par "-"), donc n'est pas un jeton "exact".
+		// Mutually exclusive with negation: a "-=blue" does not start with "=" (it
+		// starts with "-"), so it isn't an "exact" token.
 		expect(isExactToken("-blue")).toBe(false);
 	});
 
@@ -637,9 +635,9 @@ describe("chipTokenToScryfallClause", () => {
 	});
 
 	it("returns null for a lone exact-color token — aggregation into 'c=' happens in buildScryfallQueryFromChips, not here", () => {
-		// Volontaire : ce jeton isolé ne connaît pas les autres "=" jetons
-		// éventuellement présents, donc ne peut pas construire seul une clause
-		// c= combinée correcte — voir buildScryfallQueryFromChips ci-dessous.
+		// Deliberate: this isolated token doesn't know the other "=" tokens that
+		// may be present, so it cannot build a correct combined c= clause on its
+		// own — see buildScryfallQueryFromChips below.
 		expect(chipTokenToScryfallClause("=blue")).toBeNull();
 	});
 });
@@ -660,11 +658,10 @@ describe("buildScryfallQueryFromChips", () => {
 	});
 
 	it("merges several set: chips into ONE parenthesized OR clause, not separate AND'd ones", () => {
-		// Bug rapporté : "s:znr s:khm" séparées (jointes par un espace = ET
-		// pour Scryfall) exigeraient qu'une carte appartienne à DEUX éditions
-		// à la fois, ce qu'aucune carte ne peut jamais satisfaire — même
-		// classe de bug que l'identité de couleur exacte, testée juste plus
-		// bas dans ce fichier.
+		// Reported bug: separate "s:znr s:khm" (joined by a space = AND for
+		// Scryfall) would require a card to belong to TWO sets at once, which no
+		// card can ever satisfy — same class of bug as exact color identity,
+		// tested just further down in this file.
 		expect(buildScryfallQueryFromChips(["set:znr", "set:khm"], "")).toBe("(s:znr or s:khm)");
 	});
 
@@ -673,9 +670,8 @@ describe("buildScryfallQueryFromChips", () => {
 	});
 
 	it("keeps negated set: chips as separate AND'd clauses, not merged", () => {
-		// Exclure deux éditions à la fois est un ET parfaitement valide
-		// (contrairement à l'inclusion) — pas la même fusion que les jetons
-		// positifs ci-dessus.
+		// Excluding two sets at once is a perfectly valid AND (unlike inclusion) —
+		// not the same merge as the positive tokens above.
 		expect(buildScryfallQueryFromChips(["-set:znr", "-set:khm"], "")).toBe("-s:znr -s:khm");
 	});
 
@@ -698,9 +694,9 @@ describe("buildScryfallQueryFromChips", () => {
 	});
 
 	it("merges several exact-color chips into ONE combined c= clause, not several separate ones", () => {
-		// Deux clauses c= séparées ("c=u c=w") seraient contradictoires pour
-		// Scryfall (une identité ne peut égaler deux valeurs à la fois) — voir
-		// le commentaire de buildScryfallQueryFromChips.
+		// Two separate c= clauses ("c=u c=w") would be contradictory for Scryfall
+		// (an identity can't equal two values at once) — see the comment of
+		// buildScryfallQueryFromChips.
 		expect(buildScryfallQueryFromChips(["=blue", "=white"], "")).toBe("c=wu");
 	});
 
@@ -717,9 +713,9 @@ describe("buildScryfallQueryFromChips", () => {
 	});
 
 	it("falls back a non-color exact-marked chip to its ordinary bare clause", () => {
-		// "=rare" n'est jamais produit par l'UI (la bascule "=" n'apparaît que
-		// sur une puce couleur), mais un jeton tapé/importé à la main doit
-		// rester utile plutôt que silencieusement ignoré.
+		// "=rare" is never produced by the UI (the "=" toggle only appears on a
+		// color chip), but a hand-typed/imported token must remain useful rather
+		// than be silently ignored.
 		expect(buildScryfallQueryFromChips(["=rare"], "")).toBe("r:rare");
 	});
 });
@@ -792,7 +788,7 @@ describe("cardMatchesTokens", () => {
 		]);
 		expect(cardMatchesTokens(card, ["legal:modern"], "", undefined, legalMap)).toBe(true);
 		expect(cardMatchesTokens(card, ["legal:standard"], "", undefined, legalMap)).toBe(false);
-		// OR entre plusieurs formats, même convention que color/rarity/etc.
+		// OR between several formats, same convention as color/rarity/etc.
 		expect(cardMatchesTokens(card, ["legal:standard", "legal:modern"], "", undefined, legalMap)).toBe(true);
 		expect(cardMatchesTokens(card, ["-legal:modern"], "", undefined, legalMap)).toBe(false);
 		expect(cardMatchesTokens(card, ["-legal:standard"], "", undefined, legalMap)).toBe(true);
@@ -808,8 +804,8 @@ describe("cardMatchesTokens", () => {
 		expect(cardMatchesTokens(card, ["restricted:vintage"], "", undefined, map)).toBe(true);
 		expect(cardMatchesTokens(card, ["-banned:legacy"], "", undefined, map)).toBe(false);
 		expect(cardMatchesTokens(card, ["-restricted:vintage"], "", undefined, map)).toBe(false);
-		// Même bucket "legality" que legal: (OR entre tous, quel que soit le
-		// statut recherché par chaque jeton) — voir CATEGORY_CLAUSE_BUILDERS.
+		// Same "legality" bucket as legal: (OR across all, whatever the status
+		// searched by each token) — see CATEGORY_CLAUSE_BUILDERS.
 		expect(cardMatchesTokens(card, ["legal:standard", "banned:legacy"], "", undefined, map)).toBe(
 			true
 		);
@@ -819,8 +815,8 @@ describe("cardMatchesTokens", () => {
 		const card = makeSearchableCard({ scryfallId: "not-fetched-yet" });
 		const emptyMap: Map<string, Record<string, string>> = new Map();
 		expect(cardMatchesTokens(card, ["legal:modern"], "", undefined, emptyMap)).toBe(false);
-		// Un jeton négatif ne doit PAS exclure une carte dont on ne sait pas
-		// encore si elle est légale — voir le commentaire de cardMatchesTokens.
+		// A negative token must NOT exclude a card whose legality isn't known yet
+		// — see the comment of cardMatchesTokens.
 		expect(cardMatchesTokens(card, ["-legal:modern"], "", undefined, emptyMap)).toBe(true);
 	});
 
@@ -828,9 +824,9 @@ describe("cardMatchesTokens", () => {
 		const card = makeSearchableCard({ borderColor: "borderless", frameEffects: ["showcase"], rarity: "rare" });
 		expect(cardMatchesTokens(card, ["border:showcase"], "")).toBe(true);
 		expect(cardMatchesTokens(card, ["border:black"], "")).toBe(false);
-		// OR entre plusieurs valeurs, même convention que legal:.
+		// OR between several values, same convention as legal:.
 		expect(cardMatchesTokens(card, ["border:black", "border:showcase"], "")).toBe(true);
-		// AND avec une autre catégorie.
+		// AND with another category.
 		expect(cardMatchesTokens(card, ["border:showcase", "common"], "")).toBe(false);
 		expect(cardMatchesTokens(card, ["-border:showcase"], "")).toBe(false);
 		expect(cardMatchesTokens(card, ["-border:black"], "")).toBe(true);
@@ -840,20 +836,20 @@ describe("cardMatchesTokens", () => {
 		const card = makeSearchableCard({ oracleText: "Draw a card. Instant speed.", rarity: "rare" });
 		expect(cardMatchesTokens(card, ['oracle:draw a card'], "")).toBe(true);
 		expect(cardMatchesTokens(card, ['oracle:instant'], "")).toBe(true);
-		// Deux jetons "oracle:" = ET (les deux doivent apparaître), pas OU
-		// comme border:/legal: — voir le commentaire de oracleTokenMatches.
+		// Two "oracle:" tokens = AND (both must appear), not OR like
+		// border:/legal: — see the comment of oracleTokenMatches.
 		expect(cardMatchesTokens(card, ['oracle:draw a card', 'oracle:instant'], "")).toBe(true);
 		expect(cardMatchesTokens(card, ['oracle:draw a card', 'oracle:flying'], "")).toBe(false);
-		// ET avec une autre catégorie.
+		// AND with another category.
 		expect(cardMatchesTokens(card, ['oracle:draw a card', 'common'], "")).toBe(false);
 		expect(cardMatchesTokens(card, ['-oracle:draw a card'], "")).toBe(false);
 		expect(cardMatchesTokens(card, ['-oracle:flying'], "")).toBe(true);
 	});
 
 	it("a 'multicolor' chip includes a genuinely multicolor card via colorTokenMatches", () => {
-		// Suite du même bug categorizeToken (désormais corrigé) : le jeton passe
-		// maintenant par le bucket "color" et donc par colorTokenMatches, qui
-		// sait déjà reconnaître une carte multicolore.
+		// Continuation of the same categorizeToken bug (now fixed): the token now
+		// goes through the "color" bucket and therefore through colorTokenMatches,
+		// which already knows how to recognize a multicolor card.
 		const trulyMulticolor = makeSearchableCard({ colors: ["W", "U"], typeLine: "Legendary Creature" });
 		expect(cardMatchesTokens(trulyMulticolor, ["multicolor"], "")).toBe(true);
 	});
@@ -861,10 +857,10 @@ describe("cardMatchesTokens", () => {
 	it("an exact-color token ('=blue') only matches a card whose colors are EXACTLY that, unlike a plain 'blue' chip", () => {
 		const monoBlue = makeSearchableCard({ colors: ["U"] });
 		const azorius = makeSearchableCard({ colors: ["W", "U"] });
-		// Un jeton "blue" ordinaire matche les deux (contenance).
+		// A plain "blue" token matches both (containment).
 		expect(cardMatchesTokens(monoBlue, ["blue"], "")).toBe(true);
 		expect(cardMatchesTokens(azorius, ["blue"], "")).toBe(true);
-		// "=blue" ne matche que le mono-bleu.
+		// "=blue" only matches mono-blue.
 		expect(cardMatchesTokens(monoBlue, ["=blue"], "")).toBe(true);
 		expect(cardMatchesTokens(azorius, ["=blue"], "")).toBe(false);
 	});
@@ -875,7 +871,7 @@ describe("cardMatchesTokens", () => {
 		const jeskai = makeSearchableCard({ colors: ["W", "U", "R"] });
 		expect(cardMatchesTokens(azorius, ["=blue", "=white"], "")).toBe(true);
 		expect(cardMatchesTokens(monoBlue, ["=blue", "=white"], "")).toBe(false);
-		// Ni plus ni moins : un 3ᵉ couleur en trop exclut aussi.
+		// Neither more nor less: a 3rd color too many also excludes.
 		expect(cardMatchesTokens(jeskai, ["=blue", "=white"], "")).toBe(false);
 	});
 
@@ -888,9 +884,9 @@ describe("cardMatchesTokens", () => {
 	});
 
 	it("still evaluates an exact-color constraint even when it's the only token present", () => {
-		// Piège potentiel : positiveTokens peut être vide une fois le jeton
-		// "=" extrait à part — le "return true" précoce pour ce cas ne doit
-		// pas court-circuiter la vérification d'identité exacte.
+		// Potential trap: positiveTokens can be empty once the "=" token is
+		// extracted separately — the early "return true" for that case must not
+		// short-circuit the exact-identity check.
 		expect(cardMatchesTokens(makeSearchableCard({ colors: ["U", "W"] }), ["=blue"], "")).toBe(false);
 	});
 
@@ -950,9 +946,9 @@ describe("recognizeKeywordToken", () => {
 	});
 
 	it("does not recognize a 'legal:' token that isn't an exact format key (only a prefix)", () => {
-		// Toujours un filtre valide (legalityTokenMatches matche en préfixe),
-		// mais pas de rendu de puce "reconnu" — même arbitrage que color/
-		// rarity/language plus haut dans ce describe.
+		// Still a valid filter (legalityTokenMatches matches by prefix), but no
+		// "recognized" chip rendering — same trade-off as color/rarity/language
+		// earlier in this describe.
 		expect(recognizeKeywordToken("legal:mod")).toBeNull();
 		expect(recognizeKeywordToken("legal:xyz")).toBeNull();
 	});
@@ -983,8 +979,8 @@ describe("recognizeKeywordToken", () => {
 	});
 
 	it("recognizes any non-empty 'oracle:<phrase>' as a keyword-styled chip, original case kept", () => {
-		// Contrairement à border:/legal: ci-dessus, aucune valeur fixe à
-		// matcher exactement — n'importe quelle phrase non vide compte.
+		// Unlike border:/legal: above, there is no fixed value to match exactly —
+		// any non-empty phrase counts.
 		expect(recognizeKeywordToken("oracle:Draw a Card")).toEqual({
 			kind: "keyword",
 			label: 'Card text: "Draw a Card"',
@@ -1007,11 +1003,11 @@ describe("recognizeKeywordToken", () => {
 
 describe("SUGGESTABLE_KEYWORDS consistency", () => {
 	it("categorizeToken agrees with every suggestion's own declared category", () => {
-		// C'est exactement ce test qui aurait attrapé le bug multicolor/
-		// colorless directement : ces deux entrées déclarent category "color"
-		// dans SUGGESTABLE_KEYWORDS, mais categorizeToken(entry.value) les
-		// renvoyait vers "text" avant le correctif. Vérifié pour les ~90
-		// entrées d'un coup plutôt qu'au cas par cas.
+		// This is exactly the test that would have caught the multicolor/colorless
+		// bug directly: these two entries declare category "color" in
+		// SUGGESTABLE_KEYWORDS, but categorizeToken(entry.value) was routing them
+		// to "text" before the fix. Checked for the ~90 entries at once rather
+		// than case by case.
 		const mismatches = SUGGESTABLE_KEYWORDS.filter(
 			(entry) => categorizeToken(entry.value) !== entry.category
 		);
@@ -1037,18 +1033,17 @@ describe("tokensNeedLegalityData", () => {
 });
 
 describe("LEGALITY_SEARCH_FORMATS ordering", () => {
-	// Bug rapporté : taper "legal:" seul (pour parcourir les formats sans
-	// encore savoir lequel chercher) ne faisait jamais apparaître
-	// "Legal: Commander" dans les suggestions — coupé par le plafond de
-	// suggestions (getKeywordSuggestions, view.ts ; renderChipSuggestions,
-	// add-cards-modal.ts) puisque l'ordre brut de l'API Scryfall place
-	// "commander" en 12ᵉ position. Fixé en faisant passer les 10 formats les
-	// plus connus en tête de cette liste, dans cet ordre précis. Depuis que
-	// LEGALITY_FORMATS (price.ts) est devenu un simple alias de cette même
-	// liste (2026-08-21, voir son propre commentaire), comparer les deux ne
-	// verrouille plus rien — les 10 clés attendues sont donc écrites en dur
-	// ici pour continuer à garder cet ordre, indépendamment de ce que
-	// LEGALITY_FORMATS pointe ou non vers cette liste à l'avenir.
+	// Reported bug: typing "legal:" alone (to browse the formats without yet
+	// knowing which one to look for) never made "Legal: Commander" appear in
+	// the suggestions — cut off by the suggestion cap (getKeywordSuggestions,
+	// view.ts; renderChipSuggestions, add-cards-modal.ts) since the raw order
+	// of the Scryfall API puts "commander" in 12th position. Fixed by moving
+	// the 10 best-known formats to the front of this list, in that precise
+	// order. Since LEGALITY_FORMATS (price.ts) became a simple alias of this
+	// same list (2026-08-21, see its own comment), comparing the two no longer
+	// locks anything down — the 10 expected keys are therefore hard-coded here
+	// to keep guarding this order, regardless of whether LEGALITY_FORMATS
+	// points to this list in the future.
 	it("front-loads the 10 best-known formats, in a fixed order, before the rest", () => {
 		const firstTen = LEGALITY_SEARCH_FORMATS.slice(0, 10).map((f) => f.key);
 		expect(firstTen).toEqual([
@@ -1103,10 +1098,10 @@ describe("describeSearchFilters", () => {
 	});
 
 	it("describes oracle text and free text differently", () => {
-		// Le jeton stocké n'a plus ses guillemets à ce stade — commitToken
-		// (add-cards-modal.ts) les retire déjà via stripQuotesFromCommittedToken
-		// avant que le jeton n'atteigne chipTokens ; ce test reflète la forme
-		// réellement stockée, pas ce qui a été tapé.
+		// The stored token no longer has its quotes at this stage — commitToken
+		// (add-cards-modal.ts) already removes them via
+		// stripQuotesFromCommittedToken before the token reaches chipTokens; this
+		// test reflects the form actually stored, not what was typed.
 		expect(describeSearchFilters(["oracle:draw a card"])).toBe(
 			'Show every card whose rules text mentions "draw a card".'
 		);
@@ -1128,9 +1123,9 @@ describe("describeSearchFilters", () => {
 	});
 
 	it("groups mixed legality statuses separately, so a mix isn't mislabelled 'legal in'", () => {
-		// Deux jetons "legal:" se regroupent toujours avec "or" au sein d'un
-		// même statut ; un jeton "banned:" à côté forme son propre groupe
-		// plutôt que d'être décrit à tort comme "legal in".
+		// Two "legal:" tokens always group with "or" within the same status; a
+		// "banned:" token next to them forms its own group rather than being
+		// wrongly described as "legal in".
 		expect(describeSearchFilters(["legal:modern", "legal:legacy"])).toBe(
 			"Show every card legal in Modern or Legacy."
 		);
@@ -1173,9 +1168,9 @@ describe("describeSearchFilters", () => {
 	});
 
 	it("falls back to the raw token text for anything unrecognized", () => {
-		// Un mot ne correspondant à aucune catégorie connue catégorise "text"
-		// (recherche libre nom/type/édition/artiste) — même repli que
-		// renderSearchChipBar pour l'affichage des puces elles-mêmes.
+		// A word matching no known category is categorized "text" (free search of
+		// name/type/set/artist) — same fallback as renderSearchChipBar for
+		// displaying the chips themselves.
 		expect(describeSearchFilters(["shivan dragon"])).toBe(
 			'Show every card containing "shivan dragon".'
 		);

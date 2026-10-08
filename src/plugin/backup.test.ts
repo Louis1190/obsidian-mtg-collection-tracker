@@ -18,11 +18,11 @@ import { TFile, TFolder } from "obsidian";
 import { backupFolderPath, listBackupFiles, readBackupFile } from "./backup";
 import type MTGCollectionPlugin from "../plugin";
 
-// Les vraies classes d'Obsidian n'ont pas de constructeur utilisable ici : on construit celles de la maquette ci-dessus.
+// The real Obsidian classes have no usable constructor here: we build those of the mock above.
 const makeFile = (path: string, stat: { mtime: number; size: number }) => new (TFile as unknown as new (p: string, s: unknown) => TFile)(path, stat);
 const makeFolder = (path: string) => new (TFolder as unknown as new (p: string) => TFolder)(path);
 
-// Un faux coffre : un dossier de sauvegardes avec deux fichiers et un sous-dossier, et la lecture d'un fichier.
+// A fake vault: a backups folder with two files and a subfolder, and the reading of a file.
 function fakePlugin(folderSetting: string, entries: Record<string, unknown>) {
 	const folder = makeFolder("MTG Backups");
 	folder.children = [

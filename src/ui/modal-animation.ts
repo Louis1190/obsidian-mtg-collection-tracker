@@ -10,21 +10,21 @@ import type { Modal } from "obsidian";
 /*  same way and any future tuning only needs to happen in one place.         */
 /* -------------------------------------------------------------------------- */
 
-// .modal-bg est un frère de .modal, pas un enfant, d'où containerEl plutôt
-// que modalEl/contentEl pour le trouver.
+// .modal-bg is a sibling of .modal, not a child, hence containerEl rather
+// than modalEl/contentEl to find it.
 function getModalBackdropEl(modal: Modal): HTMLElement | null {
 	return modal.containerEl.querySelector<HTMLElement>(".modal-bg");
 }
 
-// À appeler en toute première ligne de onOpen(), avant tout autre
-// this.modalEl.addClass(...) propre à la modale (largeur, masquage de la
-// croix native, etc.) — l'ordre entre eux n'a pas d'importance, ce sont des
-// classes indépendantes sur le même élément. La classe de base (mtg-modal-
-// anim-frame) est ajoutée tout de suite ; mtg-modal-visible passe une frame
-// plus tard (requestAnimationFrame) pour que la transition CSS ait un
-// changement d'état réel à partir duquel s'animer — sans ce délai, la
-// modale apparaîtrait déjà dans son état final dès sa première peinture,
-// sans transition visible.
+// To be called as the very first line of onOpen(), before any other
+// this.modalEl.addClass(...) specific to the modal (width, hiding the
+// native cross, etc.) — the order between them doesn't matter, they are
+// independent classes on the same element. The base class
+// (mtg-modal-anim-frame) is added right away; mtg-modal-visible comes one
+// frame later (requestAnimationFrame) so that the CSS transition has a real
+// state change to animate from — without this delay, the modal would appear
+// already in its final state from its first paint, with no visible
+// transition.
 export function applyModalOpenAnimation(modal: Modal) {
 	modal.modalEl.addClass("mtg-modal-anim-frame");
 	window.requestAnimationFrame(() => {
@@ -37,13 +37,13 @@ export function applyModalOpenAnimation(modal: Modal) {
 	});
 }
 
-// À appeler depuis un override de close() : retire mtg-modal-visible pour
-// rejouer la transition du panneau en sens inverse, et pose mtg-modal-closing
-// sur le voile (qui est piloté par une animation CSS, pas une transition : voir
-// .mtg-card-detail-backdrop dans styles.css), puis attend sa durée (160ms) avant
-// d'appeler le close() réel d'Obsidian (superClose) qui détache la modale —
-// sans ce délai, le DOM disparaîtrait instantanément et la transition
-// n'aurait jamais le temps de se voir.
+// To be called from an override of close(): removes mtg-modal-visible to replay
+// the panel's transition in reverse, and sets mtg-modal-closing on the scrim
+// (which is driven by a CSS animation, not a transition: see
+// .mtg-card-detail-backdrop in styles.css), then waits for its duration (160ms)
+// before calling Obsidian's real close() (superClose) which detaches the modal —
+// without this delay, the DOM would disappear instantly and the transition would
+// never have time to be seen.
 export function closeModalAnimated(modal: Modal, superClose: () => void) {
 	modal.modalEl.removeClass("mtg-modal-visible");
 	const backdrop = getModalBackdropEl(modal);
@@ -52,30 +52,28 @@ export function closeModalAnimated(modal: Modal, superClose: () => void) {
 	window.setTimeout(superClose, 160);
 }
 
-// Croix ronde de fermeture partagée par toutes les modales du plugin (voir
-// .mtg-card-detail-close-btn dans styles.css) — demandé explicitement pour
-// que TOUTES les fenêtres modales aient "le bouton X correct et
-// correctement placé", pas seulement les 5 qui l'avaient déjà chacune en
-// dupliquant ce même code (CardDetailModal/DeckCardDetailModal/
-// WantlistCardDetailModal/GradingModal/CopyCardModal). Toujours ancrée sur
-// modalEl, jamais contentEl : modalEl est déjà position:relative par défaut
-// dans Obsidian (c'est ce sur quoi sa propre croix native s'ancre aussi),
-// donc ce bouton atterrit toujours au même endroit peu importe le padding
-// propre au contentEl de chaque modale — voir l'historique de GradingModal
-// dans CLAUDE.md pour le bug exact que cet ancrage évite. Ajoute aussi
-// mtg-modal-hides-native-close (masque la croix native d'Obsidian) : les
-// deux vont toujours ensemble ici, donc pas besoin de les découpler comme
-// applyModalOpenAnimation/closeModalAnimated (qui eux s'appellent depuis
-// deux endroits différents du cycle de vie d'une modale).
-// À appeler une seule fois depuis onOpen() — PAS depuis un draw() rejoué
-// plusieurs fois, qui empilerait un nouveau bouton à chaque appel puisque
-// modalEl (contrairement à contentEl) n'est jamais vidé entre deux
-// redessins. C'est exactement pourquoi CardDetailModal/DeckCardDetailModal/
-// WantlistCardDetailModal n'utilisent PAS cette fonction : leur bouton vit
-// dans contentEl (vidé à chaque draw()) plutôt que modalEl, parce qu'il
-// doit être reconstruit à chaque navigation prev/next — un besoin réel,
-// pas juste un choix historique, donc ces trois-là gardent leur propre
-// code plutôt que d'être forcées dans ce pattern-ci.
+// Round close cross shared by all the plugin's modals (see
+// .mtg-card-detail-close-btn in styles.css) — explicitly requested so that
+// ALL modal windows have "the correct X button, correctly placed", not only
+// the 5 that already each had it by duplicating this same code
+// (CardDetailModal/DeckCardDetailModal/WantlistCardDetailModal/GradingModal/CopyCardModal).
+// Always anchored on modalEl, never contentEl: modalEl is already
+// position:relative by default in Obsidian (that is also what its own
+// native cross anchors on), so this button always lands in the same place
+// regardless of the padding specific to each modal's contentEl — see the
+// GradingModal history in CLAUDE.md for the exact bug this anchoring
+// avoids. Also adds mtg-modal-hides-native-close (hides Obsidian's native
+// cross): the two always go together here, so no need to decouple them like
+// applyModalOpenAnimation/closeModalAnimated (which are called from two
+// different places of a modal's lifecycle).
+// To be called only once from onOpen() — NOT from a draw() replayed several
+// times, which would stack a new button on each call since modalEl (unlike
+// contentEl) is never emptied between two redraws. That is exactly why
+// CardDetailModal/DeckCardDetailModal/WantlistCardDetailModal do NOT use
+// this function: their button lives in contentEl (emptied on every draw())
+// rather than modalEl, because it must be rebuilt on every prev/next
+// navigation — a real need, not just a historical choice, so those three
+// keep their own code rather than being forced into this pattern.
 export function addModalCloseButton(modal: Modal) {
 	modal.modalEl.addClass("mtg-modal-hides-native-close");
 	const closeBtn = modal.modalEl.createDiv({ cls: "mtg-card-detail-close-btn" });

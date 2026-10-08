@@ -1,16 +1,17 @@
-// Les fichiers de sauvegarde que le plugin reconnaît dans le dossier des sauvegardes (« Restore backup → Choose a saved backup »),
-// et comment les présenter. Pur, sans Obsidian : plugin/backup.ts liste les fichiers du coffre, la modale
-// (modals/restore-backup-modal.ts) affiche ce qui sort d'ici.
+// The backup files the plugin recognizes in the backups folder ("Restore backup → Choose a saved backup"), and
+// how to present them. Pure, no Obsidian: plugin/backup.ts lists the vault's files, the modal
+// (modals/restore-backup-modal.ts) displays what comes out of here.
 //
-// Deux familles de noms, toutes deux déjà produites par le plugin :
-//  - mtg-collection-backup-auto-YYYY-MM-DD.json : les sauvegardes automatiques (AUTO_BACKUP_FILE_PREFIX) ;
-//  - mtg-collection-backup-YYYY-MM-DD.json : « Export backup » (un export manuel que l'utilisateur dépose dans ce dossier,
-//    à la main ou par sa synchronisation, est donc listé aussi — pruneAutoBackups, lui, n'y touche jamais).
+// Two families of names, both already produced by the plugin:
+// - mtg-collection-backup-auto-YYYY-MM-DD.json: the automatic backups (AUTO_BACKUP_FILE_PREFIX);
+// - mtg-collection-backup-YYYY-MM-DD.json: "Export backup" (a manual export that the user drops into this
+//   folder, by hand or through their sync, is therefore listed too — pruneAutoBackups, for its part, never
+//   touches it).
 
 export interface BackupFileInfo {
 	path: string;
 	name: string;
-	// Date de modification du fichier (ms) : repli quand le nom ne porte pas de date.
+	// File modification date (ms): fallback when the name carries no date.
 	mtime: number;
 	size: number;
 }
@@ -19,8 +20,8 @@ export type BackupKind = "automatic" | "manual";
 
 export interface BackupListItem extends BackupFileInfo {
 	kind: BackupKind;
-	// « 2026-10-05 », lue dans le nom du fichier (plus fiable que mtime, que la synchronisation d'un coffre réécrit) ;
-	// à défaut, la date de modification.
+	// "2026-10-05", read from the file name (more reliable than mtime, which a vault sync rewrites); otherwise, the
+	// modification date.
 	date: string;
 }
 
@@ -46,8 +47,8 @@ export function backupDate(file: BackupFileInfo): string {
 	return fromName ? fromName[1] : localIsoDate(file.mtime);
 }
 
-// Les sauvegardes reconnues, la plus récente d'abord (date, puis heure de modification, puis nom : deux sauvegardes du même jour,
-// l'automatique et un export manuel, restent dans un ordre stable).
+// The recognized backups, most recent first (date, then modification time, then name: two backups from the same
+// day, the automatic one and a manual export, stay in a stable order).
 export function listBackups(files: BackupFileInfo[]): BackupListItem[] {
 	return files
 		.filter((f) => isBackupFileName(f.name))

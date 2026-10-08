@@ -1,45 +1,46 @@
 import { requestUrl } from "obsidian";
 
 /* -------------------------------------------------------------------------- */
-/*  frankfurter.dev — taux de change USD/EUR, pour unifier l'axe Y du          */
-/*  graphique "Price History" (voir buildYAxis/renderPriceHistoryChart,        */
-/*  card-detail-fx.ts) quand une série (Cardmarket, EUR) doit être comparée    */
-/*  aux trois autres (USD) sur le même axe plutôt que sur un second axe        */
-/*  séparé. Ce plugin ne suit que USD/EUR (voir PriceCurrency, price.ts) — un  */
-/*  seul taux suffit, pas besoin du catalogue complet de devises que           */
-/*  frankfurter.dev expose par ailleurs.                                       */
+/* frankfurter.dev — USD/EUR exchange rate, to unify the Y axis of the "Price */
+/* History" chart (see buildYAxis/renderPriceHistoryChart, card-detail-fx.ts) */
+/* when one series (Cardmarket, EUR) has to be compared with the other three */
+/* (USD) on the same axis rather than on a second, separate axis. This plugin */
+/* only tracks USD/EUR (see PriceCurrency, price.ts) — a single rate is */
+/* enough, no need for the full currency catalog that frankfurter.dev exposes */
+/* otherwise. */
 /* -------------------------------------------------------------------------- */
 
-// API publique, sans clé (vérifié en direct via curl), taux de la Banque
-// Centrale Européenne mis à jour un jour ouvré sur deux — suffisant pour une
-// conversion d'AFFICHAGE (aligner deux courbes sur un même graphique),
-// jamais utilisé pour une vraie transaction financière.
+// Public API, no key (checked live via curl), European Central Bank rates
+// updated every other business day — enough for a DISPLAY conversion
+// (aligning two curves on the same chart), never used for a real financial
+// transaction.
 const FRANKFURTER_BASE_URL = "https://api.frankfurter.dev/v1";
 
 const FRANKFURTER_HEADERS = {
-	// Même identifiant + contact que SCRYFALL_HEADERS (scryfall.ts) — cohérence
-	// entre toutes les APIs de ce plugin, pas une exigence propre à frankfurter.dev.
+	// Same identifier + contact as SCRYFALL_HEADERS (scryfall.ts) — consistency
+	// across all of this plugin's APIs, not a requirement specific to
+	// frankfurter.dev.
 	"User-Agent": "ObsidianMTGCollectionTracker/1.0 (+https://github.com/Louis1190/obsidian-mtg-collection-tracker)",
 	Accept: "application/json",
 };
 
-// Corps de /latest (`res.json` est `any`). `unknown` : le type de chaque valeur est vérifié juste en dessous.
+// Body of /latest (`res.json` is `any`). `unknown`: the type of each value is checked just below.
 interface FrankfurterLatestBody {
 	rates?: { EUR?: unknown };
 	date?: unknown;
 }
 
 export interface UsdEurRate {
-	// Combien d'EUR pour 1 USD (ex. 0.868) — sens fixé une bonne fois pour
-	// toutes ici, convertUsdEur ci-dessous gère les deux directions.
+	// How many EUR for 1 USD (e.g. 0.868) — direction fixed once and for all
+	// here, convertUsdEur below handles both directions.
 	usdToEur: number;
 	date: string;
 }
 
-// undefined = échec (réseau, statut non-200, réponse mal formée) — à
-// distinguer par l'appelant d'un taux valide ; voir getUsdEurRate (plugin.ts)
-// pour la politique de cache (un échec transitoire n'est jamais mis en
-// cache, même logique que fetchCardKingdomPricelist/fetchManaPoolPricelist).
+// undefined = failure (network, non-200 status, malformed response) — to be
+// told apart by the caller from a valid rate; see getUsdEurRate (plugin.ts)
+// for the cache policy (a transient failure is never cached, same logic as
+// fetchCardKingdomPricelist/fetchManaPoolPricelist).
 export async function fetchUsdEurRate(): Promise<UsdEurRate | undefined> {
 	const res = await requestUrl({
 		url: `${FRANKFURTER_BASE_URL}/latest?base=USD&symbols=EUR`,
@@ -53,15 +54,14 @@ export async function fetchUsdEurRate(): Promise<UsdEurRate | undefined> {
 	return { usdToEur: rate, date };
 }
 
-// Applique un seul taux "aujourd'hui" à un montant, quelle que soit la date
-// réelle du point historique converti — frankfurter.dev expose bien des taux
-// passés (endpoint /v1/{date}), mais aller en chercher un par point de
-// chaque courbe multiplierait les requêtes pour un graphique qui reste un
-// repère visuel, pas un calcul comptable. Le décalage induit reste faible :
-// EUR/USD ne bouge typiquement que de quelques % sur la fenêtre de 30/365
-// jours couverte par ce graphique. Documenté explicitement dans l'infobulle
-// affichée sur la courbe convertie (voir card-detail-fx.ts) plutôt que
-// silencieux.
+// Applies a single "today" rate to an amount, whatever the actual date of
+// the historical point being converted — frankfurter.dev does expose past
+// rates (endpoint /v1/{date}), but fetching one per point of each curve
+// would multiply the requests for a chart that remains a visual reference,
+// not an accounting calculation. The resulting offset stays small: EUR/USD
+// typically moves only a few % over the 30/365-day window this chart covers.
+// Documented explicitly in the tooltip shown on the converted curve (see
+// card-detail-fx.ts) rather than left silent.
 export function convertUsdEur(amount: number, from: "usd" | "eur", to: "usd" | "eur", rate: UsdEurRate): number {
 	if (from === to) return amount;
 	return from === "usd" ? amount * rate.usdToEur : amount / rate.usdToEur;

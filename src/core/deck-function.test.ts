@@ -9,8 +9,8 @@ describe("detectDeckCardFunction", () => {
 	});
 
 	it("classifies a land as Land regardless of what its own text says", () => {
-		// Un fetchland matcherait aussi le motif Ramp (search your library
-		// for ... land card) — Land doit toujours l'emporter pour ce type.
+		// A fetchland would also match the Ramp pattern (search your library for
+		// ... land card) — Land must always win for this type.
 		expect(
 			detectDeckCardFunction({
 				typeLine: "Land",

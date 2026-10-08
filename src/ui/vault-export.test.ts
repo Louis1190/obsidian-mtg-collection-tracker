@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { App } from "obsidian";
 
-// vault-export.ts n'importe que normalizePath depuis "obsidian" — même
-// contrainte que scryfall.test.ts : le paquet npm "obsidian" ne fournit que
-// des types, pas d'implémentation runtime. Reproduit les deux
-// comportements réels utiles ici : collapse des "/" multiples et retrait des
-// "/" de début/fin.
+// vault-export.ts only imports normalizePath from "obsidian" — same
+// constraint as scryfall.test.ts: the npm package "obsidian" only provides
+// types, no runtime implementation. Reproduces the two real behaviors useful
+// here: collapsing of multiple "/" and removal of leading/trailing "/".
 vi.mock("obsidian", () => ({
 	normalizePath: (p: string) => p.replace(/[\\/]+/g, "/").replace(/^\/+|\/+$/g, ""),
 }));
@@ -464,7 +463,7 @@ describe("writeToDeviceFolder", () => {
 	});
 });
 
-// --- Dossier de l'appareil mémorisé (Android) --------------------------------
+// --- Remembered device folder (Android) --------------------------------
 
 describe("last device folder (per device, localStorage)", () => {
 	let store: Record<string, string>;
@@ -499,9 +498,9 @@ describe("last device folder (per device, localStorage)", () => {
 	it("never remembers an empty folder (it would read back as a root write)", () => {
 		rememberDeviceFolder("");
 		rememberDeviceFolder("   ");
-		// Vérifie ce qui est ÉCRIT, pas seulement ce que getLastDeviceFolder()
-		// relit : la lecture refuse déjà une valeur vide, elle masquerait un
-		// garde-fou d'écriture retiré.
+		// Checks what is WRITTEN, not only what getLastDeviceFolder() reads back:
+		// the read already refuses an empty value, it would mask a removed write
+		// safeguard.
 		expect(Object.keys(store)).toEqual([]);
 		expect(getLastDeviceFolder()).toBeNull();
 	});

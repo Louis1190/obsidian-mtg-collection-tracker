@@ -1,11 +1,13 @@
-// Lit, morceau de texte par morceau de texte, une réponse JSON de la forme {"meta":{…},"data":[{…},{…},…]} et remet chaque objet du
-// tableau "data" à `onRow` sous forme de TEXTE JSON, sans jamais garder la réponse entière en mémoire. Écrit pour le tarif Card Kingdom
-// (65 Mo, 152 000 lignes) sur mobile : requestUrl y encode toute la réponse en base64 (86 Mo de plus) et l'application Android plante
-// (OutOfMemoryError) ; lue en flux par fetch(), la mémoire reste bornée par UN morceau (≤ 1 Mo) plus la ligne en cours.
+// Reads, text chunk by text chunk, a JSON response of the form {"meta":{…},"data":[{…},{…},…]} and hands each
+// object of the "data" array to `onRow` as JSON TEXT, without ever keeping the whole response in memory. Written
+// for the Card Kingdom pricelist (65 MB, 152,000 rows) on mobile: requestUrl encodes the whole response as
+// base64 there (86 MB more) and the Android app crashes (OutOfMemoryError); read as a stream by fetch(), memory
+// stays bounded by ONE chunk (≤ 1 MB) plus the current row.
 //
-// Le découpage des morceaux est quelconque : il peut tomber au milieu d'une chaîne, d'un échappement (\" coupé en \ puis "), d'un nombre.
-// Les accolades et guillemets à l'intérieur d'une chaîne ne comptent pas. Tout ce qui précède le tableau (le « meta ») est gardé dans
-// `prefix`, borné : si le tableau n'apparaît pas dans les premiers MAX_PREFIX caractères, le flux est abandonné (`failed`).
+// The chunk boundaries are arbitrary: they can fall in the middle of a string, of an escape (\" cut into \ then
+// "), of a number. Braces and quotes inside a string don't count. Everything that precedes the array (the
+// "meta") is kept in `prefix`, bounded: if the array doesn't appear within the first MAX_PREFIX characters, the
+// stream is abandoned (`failed`).
 const MAX_PREFIX = 100_000;
 const CHAR_QUOTE = 34; // "
 const CHAR_BACKSLASH = 92; // \
@@ -21,9 +23,9 @@ export class JsonArrayRowStream {
 	private inString = false;
 	private escaped = false;
 	private arrayPattern: RegExp;
-	// Le texte qui précède le tableau, par exemple {"meta":{…}, — disponible dès la première ligne remise à onRow.
+	// The text that precedes the array, for example {"meta":{…}, — available from the first row handed to onRow.
 	prefix = "";
-	// Vrai si le tableau n'a jamais été trouvé (réponse qui n'a pas la forme attendue).
+	// True if the array was never found (a response that doesn't have the expected shape).
 	failed = false;
 
 	constructor(key: string, private onRow: (rowJson: string) => void) {
@@ -54,7 +56,7 @@ export class JsonArrayRowStream {
 	}
 
 	private scan(text: string): void {
-		let segmentStart = 0; // début, dans `text`, de la part de la ligne en cours pas encore ajoutée à this.row
+		let segmentStart = 0; // start, within `text`, of the part of the current row not yet appended to this.row
 		for (let i = 0; i < text.length; i++) {
 			const c = text.charCodeAt(i);
 			if (this.state === "between") {

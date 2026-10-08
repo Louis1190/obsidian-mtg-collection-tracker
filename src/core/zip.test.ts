@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { buildZip } from "./zip";
 
-// Petit lecteur ZIP "stored" maison, juste assez pour vérifier le
-// round-trip des fichiers écrits par buildZip — pas besoin d'une vraie
-// dépendance de lecture ZIP pour ça, l'entête local suffit puisque le
-// contenu n'est jamais compressé.
+// Small home-made "stored" ZIP reader, just enough to verify the round
+// trip of files written by buildZip — no need for a real ZIP-reading
+// dependency for that, the local header is enough since the content is
+// never compressed.
 function parseStoredZip(bytes: Uint8Array): { name: string; content: string }[] {
 	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 	const decoder = new TextDecoder();
@@ -39,16 +39,16 @@ describe("buildZip", () => {
 	it("handles non-ASCII file names and content (UTF-8 flag)", () => {
 		const zip = buildZip([{ name: "liste énumérée.txt", content: "3 - Éclair" }]);
 		expect(parseStoredZip(zip)).toEqual([{ name: "liste énumérée.txt", content: "3 - Éclair" }]);
-		// Bit 11 (0x0800) du general purpose flag, dans l'entête local — à
-		// l'offset 6 — doit être activé pour que le nom UTF-8 soit interprété
-		// correctement par un extracteur conforme.
+		// Bit 11 (0x0800) of the general purpose flag, in the local header — at
+		// offset 6 — must be set for the UTF-8 name to be interpreted correctly by
+		// a conforming extractor.
 		const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
 		expect(view.getUint16(6, true) & 0x0800).toBe(0x0800);
 	});
 
 	it("computes a known CRC-32 test vector correctly", () => {
-		// "The quick brown fox jumps over the lazy dog" → 0x414FA339, un
-		// vecteur de test CRC-32 bien connu.
+		// "The quick brown fox jumps over the lazy dog" → 0x414FA339, a well-known
+		// CRC-32 test vector.
 		const zip = buildZip([{ name: "t.txt", content: "The quick brown fox jumps over the lazy dog" }]);
 		const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
 		expect(view.getUint32(14, true)).toBe(0x414fa339);
@@ -79,9 +79,9 @@ describe("buildZip", () => {
 			{ name: "second.txt", content: "bb" },
 		]);
 		const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
-		// Repère le début du répertoire central via l'EOCD, puis vérifie que
-		// chaque entrée y référence un décalage pointant vers un vrai entête
-		// local (signature 0x04034b50) à cette position.
+		// Locates the start of the central directory via the EOCD, then checks
+		// that each entry in it references an offset pointing to a real local
+		// header (signature 0x04034b50) at that position.
 		const eocdOffset = zip.length - 22;
 		let central = view.getUint32(eocdOffset + 16, true);
 		for (let i = 0; i < 2; i++) {

@@ -3,12 +3,12 @@ import { sleep } from "../api/scryfall";
 import type MTGCollectionPlugin from "../plugin";
 
 /* ---------------------------------------------------------------------------- */
-/*  cardbase.dev : historique de prix, prix Cardmarket natifs, tendances du marché (MTGCollectionPlugin).*/
+/* cardbase.dev: price history, native Cardmarket prices, market trends (MTGCollectionPlugin). */
 /* ---------------------------------------------------------------------------- */
 
 export const CARDMARKET_ID_CACHE_FILENAME = "cardmarket-id-cache.json";
-// Voir getCardLegalities/getTcgplayerUrl (scryfall-cache.ts) pour le raisonnement
-// (cache + requête en vol partagée par clé composite scryfallId:finish).
+// See getCardLegalities/getTcgplayerUrl (scryfall-cache.ts) for the reasoning
+// (cache + in-flight request shared by composite key scryfallId:finish).
 
 export async function getCardbasePriceHistory(this: MTGCollectionPlugin, 
 	scryfallId: string,
@@ -26,34 +26,32 @@ export async function getCardbasePriceHistory(this: MTGCollectionPlugin,
 	void promise.finally(() => this.cardbasePriceHistoryInFlight.delete(cacheKey));
 	return promise;
 }
-// Fenêtre de préchargement en arrière-plan (cartes voisines en Cover Flow,
-// voir CardDetailModal/WantlistCardDetailModal/DeckCardDetailModal.
-// schedulePrefetchNeighbors) — plus large avec une clé cardbase (palier
-// 60 req/min) que sans (palier 10 req/min, voir fetchCardbasePriceHistory-
-// WithRetry ci-dessous pour le même raisonnement sur `days`). Volontai-
-// rement conservateur même avec clé : ce préchargement s'ajoute à la
-// requête de la carte réellement affichée, qui doit toujours passer en
-// premier et rester rapide.
+// Background preloading window (neighboring cards in Cover Flow, see
+// CardDetailModal/WantlistCardDetailModal/DeckCardDetailModal.schedulePrefetchNeighbors)
+// — wider with a cardbase key (60 req/min tier) than without (10 req/min
+// tier, see fetchCardbasePriceHistoryWithRetry below for the same
+// reasoning about `days`). Deliberately conservative even with a key: this
+// preloading adds to the request of the card actually displayed, which
+// must always go first and stay fast.
 
 export function cardbasePrefetchWindow(this: MTGCollectionPlugin): number {
 	return this.settings.cardbaseApiKey ? 5 : 2;
 }
-// Précharge en arrière-plan l'historique cardbase des cartes voisines
-// (prev/next) d'une liste de navigation, pour qu'elles soient déjà en
-// cache — ou déjà en vol — au moment où l'utilisateur clique réellement
-// dessus. `items` a la même longueur/le même ordre que la liste de
-// navigation de l'appelant, un `null` marquant les entrées à ignorer
-// (carte Proxy — pas de boîte Price History pour elle, voir renderPrice-
-// HistoryBox). Strictement séquentiel, jamais en parallèle : le rate
-// limit de cardbase (10-60 req/min selon la clé, voir cardbasePrefetch-
-// Window) est partagé avec la carte actuellement affichée, donc une rafale
-// parallèle de préchargement pourrait ralentir CETTE requête-là — celle
-// qui compte le plus. getCardbasePriceHistory dédoublonne déjà cache/vol
-// par lui-même, donc appeler cette méthode pour une carte déjà connue ne
-// coûte rien de plus qu'une lecture de Map ; la pause de 120ms n'est
-// insérée qu'après un véritable aller-retour réseau (pas après un hit de
-// cache), pour ne pas ralentir inutilement un préchargement déjà en
-// grande partie satisfait par le cache de session.
+// Preloads in the background the cardbase history of the neighboring cards
+// (prev/next) of a navigation list, so that they are already in cache — or
+// already in flight — by the time the user actually clicks on them.
+// `items` has the same length/the same order as the caller's navigation
+// list, a `null` marking entries to skip (Proxy card — no Price History
+// box for it, see renderPriceHistoryBox). Strictly sequential, never in
+// parallel: cardbase's rate limit (10-60 req/min depending on the key, see
+// cardbasePrefetchWindow) is shared with the card currently displayed, so
+// a parallel preloading burst could slow down THAT request — the one that
+// matters most. getCardbasePriceHistory already deduplicates
+// cache/in-flight by itself, so calling this method for an already known
+// card costs nothing more than a Map read; the 120ms pause is only
+// inserted after a genuine network round trip (not after a cache hit), so
+// as not to needlessly slow down a preloading already largely satisfied by
+// the session cache.
 
 export async function prefetchCardbaseNeighbors(this: MTGCollectionPlugin, 
 	items: ({ scryfallId: string; finish: CardbaseFinish } | null)[],
@@ -74,19 +72,18 @@ export async function prefetchCardbaseNeighbors(this: MTGCollectionPlugin,
 		if (!alreadyKnown) await sleep(120);
 	}
 }
-// Même logique de retentative que fetchCardLegalities/fetchTcgplayerUrl —
-// une unique retentative après une courte pause avant d'abandonner sans
-// mettre l'échec en cache (pour qu'une future demande dans la même
-// session retente plutôt que de rester bloquée sur "pas de données").
+// Same retry logic as fetchCardLegalities/fetchTcgplayerUrl — a single
+// retry after a short pause before giving up without caching the failure
+// (so that a future request in the same session retries rather than stay
+// stuck on "no data").
 //
-// `days` selon la présence d'une clé : contrairement à ce que dit la doc
-// cardbase ("silently capped to the tier limit"), un test direct contre
-// l'API réelle montre qu'un `days` au-delà du palier renvoie une vraie
-// erreur 400 ("days must be 30 or fewer for your access tier"), pas un
-// plafonnement silencieux — demander 365 sans clé valide faisait donc
-// échouer la requête à coup sûr (deux fois, avec la pause de 300ms entre
-// les deux), d'où une bonne partie de la lenteur perçue tant qu'aucune
-// clé n'est enregistrée.
+// `days` depending on the presence of a key: contrary to what the cardbase
+// docs say ("silently capped to the tier limit"), a direct test against
+// the real API shows that a `days` beyond the tier returns a real 400
+// error ("days must be 30 or fewer for your access tier"), not a silent
+// cap — asking for 365 without a valid key therefore made the request fail
+// for sure (twice, with the 300ms pause between the two), hence a good
+// part of the perceived slowness as long as no key is registered.
 
 export async function fetchCardbasePriceHistoryWithRetry(this: MTGCollectionPlugin, 
 	cacheKey: string,
@@ -104,19 +101,19 @@ export async function fetchCardbasePriceHistoryWithRetry(this: MTGCollectionPlug
 	}
 	return undefined;
 }
-// Palier de profondeur d'historique cardbase (voir fetchCardbasePrice-
-// HistoryWithRetry ci-dessus pour le raisonnement complet) — extrait ici
-// pour être partagé avec fetchCardmarketNativePricesWithRetry ci-dessous,
-// qui demande la même fenêtre de jours pour rester cohérent avec
-// l'historique générique déjà affiché à côté.
+// Depth tier of the cardbase history (see
+// fetchCardbasePriceHistoryWithRetry above for the full reasoning) —
+// extracted here to be shared with fetchCardmarketNativePricesWithRetry
+// below, which asks for the same window of days to stay consistent with
+// the generic history already displayed next to it.
 
 export function cardbaseDaysForTier(this: MTGCollectionPlugin): number {
 	return this.settings.cardbaseApiKey ? 365 : 30;
 }
-// cardmarket_id d'une impression (GET /printings/{scryfall_id}, voir
-// cardbase.ts) — même schéma cache+requête-en-vol que getTcgplayerUrl
-// (scryfall-cache.ts), `null` mis en cache pour une absence confirmée (impression
-// non mappée côté Cardmarket par cardbase), pas pour un échec réseau.
+// cardmarket_id of a printing (GET /printings/{scryfall_id}, see cardbase.ts) —
+// same cache+in-flight-request scheme as getTcgplayerUrl (scryfall-cache.ts),
+// `null` cached for a confirmed absence (printing not mapped on the Cardmarket
+// side by cardbase), not for a network failure.
 
 export async function getCardbaseCardmarketId(this: MTGCollectionPlugin, scryfallId: string): Promise<number | null> {
 	const cached = this.cardmarketIdCache.get(scryfallId);
@@ -130,12 +127,12 @@ export async function getCardbaseCardmarketId(this: MTGCollectionPlugin, scryfal
 	void promise.finally(() => this.cardmarketIdInFlight.delete(scryfallId));
 	return promise;
 }
-// Même logique de retentative que fetchCardLegalities/fetchTcgplayerUrl —
-// une unique retentative après une courte pause. undefined (échec réseau/
-// HTTP transitoire) et null (404, ou 200 sans cardmarket_id) sont tous
-// deux normalisés en `null` ici : côté appelant (getCardbasePriceHistory-
-// WithNativeCardmarket ci-dessous), les deux se traduisent de toute façon
-// par le même repli gracieux (garder l'ancienne valeur "retail").
+// Same retry logic as fetchCardLegalities/fetchTcgplayerUrl — a single
+// retry after a short pause. undefined (transient network/HTTP failure)
+// and null (404, or 200 without cardmarket_id) are both normalized to
+// `null` here: on the caller side
+// (getCardbasePriceHistoryWithNativeCardmarket below), both translate
+// anyway into the same graceful fallback (keep the old "retail" value).
 
 export async function fetchCardmarketIdWithRetry(this: MTGCollectionPlugin, scryfallId: string): Promise<number | null> {
 	for (let attempt = 0; attempt < 2; attempt++) {
@@ -149,11 +146,11 @@ export async function fetchCardmarketIdWithRetry(this: MTGCollectionPlugin, scry
 	}
 	return null;
 }
-// Prix natif Cardmarket (GET /cardmarket/{cardmarket_id}/prices, voir
-// cardbase.ts) — même schéma cache+requête-en-vol que getCardbasePrice-
-// History plus haut, clé cardmarketId (pas scryfallId : plusieurs
-// impressions/art variants Scryfall peuvent partager le même produit
-// Cardmarket, autant partager le cache entre elles).
+// Cardmarket native price (GET /cardmarket/{cardmarket_id}/prices, see
+// cardbase.ts) — same cache+in-flight-request scheme as
+// getCardbasePriceHistory above, keyed by cardmarketId (not scryfallId:
+// several Scryfall printings/art variants can share the same Cardmarket
+// product, may as well share the cache between them).
 
 export async function getCardmarketNativePrices(this: MTGCollectionPlugin, cardmarketId: number): Promise<CardmarketNativePrices | undefined> {
 	const cached = this.cardmarketNativePricesCache.get(cardmarketId);
@@ -181,18 +178,17 @@ export async function fetchCardmarketNativePricesWithRetry(this: MTGCollectionPl
 	}
 	return undefined;
 }
-// Point d'entrée utilisé par renderStorePricesBox/renderPriceHistoryBox
-// (les 3 modales) à la place de getCardbasePriceHistory seule — combine
-// l'historique générique (Card Kingdom/TCGplayer/Cardsphere, inchangé)
-// avec le vrai prix "trend" natif de Cardmarket quand il est disponible
-// (voir withNativeCardmarketTrend, cardbase.ts, pour le repli gracieux).
-// Volontairement PAS utilisé par prefetchCardbaseNeighbors (voir plus
-// haut) : ce préchargement continue de n'appeler que getCardbasePrice-
-// History pour rester conservateur sur le budget de requêtes des cartes
-// voisines — seule la carte réellement affichée obtient le prix Cardmarket
-// natif immédiatement, une navigation vers une voisine peut donc afficher
-// brièvement l'ancienne colonne le temps que les deux requêtes en plus
-// résolvent, plutôt que de tripler le coût réseau de chaque préchargement.
+// Entry point used by renderStorePricesBox/renderPriceHistoryBox (the 3
+// modals) instead of getCardbasePriceHistory alone — combines the generic
+// history (Card Kingdom/TCGplayer/Cardsphere, unchanged) with Cardmarket's
+// real native "trend" price when available (see withNativeCardmarketTrend,
+// cardbase.ts, for the graceful fallback). Deliberately NOT used by
+// prefetchCardbaseNeighbors (see above): that preloading keeps calling
+// only getCardbasePriceHistory to stay conservative on the request budget
+// of neighboring cards — only the card actually displayed gets the native
+// Cardmarket price immediately, a navigation to a neighbor may therefore
+// briefly display the old column while the two extra requests resolve,
+// rather than tripling the network cost of each preload.
 
 export async function getCardbasePriceHistoryWithNativeCardmarket(this: MTGCollectionPlugin, 
 	scryfallId: string,
@@ -204,26 +200,25 @@ export async function getCardbasePriceHistoryWithNativeCardmarket(this: MTGColle
 	if (!cardmarketId) return history;
 	const native = await this.getCardmarketNativePrices(cardmarketId);
 	const merged = withNativeCardmarketTrend(history, pickCardmarketTrendSeries(native, finish));
-	// "low" (listing Cardmarket la moins chère actuellement) — déjà
-	// présent dans `native` (même réponse que "trend" ci-dessus, aucun
-	// aller-retour réseau en plus), juste jamais lu jusqu'ici. Voir
-	// CardbasePriceHistory.cardmarketLow (cardbase.ts) pour où c'est
-	// consommé (infobulle sur la colonne Cardmarket de Store Prices).
+	// "low" (cheapest Cardmarket listing currently) — already present in
+	// `native` (same response as "trend" above, no extra network round trip),
+	// just never read until now. See CardbasePriceHistory.cardmarketLow
+	// (cardbase.ts) for where it is consumed (tooltip on the Cardmarket column
+	// of Store Prices).
 	merged.cardmarketLow = pickCardmarketLatestPrice(native, finish, "low");
 	return merged;
 }
-// "Market Trends" (bloc du dashboard Home, home-render.ts — anciennement
-// sa propre modale) — top gainers/losers du marché entier, pas de la
-// collection de l'utilisateur (voir cardbase.ts; Home filtre côté client
-// aux cartes possédées pour rendre certaines lignes cliquables, mais cette
-// requête elle-même reste toujours non filtrée). `limit` fixe au MAXIMUM de
-// l'API (100 par côté, toujours une seule requête — voir cardbase.ts) depuis
-// le 2026-09-23 : avant, 20 suffisaient pour une liste parcourue à l'œil,
-// mais le haut de chaque liste est dominé par des prix aberrants (voir
-// core/market-movers.ts) que Home écarte côté client — avec 20 lignes, ce
-// filtre pouvait ne laisser presque rien. On met en cache les lignes BRUTES,
-// pas le résultat filtré : le filtre est pur et instantané, et un futur
-// réglage de seuil ne doit pas nécessiter de nouvelle requête.
+// "Market Trends" (Home dashboard block, home-render.ts — formerly its own
+// modal) — top gainers/losers of the whole market, not of the user's
+// collection (see cardbase.ts; Home filters client-side to owned cards to
+// make some rows clickable, but this request itself always stays
+// unfiltered). `limit` fixed at the API's MAXIMUM (100 per side, still a
+// single request — see cardbase.ts) since 2026-09-23: before, 20 was enough
+// for a list scanned by eye, but the top of each list is dominated by
+// aberrant prices (see core/market-movers.ts) that Home discards client-side
+// — with 20 rows, this filter could leave almost nothing. We cache the RAW
+// rows, not the filtered result: the filter is pure and instantaneous, and a
+// future threshold setting must not require a new request.
 const MOVERS_FETCH_LIMIT = 100;
 
 export async function getCardbaseMovers(this: MTGCollectionPlugin,

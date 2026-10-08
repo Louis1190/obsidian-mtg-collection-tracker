@@ -10,7 +10,7 @@ function inject(svg: string): HTMLElement {
 	return el;
 }
 
-// Tous les éléments (et leurs attributs) du résultat, pour affirmer ce qui est resté.
+// All the elements (and their attributes) of the result, to assert what remained.
 function describeTree(root: Element): string[] {
 	const out: string[] = [];
 	const walk = (e: Element) => {
@@ -91,8 +91,8 @@ describe("setSvgMarkup: what it refuses", () => {
 		const el = inject(
 			'<div id="x"><img src=x onerror=alert(1)></div><svg></p><style><a id="</style><img src=1 onerror=alert(2)>"></style><path d="M0 0"/></svg><img src=y onerror=alert(3)>'
 		);
-		// Où l'analyseur HTML range le reste de la charge importe peu : il ne doit rester que des éléments SVG autorisés, et
-		// aucun des nœuds dangereux (ni <style> ni <img>) qu'elle cherchait à faire apparaître.
+		// Where the HTML parser puts the rest of the payload matters little: only allowed SVG elements must remain, and
+		// none of the dangerous nodes (neither <style> nor <img>) that it was trying to make appear.
 		const tree = describeTree(el);
 		expect(tree.length).toBeGreaterThan(0);
 		expect(tree.every((line) => line.startsWith("svg:"))).toBe(true);

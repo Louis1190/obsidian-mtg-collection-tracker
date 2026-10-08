@@ -1,50 +1,48 @@
 /* -------------------------------------------------------------------------- */
-/*  Fusion de data.json entre appareils (2026-10-03) — logique pure, aucune
-    dépendance à Obsidian, couverte par Vitest.
+/* Merge of data.json between devices (2026-10-03) — pure logic, no dependency on
+    Obsidian, covered by Vitest.
 
-    Contexte : data.json est synchronisé par Syncthing entre le Mac, l'iPad et
-    le téléphone. Avant ce module, chaque appareil réécrivait TOUT son état en
-    mémoire à chaque modification : le dernier à écrire gagnait, et les
-    modifications faites ailleurs entre-temps disparaissaient en silence (ou
-    finissaient dans un data.sync-conflict-*.json que personne ne relisait).
+    Context: data.json is synchronized by Syncthing between the Mac, the iPad and
+    the phone. Before this module, each device rewrote ALL of its in-memory state
+    on every change: the last one to write won, and changes made elsewhere in the
+    meantime silently disappeared (or ended up in a data.sync-conflict-*.json that
+    nobody re-read).
 
-    Principe, en deux volets qui ne se mélangent jamais :
+    Principle, in two parts that never mix:
 
-    1. PRÉSENCE d'une entité (carte, liste, deck, carte de deck…) : jamais
-       déduite d'une absence. Une entité absente d'un côté est CONSERVÉE, sauf
-       si une pierre tombale (`syncTombstones`) dit qu'elle a été supprimée
-       après sa dernière modification. Une base "dernier état vu" ne suffit
-       pas : un appareil qui saute une version intermédiaire (l'iPad, dont
-       l'appli est suspendue par iOS) ne peut pas distinguer "supprimée
-       ailleurs" de "jamais vue", et ressusciterait ou supprimerait à tort.
-       Le pire cas d'une pierre tombale manquante est donc une carte qui
-       revient, jamais une carte perdue.
+    1. PRESENCE of an entity (card, list, deck, deck card…): never deduced from an
+       absence. An entity missing on one side is KEPT, unless a tombstone
+       (`syncTombstones`) says it was deleted after its last modification. A "last
+       state seen" base is not enough: a device that skips an intermediate version
+       (the iPad, whose app is suspended by iOS) cannot tell "deleted elsewhere"
+       from "never seen", and would wrongly resurrect or delete. The worst case of
+       a missing tombstone is therefore a card that comes back, never a lost card.
 
-    2. CONTENU d'une entité présente des deux côtés : fusion champ par champ à
-       trois voies (base = dernière version DISTANTE lue, jamais nos propres
-       écritures — voir settings-sync.ts). Un champ modifié d'un seul côté
-       prend ce côté ; modifié des deux côtés, la `dateModified` la plus
-       récente gagne, et à égalité un ordre canonique des valeurs : le
-       résultat ne doit jamais dépendre de quel appareil fusionne (sinon deux
-       appareils se renverraient indéfiniment chacun leur version).
+    2. CONTENT of an entity present on both sides: three-way field-by-field merge
+       (base = last REMOTE version read, never our own writes — see
+       settings-sync.ts). A field modified on one side only takes that side;
+       modified on both sides, the most recent `dateModified` wins, and on a tie a
+       canonical order of the values: the result must never depend on which device
+       merges (otherwise two devices would endlessly send each other their own
+       version).
 
-    3. PRIX et RÉGLAGES — deux cas où une "dernière version vue" ne suffit pas :
-       les prix en cache (priceUsd…) sont rafraîchis indépendamment par chaque
-       appareil sans toucher à aucune date : ils sont IGNORÉS pour décider si
-       deux versions d'une carte diffèrent (sinon chaque rafraîchissement
-       quotidien ferait réécrire 6 Mo sur tous les appareils, sans fin) ; et
-       les réglages scalaires portent chacun un horodatage (`syncStamps`), le
-       plus récent gagne — une valeur remise à son état d'origine ailleurs est
-       indiscernable d'une valeur non touchée si on ne compare qu'à une base.
+    3. PRICES and SETTINGS — two cases where a "last version seen" is not enough:
+       the cached prices (priceUsd…) are refreshed independently by each device
+       without touching any date: they are IGNORED when deciding whether two
+       versions of a card differ (otherwise every daily refresh would make all
+       devices rewrite 6 MB, endlessly); and the scalar settings each carry a
+       timestamp (`syncStamps`), the most recent wins — a value put back to its
+       original state elsewhere is indistinguishable from an untouched value if
+       it's only compared to a base.
 
-    Les réglages propres à chaque appareil (core/device-settings.ts : tri, mode de
-    vue, menu replié…) sont hors de tout ça : jamais écrits, comparés, fusionnés
-    ni horodatés ici.
+    The settings specific to each device (core/device-settings.ts: sort, view
+    mode, collapsed menu…) are outside all of that: never written, compared,
+    merged nor timestamped here.
 
-    Cette fonction ne touche à rien : elle renvoie un nouvel état fusionné.
-    `applySettingsInPlace` le reporte ensuite SUR les objets existants, pour
-    que les fenêtres déjà ouvertes (qui gardent une référence à leur carte)
-    continuent de pointer vers des objets vivants.  */
+    This function touches nothing: it returns a new merged state.
+    `applySettingsInPlace` then carries it ONTO the existing objects, so that
+    already-open windows (which keep a reference to their card) keep pointing at
+    live objects. */
 /* -------------------------------------------------------------------------- */
 
 import { DEVICE_LOCAL_KEYS } from "./device-settings";
@@ -58,9 +56,9 @@ export interface MergeReport {
 	added: number;
 	removed: number;
 	updated: number;
-	/** L'état local fusionné diffère de l'état local d'avant. */
+	/** The merged local state differs from the previous local state. */
 	changedLocal: boolean;
-	/** L'état fusionné contient quelque chose que la version distante n'a pas : il faut l'écrire. */
+	/** The merged state contains something the remote version doesn't have: it has to be written. */
 	needsWrite: boolean;
 }
 
@@ -69,15 +67,15 @@ export interface MergeResult {
 	report: MergeReport;
 }
 
-// Pierres tombales gardées 90 jours : assez pour qu'un appareil resté éteint
-// plusieurs semaines apprenne encore les suppressions, sans que la liste ne
-// grossisse indéfiniment (une pierre ~35 octets ; vider 3 000 cartes = ~100 Ko).
+// Tombstones kept for 90 days: enough for a device left off for several weeks to
+// still learn about the deletions, without the list growing indefinitely (a
+// tombstone ~35 bytes; emptying 3,000 cards = ~100 KB).
 export const TOMBSTONE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
-/* ---------------------------------- égalité -------------------------------- */
+/* ---------------------------------- equality -------------------------------- */
 
-// Égalité profonde façon JSON : une propriété `undefined` équivaut à une
-// propriété absente (JSON.stringify l'omet, donc data.json aussi).
+// Deep JSON-style equality: an `undefined` property is equivalent to a
+// missing property (JSON.stringify omits it, so data.json too).
 export function deepEqual(a: unknown, b: unknown): boolean {
 	if (a === b) return true;
 	if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
@@ -101,9 +99,9 @@ export function deepEqual(a: unknown, b: unknown): boolean {
 	return count === 0;
 }
 
-// Sérialisation à clés triées : sert UNIQUEMENT à départager deux valeurs en
-// conflit de façon identique sur tous les appareils (l'ordre d'insertion des
-// clés, lui, dépend de l'appareil qui a construit l'objet).
+// Serialization with sorted keys: serves ONLY to break a tie between two
+// conflicting values identically on all devices (the key insertion order,
+// for its part, depends on the device that built the object).
 function canonical(v: unknown): string {
 	if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
 	if (v !== null && typeof v === "object") {
@@ -117,47 +115,47 @@ function canonical(v: unknown): string {
 	return JSON.stringify(v) ?? "null";
 }
 
-// Égalité de deux entités horodatées, prix mis à part.
+// Equality of two timestamped entities, prices aside.
 function sameContent(a: Obj, b: Obj): boolean {
 	for (const k of unionKeys(a, b)) if (!VOLATILE_FIELDS.has(k) && !deepEqual(a[k], b[k])) return false;
 	return true;
 }
 
-// true = la valeur distante l'emporte. Symétrique : l'appareil A (local = a,
-// distant = b) et l'appareil B (local = b, distant = a) choisissent le même gagnant.
+// true = the remote value wins. Symmetric: device A (local = a, remote = b) and
+// device B (local = b, remote = a) pick the same winner.
 function remoteWins(local: unknown, remote: unknown, localTime: number, remoteTime: number): boolean {
 	if (remoteTime !== localTime) return remoteTime > localTime;
 	return canonical(remote) > canonical(local);
 }
 
-/* ------------------------------ entités indexées --------------------------- */
+/* ------------------------------ indexed entities --------------------------- */
 
 interface Spec {
 	keyOf: (e: Obj) => string;
-	/** Sous-tableaux d'entités (ex. les cartes d'un deck) et leur fonction de clé. */
+	/** Sub-arrays of entities (e.g. a deck's cards) and their key function. */
 	nested?: Record<string, Spec>;
 	/**
-	 * Entité horodatée (`dateModified`) : en cas de conflit, la version la plus
-	 * récente l'emporte EN ENTIER. Pas de fusion champ par champ pour elle : avec
-	 * une seule version de départ, un champ remis à sa valeur d'origine par
-	 * l'autre appareil est indiscernable d'un champ qu'il n'a pas touché, et les
-	 * deux appareils garderaient chacun leur valeur en se la renvoyant sans fin.
+	 * Timestamped entity (`dateModified`): on conflict, the most recent version
+	 * wins AS A WHOLE. No field-by-field merge for it: with a single starting
+	 * version, a field put back to its original value by the other device is
+	 * indistinguishable from a field it didn't touch, and the two devices would
+	 * each keep their own value, sending it to each other endlessly.
 	 */
 	lww?: boolean;
 	/**
-	 * Entité sans date de modification propre à l'origine (listes, decks…) : le plugin
-	 * en maintient une (`recordEntityStamps`) pour que le conflit se tranche à la date
-	 * et non sur une base ambiguë.
+	 * Entity with no modification date of its own originally (lists, decks…): the
+	 * plugin maintains one (`recordEntityStamps`) so that the conflict is settled by
+	 * date and not on an ambiguous base.
 	 */
 	stamped?: boolean;
 }
 
 const byId = (e: Obj): string => (typeof e.id === "string" ? e.id : "");
 
-// DeckCard n'a pas d'id propre (voir data-model.ts) : même identité que celle
-// que les fusions/imports de deck utilisent déjà (scryfallId + board + rôle
-// Commander) — les choisir autrement ferait fusionner deux lignes que le
-// plugin traite comme distinctes, ou l'inverse.
+// DeckCard has no id of its own (see data-model.ts): the same identity that
+// deck merges/imports already use (scryfallId + board + Commander role) —
+// choosing them otherwise would merge two rows that the plugin treats as
+// distinct, or the reverse.
 const deckCardKey = (e: Obj): string =>
 	`${String(e.scryfallId ?? "")}|${typeof e.category === "string" ? e.category : "mainboard"}|${
 		e.deckFunctionOverride === "Commander" ? "C" : ""
@@ -169,15 +167,15 @@ const COLLECTIONS: Record<string, Spec> = {
 	wantlist: { keyOf: byId, lww: true },
 	wantlists: { keyOf: byId, lww: true, stamped: true },
 	savedSearchFilters: { keyOf: byId, lww: true, stamped: true },
-	// Les champs du deck se tranchent à la date, ses cartes se fusionnent une à une.
+	// The deck's fields are settled by date, its cards are merged one by one.
 	decks: { keyOf: byId, stamped: true, nested: { cards: { keyOf: deckCardKey, lww: true } } },
 };
 
 const TOMBSTONES_KEY = "syncTombstones";
 const STAMPS_KEY = "syncStamps";
 
-// Données dérivées, rafraîchies séparément par chaque appareil (refreshAllPrices) :
-// jamais une raison de fusionner, d'écrire ou de trancher un conflit.
+// Derived data, refreshed separately by each device (refreshAllPrices): never a
+// reason to merge, write or settle a conflict.
 export const VOLATILE_FIELDS: ReadonlySet<string> = new Set([
 	"priceUsd",
 	"priceUsdFoil",
@@ -187,7 +185,7 @@ export const VOLATILE_FIELDS: ReadonlySet<string> = new Set([
 	"priceEurEtched",
 ]);
 
-// Horodatages qui ne doivent jamais reculer : le plus récent gagne.
+// Timestamps that must never go backwards: the most recent wins.
 const MAX_WINS = new Set(["lastPriceRefresh", "lastAutoBackup"]);
 
 interface KeyedArray {
@@ -195,8 +193,8 @@ interface KeyedArray {
 	byKey: Map<string, Obj>;
 }
 
-// Deux entités qui partageraient la même clé restent distinctes (suffixe #2,
-// #3… dans l'ordre d'apparition) au lieu de s'écraser mutuellement.
+// Two entities that would share the same key stay distinct (suffix #2, #3…
+// in order of appearance) instead of overwriting each other.
 function indexArray(items: unknown, keyOf: (e: Obj) => string): KeyedArray {
 	const keys: string[] = [];
 	const byKey = new Map<string, Obj>();
@@ -257,9 +255,9 @@ function mergeTombstones(a: Tombstones, b: Tombstones): Tombstones {
 	return out;
 }
 
-// Clés présentes par collection, y compris les cartes de deck (clé composite
-// `deck|carte`). Sert à repérer, à chaque écriture, ce qui a disparu depuis la
-// dernière fois : c'est ce qui devient une pierre tombale.
+// Keys present per collection, including deck cards (composite key
+// `deck|card`). Serves to spot, at each write, what has disappeared since last
+// time: this is what becomes a tombstone.
 export function snapshotKeys(settings: Obj): KeySnapshot {
 	const snap: KeySnapshot = {};
 	for (const [coll, spec] of Object.entries(COLLECTIONS)) {
@@ -280,7 +278,7 @@ export function snapshotKeys(settings: Obj): KeySnapshot {
 	return snap;
 }
 
-// Retrouve l'objet d'une clé de snapshot (carte de deck comprise).
+// Finds the object for a snapshot key (deck card included).
 function findEntity(settings: Obj, coll: string, key: string): Obj | undefined {
 	const dot = coll.indexOf(".");
 	if (dot < 0) return indexArray(settings[coll], COLLECTIONS[coll].keyOf).byKey.get(key);
@@ -295,11 +293,11 @@ function findEntity(settings: Obj, coll: string, key: string): Obj | undefined {
 	return indexArray(parent[field], nested.keyOf).byKey.get(key.slice(parentKey.length + 1));
 }
 
-// Compare l'état courant à `prev` (clés connues à la dernière écriture/lecture)
-// et inscrit une pierre tombale pour tout ce qui a disparu ; retire celles des
-// entités qui viennent de réapparaître (restauration d'une sauvegarde…) ; purge
-// les plus anciennes que TOMBSTONE_TTL_MS. Renvoie le nombre de suppressions
-// nouvellement inscrites. Mute `settings.syncTombstones`.
+// Compares the current state to `prev` (keys known at the last write/read) and
+// records a tombstone for everything that has disappeared; removes those of
+// entities that have just reappeared (restoring a backup…); purges those older
+// than TOMBSTONE_TTL_MS. Returns the number of newly recorded deletions.
+// Mutates `settings.syncTombstones`.
 export function recordTombstones(settings: Obj, prev: KeySnapshot, now: number): number {
 	const cur = snapshotKeys(settings);
 	let tomb = settings[TOMBSTONES_KEY] as Tombstones | undefined;
@@ -312,7 +310,7 @@ export function recordTombstones(settings: Obj, prev: KeySnapshot, now: number):
 		const dot = coll.indexOf(".");
 		for (const key of prev[coll]) {
 			if (curSet.has(key)) continue;
-			// Carte de deck : si le deck lui-même a disparu, sa propre pierre tombale suffit.
+			// Deck card: if the deck itself has disappeared, its own tombstone is enough.
 			if (dot >= 0 && !cur[coll.slice(0, dot)]?.has(key.slice(0, key.indexOf("|")))) continue;
 			if (!tomb) tomb = settings[TOMBSTONES_KEY] = {} as Tombstones;
 			(tomb[coll] ??= {})[key] = now;
@@ -328,9 +326,9 @@ export function recordTombstones(settings: Obj, prev: KeySnapshot, now: number):
 		for (const key of Object.keys(entries)) {
 			const reappeared = !!curSet?.has(key) && !prevSet?.has(key);
 			if (reappeared) {
-				// Recréée après avoir été supprimée (restauration d'une sauvegarde, annulation…) :
-				// elle doit battre la pierre tombale partout, y compris sur les appareils qui la
-				// gardent — sa date de modification passe donc à maintenant.
+				// Re-created after having been deleted (restoring a backup, undo…): it must beat
+				// the tombstone everywhere, including on the devices that keep it — its
+				// modification date therefore moves to now.
 				const entity = findEntity(settings, coll, key);
 				if (entity && entityTime(entity) <= entries[key]) entity.dateModified = now;
 				delete entries[key];
@@ -342,13 +340,13 @@ export function recordTombstones(settings: Obj, prev: KeySnapshot, now: number):
 	return added;
 }
 
-/* ------------------------- égalité indépendante de l'ordre ------------------ */
+/* ------------------------- order-independent equality ------------------ */
 
-// Deux appareils fusionnent chacun avec SON ordre (le leur d'abord, puis ce qui
-// vient de l'autre) : le même contenu peut donc exister dans deux ordres. Si on
-// les jugeait différents, chaque appareil réécrirait le fichier à la réception de
-// celui de l'autre, indéfiniment. Les collections d'entités se comparent donc
-// par clé, pas par position.
+// Two devices each merge with THEIR order (theirs first, then what comes from the
+// other): the same content can therefore exist in two orders. If they were judged
+// different, each device would rewrite the file on receiving the other's,
+// indefinitely. Collections of entities are therefore compared by key, not by
+// position.
 function entityEqual(spec: Spec, a: Obj, b: Obj): boolean {
 	for (const k of unionKeys(a, b)) {
 		if (spec.lww && VOLATILE_FIELDS.has(k)) continue;
@@ -371,7 +369,7 @@ function keyedArraysEqual(spec: Spec, a: unknown[], b: unknown[]): boolean {
 	return true;
 }
 
-// Égalité de deux états de réglages, l'ordre des entités mis à part.
+// Equality of two settings states, entity order aside.
 export function settingsEqual(a: Obj, b: Obj): boolean {
 	for (const k of unionKeys(a, b)) {
 		if (DEVICE_LOCAL_KEYS.has(k)) continue;
@@ -383,12 +381,12 @@ export function settingsEqual(a: Obj, b: Obj): boolean {
 	return true;
 }
 
-/* ------------------------- horodatage des réglages scalaires ---------------- */
+/* ------------------------- timestamping of scalar settings ---------------- */
 
 const META_KEYS = new Set([TOMBSTONES_KEY, STAMPS_KEY]);
 
-// Valeur canonique de chaque réglage scalaire (tout ce qui n'est ni une
-// collection d'entités ni une méta-donnée de synchronisation).
+// Canonical value of each scalar setting (everything that is neither a
+// collection of entities nor sync metadata).
 export function snapshotScalars(settings: Obj): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const k of Object.keys(settings)) {
@@ -398,8 +396,8 @@ export function snapshotScalars(settings: Obj): Record<string, string> {
 	return out;
 }
 
-// Date la dernière modification locale de chaque réglage qui a changé depuis
-// `prev` (état connu à la dernière écriture/lecture/fusion). Mute `syncStamps`.
+// Dates the last local modification of each setting that has changed since
+// `prev` (state known at the last write/read/merge). Mutates `syncStamps`.
 export function recordScalarStamps(settings: Obj, prev: Record<string, string>, now: number): number {
 	const cur = snapshotScalars(settings);
 	let stamps = settings[STAMPS_KEY] as Record<string, number> | undefined;
@@ -419,12 +417,12 @@ function stampsOf(settings: Obj): Record<string, number> {
 	return s !== null && typeof s === "object" && !Array.isArray(s) ? (s as Record<string, number>) : {};
 }
 
-/* ----------------------- horodatage des listes et des decks ------------------ */
+/* ----------------------- timestamping of lists and decks ------------------ */
 
 export type EntityPrints = Record<string, Record<string, string>>;
 
-// Empreinte du contenu PROPRE de chaque liste/wantlist/filtre/deck (hors cartes
-// d'un deck et hors dateModified lui-même).
+// Fingerprint of the OWN content of each list/wantlist/filter/deck (excluding a
+// deck's cards and dateModified itself).
 export function snapshotEntityPrints(settings: Obj): EntityPrints {
 	const out: EntityPrints = {};
 	for (const [coll, spec] of Object.entries(COLLECTIONS)) {
@@ -444,8 +442,8 @@ export function snapshotEntityPrints(settings: Obj): EntityPrints {
 	return out;
 }
 
-// Passe `dateModified` à `now` pour toute liste/deck… dont le contenu a changé
-// (ou qui vient d'être créée) depuis `prev`. Mute les entités.
+// Sets `dateModified` to `now` for any list/deck… whose content has changed
+// (or that has just been created) since `prev`. Mutates the entities.
 export function recordEntityStamps(settings: Obj, prev: EntityPrints, now: number): number {
 	const cur = snapshotEntityPrints(settings);
 	let changed = 0;
@@ -467,23 +465,24 @@ interface Ctx {
 	stats: { added: number; removed: number; updated: number };
 }
 
-// Entité horodatée : voir Spec.lww. Les raccourcis "un seul côté a changé" ne
-// valent que pour une version distante qui n'est pas plus RÉCENTE que la locale —
-// sinon elle a été retouchée (peut-être remise à sa valeur d'origine) après nous.
+// Timestamped entity: see Spec.lww. The "only one side changed" shortcuts only
+// apply for a remote version that is not more RECENT than the local one —
+// otherwise it has been touched (perhaps put back to its original value) after
+// us.
 function resolveByTime(b: Obj | undefined, l: Obj, r: Obj): Obj {
 	const lt = modifiedTime(l);
 	const rt = modifiedTime(r);
 	if (b) {
-		// "Un seul côté a changé" : valable seulement si l'autre n'est pas plus ANCIEN que
-		// nous. Un fichier livré en retard (version plus vieille que celle déjà vue) ne doit
-		// pas écraser une version locale pourtant "inchangée" depuis notre dernière lecture.
+		// "Only one side changed": valid only if the other is not OLDER than us. A
+		// late-delivered file (an older version than the one already seen) must not
+		// overwrite a local version that is nonetheless "unchanged" since our last read.
 		if (sameContent(l, b) && !(lt > rt)) return r;
 		if (sameContent(r, b) && !(rt > lt)) return l;
 	}
-	// Même date, contenus différents : si l'un contient tout l'autre plus des champs
-	// en plus (rattrapage d'une version plus récente du plugin, qui ne touche pas
-	// à dateModified), c'est le plus complet — jamais l'inverse, sinon le champ
-	// ajouté disparaîtrait puis serait rajouté en boucle.
+	// Same date, different contents: if one contains all of the other plus extra
+	// fields (catch-up by a more recent plugin version, which doesn't touch
+	// dateModified), it's the most complete one — never the reverse, otherwise the
+	// added field would disappear then be added again in a loop.
 	if (lt === rt) {
 		if (isSuperset(r, l)) return r;
 		if (isSuperset(l, r)) return l;
@@ -514,13 +513,13 @@ function mergeEntity(ctx: Ctx, spec: Spec, coll: string, fullKey: string, b: Obj
 		else if (nestedSpec && Array.isArray(lv) && Array.isArray(rv)) {
 			v = mergeEntityArray(ctx, `${coll}.${k}`, `${fullKey}|`, nestedSpec, Array.isArray(bv) ? bv : undefined, lv, rv);
 		} else if (b && deepEqual(lv, bv) && !(lt > rt)) v = rv;
-		// Même garde que resolveByTime : "l'autre côté n'a pas changé" ne vaut que s'il
-		// n'est pas plus récent que nous (sinon il a pu remettre la valeur d'origine).
+		// Same guard as resolveByTime: "the other side didn't change" only holds if it
+		// is not more recent than us (otherwise it may have put back the original
+		// value).
 		else if (b && deepEqual(rv, bv) && !(rt > lt)) v = lv;
-		// Conflit réel (ou aucune base) : un champ présent d'un seul côté est
-		// conservé — sans base on ne peut pas distinguer "supprimé" de "ajouté
-		// par une version plus récente du plugin", et perdre une valeur est
-		// pire que d'en garder une en trop.
+		// Real conflict (or no base): a field present on one side only is kept —
+		// without a base we cannot tell "deleted" from "added by a more recent
+		// plugin version", and losing a value is worse than keeping one too many.
 		else if (lv === undefined) v = rv;
 		else if (rv === undefined) v = lv;
 		else v = remoteWins(lv, rv, lt, rt) ? rv : lv;
@@ -550,7 +549,7 @@ function mergeEntityArray(
 			m = mergeEntity(ctx, spec, coll, prefix + key, B?.byKey.get(key), l, r);
 			if (m !== l && !deepEqual(m, l)) ctx.stats.updated++;
 		} else m = (l ?? r)!;
-		// Supprimée après sa dernière modification (sur l'un ou l'autre appareil) ?
+		// Deleted after its last modification (on either device)?
 		const ts = tombColl?.[prefix + key];
 		if (ts !== undefined && ts >= entityTime(m)) {
 			if (l) ctx.stats.removed++;
@@ -560,15 +559,15 @@ function mergeEntityArray(
 		out.push(m);
 	};
 
-	// Ordre local d'abord, puis les entités arrivées de l'autre appareil.
+	// Local order first, then the entities that arrived from the other device.
 	for (const k of L.keys) consider(k, L.byKey.get(k), R.byKey.get(k));
 	for (const k of R.keys) if (!L.byKey.has(k)) consider(k, undefined, R.byKey.get(k));
 	return out;
 }
 
-// Copie superficielle sans certaines clés — et sans leurs horodatages (`syncStamps`). Sert à une source
-// qui ne transporte pas tout (GitHub ne reçoit jamais la clé d'API) : ce qu'elle ne porte pas ne doit
-// être ni comparé (sinon "il y a toujours quelque chose à lui renvoyer", sans fin) ni fusionné.
+// Shallow copy without certain keys — and without their timestamps (`syncStamps`). Serves a source that
+// doesn't carry everything (GitHub never receives the API key): what it doesn't carry must be neither
+// compared (otherwise "there is always something to send back to it", endlessly) nor merged.
 export function omitKeys(settings: Obj, ignore: ReadonlySet<string>): Obj {
 	const out: Obj = {};
 	for (const k of Object.keys(settings)) if (!ignore.has(k)) out[k] = settings[k];
@@ -611,20 +610,20 @@ export function mergeSettings(
 			continue;
 		}
 		let v: unknown;
-		// Un champ absent côté distant (appareil sur une version plus ancienne)
-		// ne supprime jamais rien ici.
+		// A field missing on the remote side (a device on an older version) never
+		// deletes anything here.
 		if (rv === undefined) v = lv;
 		else if (lv === undefined) v = rv;
 		else if (deepEqual(lv, rv)) v = lv;
 		else if (MAX_WINS.has(k) && typeof lv === "number" && typeof rv === "number") v = Math.max(lv, rv);
 		else if ((stampsL[k] ?? 0) !== (stampsR[k] ?? 0)) v = (stampsR[k] ?? 0) > (stampsL[k] ?? 0) ? rv : lv;
-		// Aucun horodatage (appareil sur une version plus ancienne) : trois voies.
+		// No timestamp (device on an older version): three-way.
 		else if (base && deepEqual(lv, bv)) v = rv;
 		else if (base && deepEqual(rv, bv)) v = lv;
 		else {
 			const lIsDefault = defaults !== undefined && deepEqual(lv, defaults[k]);
 			const rIsDefault = defaults !== undefined && deepEqual(rv, defaults[k]);
-			// Symétrique : les deux appareils, chacun avec son point de vue local/distant, choisissent la même valeur.
+			// Symmetric: both devices, each with its own local/remote viewpoint, pick the same value.
 			if (lIsDefault !== rIsDefault) v = lIsDefault ? rv : lv;
 			else v = remoteWins(lv, rv, 0, 0) ? rv : lv;
 		}
@@ -633,7 +632,7 @@ export function mergeSettings(
 	const stamps: Record<string, number> = {};
 	for (const src of [stampsL, stampsR]) {
 		for (const k of Object.keys(src)) {
-			if (DEVICE_LOCAL_KEYS.has(k)) continue; // reliquat d'une version qui les synchronisait
+			if (DEVICE_LOCAL_KEYS.has(k)) continue; // leftover from a version that synchronized them
 			if (typeof src[k] === "number" && !(src[k] <= (stamps[k] ?? -1))) stamps[k] = src[k];
 		}
 	}
@@ -671,8 +670,8 @@ function reconcileArray(target: unknown[], merged: Obj[], spec: Spec): void {
 	for (const e of next) target.push(e);
 }
 
-// Recopie `m` SUR `t` (même objet, nouveau contenu) : une fenêtre ouverte qui
-// tient `t` voit la mise à jour ; une entité supprimée, elle, disparaît du tableau.
+// Copies `m` ONTO `t` (same object, new content): an open window holding `t` sees
+// the update; a deleted entity, for its part, disappears from the array.
 function assignEntity(t: Obj, m: Obj, spec: Spec): void {
 	for (const k of Object.keys(t)) if (m[k] === undefined) delete t[k];
 	for (const k of Object.keys(m)) {
@@ -684,8 +683,8 @@ function assignEntity(t: Obj, m: Obj, spec: Spec): void {
 	}
 }
 
-// Reporte `merged` (résultat de mergeSettings, ou une version distante adoptée
-// telle quelle) sur `target` en gardant l'identité des objets qui subsistent.
+// Carries `merged` (the result of mergeSettings, or a remote version adopted
+// as is) onto `target` while keeping the identity of the objects that remain.
 export function applySettingsInPlace(target: Obj, merged: Obj): void {
 	for (const k of Object.keys(merged)) {
 		const mv = merged[k];

@@ -38,9 +38,9 @@ function makeDeckCard(overrides: Partial<DeckCard> = {}): DeckCard {
 
 describe("cardsInDeckStatsScope", () => {
 	it("keeps mainboard (including the Commander, itself always mainboard), excludes sideboard/maybeboard", () => {
-		// Commander est une Function (deckFunctionOverride), pas une catégorie,
-		// depuis le 2026-09-07 — une carte Commander est donc déjà,
-		// structurellement, catégorisée "mainboard" comme les autres.
+		// Commander is a Function (deckFunctionOverride), not a category, since
+		// 2026-09-07 — a Commander card is therefore already, structurally,
+		// categorized "mainboard" like the others.
 		const cards = [
 			makeDeckCard({ name: "Main" }), // category absent = mainboard
 			makeDeckCard({ name: "Main2", category: "mainboard" }),

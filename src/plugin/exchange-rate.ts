@@ -2,23 +2,23 @@ import { UsdEurRate, fetchUsdEurRate } from "../api/frankfurter";
 import type MTGCollectionPlugin from "../plugin";
 
 /* ---------------------------------------------------------------------------- */
-/*  Taux de change USD/EUR (frankfurter.dev), un seul par session (MTGCollectionPlugin).*/
+/* USD/EUR exchange rate (frankfurter.dev), a single one per session */
+/* (MTGCollectionPlugin). */
 /* ---------------------------------------------------------------------------- */
 
-// Charge (une fois par session) le taux USD/EUR de frankfurter.dev.
-// N'écrit le cache qu'en cas de succès confirmé — même logique que
-// loadSymbology/loadCardKingdomPrices : un échec transitoire ne doit pas
-// figer un "pas de taux" pour le reste de la session, qui priverait alors
-// le graphique Price History de son axe unifié pour de bon (repli
-// automatique sur le double axe, voir renderPriceHistoryChart) là où une
-// tentative ultérieure aurait pu réussir. Cela vaut aussi pour un REJET
-// (réseau coupé : requestUrl(..., { throw: false }) ne s'épargne que les
-// statuts HTTP, pas les erreurs de transport) — sans le .catch ci-dessous, la
-// promesse rejetée restait mémorisée dans usdEurRateFetchPromise pour toute
-// la session et tous les appelants (graphique Price History, bloc Market
-// Trends de Home) la recevaient à chaque fois ; désormais un rejet se
-// comporte comme un échec ordinaire : undefined, et la prochaine demande
-// réessaie (corrigé le 2026-09-23, en ajoutant un 2e consommateur à ce taux).
+// Loads (once per session) the USD/EUR rate from frankfurter.dev. Only writes
+// the cache on a confirmed success — same logic as
+// loadSymbology/loadCardKingdomPrices: a transient failure must not freeze a
+// "no rate" for the rest of the session, which would then deprive the Price
+// History chart of its unified axis for good (automatic fallback to the dual
+// axis, see renderPriceHistoryChart) where a later attempt could have
+// succeeded. This also holds for a REJECTION (network cut: requestUrl(..., {
+// throw: false }) only spares HTTP statuses, not transport errors) — without
+// the .catch below, the rejected promise stayed memorized in
+// usdEurRateFetchPromise for the whole session and all callers (Price History
+// chart, Home's Market Trends block) received it every time; now a rejection
+// behaves like an ordinary failure: undefined, and the next request retries
+// (fixed on 2026-09-23, when adding a 2nd consumer of this rate).
 
 export async function getUsdEurRate(this: MTGCollectionPlugin): Promise<UsdEurRate | undefined> {
 	if (this.usdEurRateCache) return this.usdEurRateCache;

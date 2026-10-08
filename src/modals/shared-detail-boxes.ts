@@ -28,35 +28,35 @@ import {
 import { setSvgMarkup } from "../ui/svg-markup";
 
 /* -------------------------------------------------------------------------- */
-/*  Boîtes communes aux trois fenêtres de détail de carte                     */
-/*  (CardDetailModal / DeckCardDetailModal / WantlistCardDetailModal)         */
+/* Boxes common to the three card detail windows (CardDetailModal / */
+/* DeckCardDetailModal / WantlistCardDetailModal) */
 /* -------------------------------------------------------------------------- */
-// Ces blocs étaient copiés à l'identique (aux noms près) dans les trois modales ; les différences réelles
-// entre sections (où vit la finition d'une DeckCard, quelle carte « avec prix » donner à formatCardPrice,
-// quel format de deck mettre en évidence, que réinitialiser en changeant de carte) sont des paramètres.
-// Le reste — structure, classes CSS, ordre des appels réseau, garde « carte périmée » — est ICI, une seule
-// fois : une correction dans une boîte vaut pour les trois fenêtres.
+// These blocks were copied identically (names aside) in the three modals; the real differences between
+// sections (where a DeckCard's finish lives, which "priced" card to give formatCardPrice, which deck
+// format to highlight, what to reset when changing card) are parameters. The rest — structure, CSS
+// classes, order of network calls, "stale card" guard — is HERE, only once: a fix in one box applies to
+// all three windows.
 //
-// La modale garde ses méthodes renderXBox(panel) : ce sont de minces appelants de ces fonctions, qui lui
-// épargnent de changer draw().
+// The modal keeps its renderXBox(panel) methods: they are thin callers of these functions, which spare it
+// from changing draw().
 
-// Ce dont chaque boîte a besoin de la modale. `currentScryfallId` est une fonction (pas une valeur) car la
-// modale réassigne sa carte en naviguant : chaque requête réseau capture l'id de la carte AU LANCEMENT puis le
-// compare à celui de la carte actuelle à la résolution, pour ignorer une réponse arrivée après un changement
-// de carte (draw() aura déjà reconstruit la boîte pour la nouvelle carte entre-temps).
+// What each box needs from the modal. `currentScryfallId` is a function (not a value) because the modal
+// reassigns its card when navigating: each network request captures the card's id AT LAUNCH then compares it
+// to that of the current card at resolution, to ignore a response that arrived after a change of card (draw()
+// will already have rebuilt the box for the new card in the meantime).
 export interface DetailBoxHost {
 	plugin: MTGCollectionPlugin;
 	currentScryfallId: () => string;
 }
 
-// État de « Legal Formats » conservé par la modale d'un affichage à l'autre : l'id de la dernière carte dont les
-// légalités ont déjà été révélées (voir renderLegalFormatsBox).
+// State of "Legal Formats" kept by the modal from one display to the next: the id of the last card whose
+// legalities have already been revealed (see renderLegalFormatsBox).
 export interface LegalFormatsState {
 	shownFor: string | null;
 }
 
-// Ce que « Store Prices » lit de la carte. `finish` est la finition RÉSOLUE (une DeckCard n'en a pas toujours,
-// voir getDeckCardFinish) ; `pricedCard` est ce que formatCardPrice sait lire (voir toDeckPricedCard pour un
+// What "Store Prices" reads from the card. `finish` is the RESOLVED finish (a DeckCard doesn't always have
+// one, see getDeckCardFinish); `pricedCard` is what formatCardPrice can read (see toDeckPricedCard for a
 // DeckCard).
 export interface StorePricesCard {
 	scryfallId: string;
@@ -65,7 +65,7 @@ export interface StorePricesCard {
 	pricedCard: PricedCard;
 }
 
-// Une tuile du carrousel « Copies in Lists ».
+// A tile of the "Copies in Lists" carousel.
 export type CopyTile = {
 	kind: "collection" | "deck" | "wantlist";
 	sourceName: string;
@@ -77,16 +77,16 @@ export type CopyTile = {
 	onClick?: () => void;
 };
 
-// Bloc "Card Text" — sous Price History. Le nom n'y est pas répété (déjà
-// affiché en haut du panneau, voir navTitle/mtg-card-detail-nav-name) ;
-// coût de mana + type viennent directement de la carte, déjà en cache
-// (voir CollectionCard.manaCost/typeLine), donc affichés immédiatement, sans
-// attendre de fetch. Seuls le texte de règles et Force/Endurance/Loyauté
-// nécessitent un aller-retour Scryfall à part (getCardTextInfo, jamais
-// stocké sur CollectionCard — voir son propre commentaire dans scryfall.ts).
-// Pas de garde Proxy ici contrairement à Store Prices/Price History
-// juste au-dessus : un proxy représente toujours une vraie carte, avec
-// un vrai texte — seule la notion de prix ne s'y applique pas.
+// "Card Text" block — under Price History. The name isn't repeated there
+// (already displayed at the top of the panel, see
+// navTitle/mtg-card-detail-nav-name); mana cost + type come directly from
+// the card, already cached (see CollectionCard.manaCost/typeLine), so
+// displayed immediately, without waiting for a fetch. Only the rules text
+// and Power/Toughness/Loyalty need a separate Scryfall round trip
+// (getCardTextInfo, never stored on CollectionCard — see its own comment in
+// scryfall.ts). No Proxy guard here unlike Store Prices/Price History just
+// above: a proxy always represents a real card, with a real text — only the
+// notion of price doesn't apply to it.
 export function renderCardDescriptionBox(
 	host: DetailBoxHost,
 	panel: HTMLElement,
@@ -111,29 +111,27 @@ export function renderCardDescriptionBox(
 		if (host.currentScryfallId() !== requestedId) return;
 		textEl.removeClass("mtg-loading-dots");
 		if (!info) {
-			// Échec confirmé après retentative (voir fetchCardTextInfo) — le
-			// coût/type ci-dessus restent affichés, seuls le texte et les
-			// stats manquent.
+			// Confirmed failure after retry (see fetchCardTextInfo) — the cost/type
+			// above stay displayed, only the text and the stats are missing.
 			textEl.setText("—");
 			return;
 		}
-		// Carte à plusieurs faces (split, double-face...) : remplace le
-		// header+texte fusionnés ci-dessus (coût/type combinés à la racine
-		// Scryfall, ex. "Instant // Instant") par une section par face,
-		// voir renderCardDescriptionFaces (card-detail-fx.ts) — demande
-		// explicite plutôt qu'un "//" textuel entre les deux portions.
+		// Multi-faced card (split, double-faced...): replaces the merged
+		// header+text above (cost/type combined at the Scryfall root, e.g.
+		// "Instant // Instant") with one section per face, see
+		// renderCardDescriptionFaces (card-detail-fx.ts) — explicit request rather
+		// than a textual "//" between the two portions.
 		if (info.faces && info.faces.length > 1) {
 			header.remove();
 			textEl.remove();
 			renderCardDescriptionFaces(box, info.faces, (letter) => host.plugin.getManaSymbolSvg(letter));
 			return;
 		}
-		// oracle_text vide est une réponse réelle (créature vanille sans
-		// capacité, ex. Grizzly Bears), pas un échec — pas de "—" trompeur.
-		// .empty() d'abord : renderTextWithManaSymbols ajoute des noeuds
-		// (createSpan/appendChild), contrairement à .setText() ci-dessus qui
-		// remplace tout le contenu existant (les 3 points de chargement) de
-		// lui-même.
+		// An empty oracle_text is a real response (vanilla creature with no
+		// ability, e.g. Grizzly Bears), not a failure — no misleading "—".
+		// .empty() first: renderTextWithManaSymbols appends nodes
+		// (createSpan/appendChild), unlike .setText() above which by itself
+		// replaces all the existing content (the 3 loading dots).
 		textEl.empty();
 		renderTextWithManaSymbols(textEl, info.oracleText || "No rules text.", (letter) =>
 			host.plugin.getManaSymbolSvg(letter)
@@ -149,11 +147,10 @@ export function renderCardDescriptionBox(
 	});
 }
 
-// Historique de prix (cardbase.dev, voir cardbase.ts/card-detail-fx.ts) —
-// sous Store Prices. Card Kingdom + TCGplayer seulement : cardbase ne
-// couvre pas Mana Pool. Même exclusion Proxy que renderStorePricesBox
-// (une carte Proxy n'a de prix nulle part ailleurs dans ce panneau non
-// plus).
+// Price history (cardbase.dev, see cardbase.ts/card-detail-fx.ts) — under
+// Store Prices. Card Kingdom + TCGplayer only: cardbase doesn't cover Mana
+// Pool. Same Proxy exclusion as renderStorePricesBox (a Proxy card has no
+// price anywhere else in this panel either).
 export function renderPriceHistoryBox(
 	host: DetailBoxHost,
 	panel: HTMLElement,
@@ -165,9 +162,9 @@ export function renderPriceHistoryBox(
 	const row = panel.createDiv({ cls: "mtg-card-detail-box-row" });
 	const box = row.createDiv({ cls: "mtg-card-detail-box mtg-price-history-box" });
 	box.createDiv({ cls: "mtg-card-detail-finish-label", text: "Price history" });
-	// Spinner plutôt qu'un "…" statique — voir styles.css .mtg-price-
-	// history-loading. renderPriceHistoryChart retire la classe/l'icône
-	// elle-même une fois le vrai contenu prêt (container.empty()).
+	// Spinner rather than a static "…" — see styles.css
+	// .mtg-price-history-loading. renderPriceHistoryChart removes the
+	// class/icon itself once the real content is ready (container.empty()).
 	const body = box.createDiv({ cls: "mtg-price-history-body mtg-price-history-loading" });
 	setIcon(body, "loader-2");
 	const sourceFooterEl = renderPriceHistorySourceFooter(box);
@@ -180,20 +177,20 @@ export function renderPriceHistoryBox(
 			if (host.currentScryfallId() !== requestedId) return;
 			renderPriceHistoryChart(body, history, targetCurrency, rate);
 			appendAsOfToSourceFooter(sourceFooterEl, history?.asOf);
-			// La carte affichée est résolue — préchargement des voisines Cover
-			// Flow en arrière-plan, jamais en concurrence avec cette requête-ci
-			// (voir schedulePrefetchNeighbors/MTGCollectionPlugin.prefetch-
-			// CardbaseNeighbors pour le raisonnement rate-limit complet).
+			// The displayed card is resolved — background preloading of the Cover Flow
+			// neighbors, never in competition with this request (see
+			// schedulePrefetchNeighbors/MTGCollectionPlugin.prefetchCardbaseNeighbors
+			// for the full rate-limit reasoning).
 			onResolved();
 		}
 	);
 }
 
-// Légalités récupérées à la demande (jamais persistées, voir
-// MTGCollectionPlugin.legalitiesCache) : requestedId capturé au lancement
-// de la requête, revérifié à la résolution pour ignorer une réponse
-// arrivant après que l'utilisateur a navigué vers une autre carte (draw()
-// aura déjà reconstruit ce bloc pour la nouvelle carte entre-temps).
+// Legalities fetched on demand (never persisted, see
+// MTGCollectionPlugin.legalitiesCache): requestedId captured at the launch
+// of the request, re-checked at resolution to ignore a response arriving
+// after the user has navigated to another card (draw() will already have
+// rebuilt this block for the new card in the meantime).
 export function renderLegalFormatsBox(
 	host: DetailBoxHost,
 	panel: HTMLElement,
@@ -205,22 +202,20 @@ export function renderLegalFormatsBox(
 	const box = row.createDiv({ cls: "mtg-card-detail-box mtg-legal-formats-box" });
 	box.createDiv({ cls: "mtg-card-detail-finish-label", text: "Legal formats" });
 	const grid = box.createDiv({ cls: "mtg-legal-formats-grid" });
-	// Statique/indépendant des données de la carte — construit une seule
-	// fois, peu importe le chemin (cache chaud ou premier fetch) emprunté
-	// juste après (voir legalityStatusClass pour le code couleur qu'elle
-	// explique).
+	// Static/independent of the card's data — built only once, whichever path
+	// (warm cache or first fetch) is taken right after (see
+	// legalityStatusClass for the color code it explains).
 	renderLegalityColorLegend(box);
 
 	const requestedId = card.scryfallId;
-	// Un draw() sur la même carte (changer le finish, sauvegarder le
-	// grading…) ne doit pas rejouer la révélation pour une donnée déjà
-	// connue. getCardLegalities reste asynchrone même sur un cache hit
-	// (une fonction async renvoie toujours une Promise) — passer par elle
-	// ici laisserait quand même le navigateur peindre l'état neutre une
-	// frame avant que la classe is-legal/is-restricted/is-banned ne soit
-	// posée, donc rejouer la transition CSS visuellement.
-	// getCachedLegalities lit le cache de façon strictement synchrone
-	// pour éviter cet écart.
+	// A draw() on the same card (changing the finish, saving the grading…)
+	// must not replay the reveal for data already known. getCardLegalities
+	// stays asynchronous even on a cache hit (an async function always returns
+	// a Promise) — going through it here would still let the browser paint the
+	// neutral state one frame before the is-legal/is-restricted/is-banned
+	// class is set, thus visually replaying the CSS transition.
+	// getCachedLegalities reads the cache strictly synchronously to avoid this
+	// gap.
 	if (state.shownFor === requestedId) {
 		const cached = host.plugin.getCachedLegalities(requestedId);
 		if (cached) {
@@ -234,14 +229,12 @@ export function renderLegalFormatsBox(
 		}
 	}
 
-	// Première apparition de cette carte dans cette fenêtre : les tuiles
-	// sont construites tout de suite (état neutre = "pas légal"), pas
-	// après la résolution du fetch — la boîte a donc sa taille définitive
-	// dès le premier rendu, et la réponse Scryfall se contente de
-	// reteindre les tuiles concernées (vert/orange/rouge selon leur
-	// statut réel) plutôt que de faire apparaître/disparaître un bloc
-	// entier (évite le saut de mise en page qu'un état "Loading…"
-	// provoquait).
+	// First appearance of this card in this window: the tiles are built right
+	// away (neutral state = "not legal"), not after the fetch resolves — the
+	// box therefore has its final size from the first render, and the Scryfall
+	// response just recolors the relevant tiles (green/orange/red according to
+	// their real status) rather than making a whole block appear/disappear
+	// (avoids the layout jump that a "Loading…" state caused).
 	const tiles = new Map<string, HTMLElement>();
 	LEGALITY_FORMATS.forEach(({ key, label }) => {
 		const tile = grid.createDiv({ cls: "mtg-legal-format-tile", text: label });
@@ -263,10 +256,10 @@ export function renderLegalFormatsBox(
 	});
 }
 
-// Prix "magasin" (complète le prix Scryfall) — une colonne par magasin
-// (logo + nom + prix), voir card-kingdom.ts/manapool.ts. Une carte Proxy
-// n'est pas un objet réellement possédé/échangeable, même exclusion que
-// pour la valeur de la collection — pas de bloc du tout.
+// "Store" prices (complements the Scryfall price) — one column per store
+// (logo + name + price), see card-kingdom.ts/manapool.ts. A Proxy card
+// isn't a really owned/tradeable object, same exclusion as for the
+// collection's value — no block at all.
 export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, card: StorePricesCard) {
 	if (card.finish === "proxy") return;
 
@@ -275,33 +268,30 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 	box.createDiv({ cls: "mtg-card-detail-finish-label", text: "Store prices" });
 	const cols = box.createDiv({ cls: "mtg-store-price-cols" });
 
-	// Card Kingdom en premier : construite tout de suite avec un état
-	// neutre ("…"), pas après la résolution du fetch — même raison que
-	// renderLegalFormatsBox au-dessus, la boîte a sa taille quasi
-	// définitive dès le premier rendu.
+	// Card Kingdom first: built right away with a neutral state ("…"), not
+	// after the fetch resolves — same reason as renderLegalFormatsBox above,
+	// the box has its almost final size from the first render.
 	const ckCol = cols.createDiv({ cls: "mtg-store-price-col" });
 	setSvgMarkup(ckCol.createDiv({ cls: "mtg-store-price-col-logo" }), CARD_KINGDOM_LOGO_SVG);
 	ckCol.createDiv({ cls: "mtg-store-price-col-name", text: "Card Kingdom" });
 	const ckValueEl = ckCol.createDiv({ cls: "mtg-store-price-col-value" });
 	renderLoadingDots(ckValueEl);
-	// Toujours Near Mint (voir card-kingdom.ts) — une constante, pas
-	// besoin d'attendre la résolution du fetch pour l'afficher (mais
-	// vidée dans la branche "pas de prix" ci-dessous si Card Kingdom ne
-	// vend pas cette impression).
+	// Always Near Mint (see card-kingdom.ts) — a constant, no need to wait for
+	// the fetch to resolve to display it (but cleared in the "no price" branch
+	// below if Card Kingdom doesn't sell this printing).
 	const ckDetailEl = ckCol.createDiv({ cls: "mtg-store-price-col-detail", text: "Near Mint" });
-	// Variation veille→aujourd'hui (voir getCardbaseDayChange) — vide tant
-	// que rien n'est résolu, pas de "…"/spinner dédié (voir renderDay-
-	// ChangeBadge, styles.css .mtg-store-price-col-change).
+	// Yesterday→today change (see getCardbaseDayChange) — empty as long as
+	// nothing is resolved, no dedicated "…"/spinner (see renderDayChangeBadge,
+	// styles.css .mtg-store-price-col-change).
 	const ckChangeEl = ckCol.createDiv({ cls: "mtg-store-price-col-change" });
 
-	// TCGplayer en deuxième colonne (demandé explicitement), via le prix
-	// déjà chargé sur cette carte par Scryfall (même donnée que la ligne
-	// "Price" plus bas dans ce panneau) — pas de second aller-retour
-	// réseau nécessaire pour le prix lui-même, contrairement à Card
-	// Kingdom/Mana Pool, donc construite tout de suite. Toujours en USD
-	// (pas plugin.settings.priceCurrency) : Card Kingdom/Mana Pool
-	// n'ont pas d'EUR, comparer les trois dans la même devise a plus de
-	// sens qu'utiliser la devise choisie pour le reste du panneau.
+	// TCGplayer in the second column (explicitly requested), via the price
+	// already loaded on this card by Scryfall (same data as the "Price" line
+	// further down in this panel) — no second network round trip needed for
+	// the price itself, unlike Card Kingdom/Mana Pool, so built right away.
+	// Always in USD (not plugin.settings.priceCurrency): Card Kingdom/Mana
+	// Pool have no EUR, comparing the three in the same currency makes more
+	// sense than using the currency chosen for the rest of the panel.
 	const tcgCol = cols.createDiv({ cls: "mtg-store-price-col" });
 	setSvgMarkup(tcgCol.createDiv({ cls: "mtg-store-price-col-logo" }), TCGPLAYER_LOGO_SVG);
 	tcgCol.createDiv({ cls: "mtg-store-price-col-name", text: "TCGplayer" });
@@ -312,75 +302,73 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 			"title",
 			"Synced from TCGplayer's market price via Scryfall, refreshed roughly once a day — not live."
 		);
-		// Pas une condition (NM/LP/etc.) mais une moyenne de marché — voir
-		// le commentaire du "title" ci-dessus pour la nuance complète.
+		// Not a condition (NM/LP/etc.) but a market average — see the comment on
+		// the "title" above for the full nuance.
 		tcgCol.createDiv({ cls: "mtg-store-price-col-detail", text: "Market price" });
 		const tcgChangeEl = tcgCol.createDiv({ cls: "mtg-store-price-col-change" });
 
-		// Lien vers la fiche TCGplayer de cette impression, comme la
-		// colonne Card Kingdom — récupéré à part (purchase_uris n'est pas
-		// inclus dans le prix déjà en cache sur la carte), donc le clic
-		// n'est activé qu'une fois résolu plutôt que de retarder
-		// l'affichage du prix lui-même, déjà connu de manière synchrone.
+		// Link to this printing's TCGplayer page, like the Card Kingdom column —
+		// fetched separately (purchase_uris isn't included in the price already
+		// cached on the card), so the click is only enabled once resolved rather
+		// than delaying the display of the price itself, already known
+		// synchronously.
 		const tcgRequestedId = card.scryfallId;
 		void host.plugin.getTcgplayerUrl(tcgRequestedId).then((url) => {
 			if (host.currentScryfallId() !== tcgRequestedId || !url) return;
 			tcgCol.addEventListener("click", () => openExternalUrl(url));
 		});
-		// Même historique cardbase que Card Kingdom/Cardmarket ci-dessous
-		// (appel dédoublonné, voir leur commentaire) — juste pour la
-		// variation veille→aujourd'hui, le prix lui-même reste celui de
-		// Scryfall affiché juste au-dessus, déjà connu de manière
-		// synchrone.
+		// Same cardbase history as Card Kingdom/Cardmarket below (deduplicated
+		// call, see their comment) — just for the yesterday→today change, the
+		// price itself remains Scryfall's displayed just above, already known
+		// synchronously.
 		void host.plugin.getCardbasePriceHistoryWithNativeCardmarket(tcgRequestedId, toCardbaseFinish(card.finish)).then((history) => {
 			if (host.currentScryfallId() !== tcgRequestedId) return;
 			renderDayChangeBadge(tcgChangeEl, getCardbaseDayChange(history, "tcgplayer"));
 		});
 	} else {
-		// Scryfall n'a aucun prix pour cette impression/finition — colonne
-		// gardée (pas retirée) pour que les trois magasins restent alignés
-		// d'une carte à l'autre, juste grisée et non cliquable.
+		// Scryfall has no price for this printing/finish — column kept (not
+		// removed) so that the three stores stay aligned from one card to the
+		// next, just greyed out and not clickable.
 		tcgCol.addClass("is-unavailable");
 	}
 
-	// Mana Pool en troisième colonne — même état neutre "…" en attendant
-	// le fetch (voir Card Kingdom juste au-dessus).
+	// Mana Pool in the third column — same neutral "…" state while waiting for
+	// the fetch (see Card Kingdom just above).
 	const mpCol = cols.createDiv({ cls: "mtg-store-price-col" });
 	setSvgMarkup(mpCol.createDiv({ cls: "mtg-store-price-col-logo" }), MANA_POOL_LOGO_SVG);
 	mpCol.createDiv({ cls: "mtg-store-price-col-name", text: "Mana Pool" });
 	const mpValueEl = mpCol.createDiv({ cls: "mtg-store-price-col-value" });
 	renderLoadingDots(mpValueEl);
-	// Contrairement à Card Kingdom/TCGplayer, la condition réelle n'est
-	// connue qu'une fois le fetch résolu (voir pickManaPoolPrice) — laissé
-	// vide jusque-là plutôt qu'un texte neutre qui devrait être vidé après.
+	// Unlike Card Kingdom/TCGplayer, the real condition is only known once the
+	// fetch has resolved (see pickManaPoolPrice) — left empty until then
+	// rather than a neutral text that would have to be cleared afterwards.
 	const mpDetailEl = mpCol.createDiv({ cls: "mtg-store-price-col-detail" });
 
-	// Cardmarket en quatrième colonne — via cardbase.dev (voir cardbase.ts,
-	// getCardbasePriceHistoryWithNativeCardmarket), pas Scryfall. Cette
-	// colonne partage le même appel/cache que la boîte "Price History"
-	// (voir renderPriceHistoryBox) — mais depuis l'ajout du prix "trend"
-	// natif Cardmarket, ce partage coûte désormais 2 aller-retours réseau
-	// en plus (cardmarket_id, puis le prix natif lui-même) la première
-	// fois qu'une carte est ouverte dans la session, pas 0 comme avant :
-	// getCardbasePriceHistoryWithNativeCardmarket dédoublonne quand même
-	// ces deux étapes en interne, donc un seul appel ici suffit et reste
-	// partagé avec la boîte "Price History". Toujours EUR (devise native
-	// de Cardmarket, contrairement aux 3 autres colonnes en USD) :
-	// contrairement à TCGplayer/Card Kingdom/Mana Pool, convertir vers une
-	// devise commune n'aurait pas de sens ici, Cardmarket n'a jamais eu de
-	// prix USD à afficher.
+	// Cardmarket in the fourth column — via cardbase.dev (see cardbase.ts,
+	// getCardbasePriceHistoryWithNativeCardmarket), not Scryfall. This column
+	// shares the same call/cache as the "Price History" box (see
+	// renderPriceHistoryBox) — but since the addition of Cardmarket's native
+	// "trend" price, this sharing now costs 2 extra network round trips
+	// (cardmarket_id, then the native price itself) the first time a card is
+	// opened in the session, not 0 as before:
+	// getCardbasePriceHistoryWithNativeCardmarket nonetheless deduplicates
+	// these two steps internally, so a single call here is enough and stays
+	// shared with the "Price History" box. Always EUR (Cardmarket's native
+	// currency, unlike the 3 other columns in USD): unlike TCGplayer/Card
+	// Kingdom/Mana Pool, converting to a common currency would make no sense
+	// here, Cardmarket never had a USD price to display.
 	const cmCol = cols.createDiv({ cls: "mtg-store-price-col" });
 	setSvgMarkup(cmCol.createDiv({ cls: "mtg-store-price-col-logo" }), CARDMARKET_LOGO_SVG);
 	cmCol.createDiv({ cls: "mtg-store-price-col-name", text: "Cardmarket" });
 	const cmValueEl = cmCol.createDiv({ cls: "mtg-store-price-col-value" });
 	renderLoadingDots(cmValueEl);
 	const cmDetailEl = cmCol.createDiv({ cls: "mtg-store-price-col-detail", text: "Market price" });
-	// Prix de la listing la moins chère (price_type="low", voir CardbasePrice-
-	// History.cardmarketLow) — même classe/traitement visuel que cmDetailEl
-	// juste au-dessus (discrète, muette), vide tant que non résolu. Réutilise
-	// la classe existante plutôt qu'en créer une nouvelle : c'est exactement
-	// le même rôle ("précision secondaire sous le prix"), juste une seconde
-	// ligne de ce type au lieu d'une seule.
+	// Price of the cheapest listing (price_type="low", see
+	// CardbasePriceHistory.cardmarketLow) — same class/visual treatment as
+	// cmDetailEl just above (discreet, muted), empty as long as unresolved.
+	// Reuses the existing class rather than creating a new one: it is exactly
+	// the same role ("secondary detail under the price"), just a second line
+	// of this kind instead of a single one.
 	const cmLowEl = cmCol.createDiv({ cls: "mtg-store-price-col-detail" });
 	const cmChangeEl = cmCol.createDiv({ cls: "mtg-store-price-col-change" });
 
@@ -388,26 +376,25 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 	const isFoil = finishHasFoilLook(card.finish);
 	const cardbaseFinish = toCardbaseFinish(card.finish);
 
-	// Combinées en un seul Promise.all plutôt que deux .then() indépendants
-	// : le prix Card Kingdom vient de card-kingdom.ts (fetch direct), la
-	// variation vient de cardbase.ts (historique) — deux sources
-	// différentes pour la même colonne. Les résoudre ensemble évite une
-	// course où l'une des deux résout en premier et affiche un badge de
-	// variation sous un prix pas encore su "indisponible" (ou l'inverse) ;
-	// voir Cardmarket plus bas, qui n'a pas ce risque puisque prix ET
-	// variation viennent de la même réponse cardbase.
+	// Combined into a single Promise.all rather than two independent .then():
+	// the Card Kingdom price comes from card-kingdom.ts (direct fetch), the
+	// change comes from cardbase.ts (history) — two different sources for the
+	// same column. Resolving them together avoids a race where one of the two
+	// resolves first and shows a change badge under a price not yet known to
+	// be "unavailable" (or the reverse); see Cardmarket further down, which
+	// doesn't have this risk since price AND change come from the same
+	// cardbase response.
 	void Promise.all([
 		host.plugin.getCardKingdomPrice(requestedId, isFoil),
 		host.plugin.getCardbasePriceHistoryWithNativeCardmarket(requestedId, cardbaseFinish),
 	]).then(([entry, history]) => {
-		// La carte affichée a changé (navigation prev/next) pendant
-		// l'attente — cette réponse ne concerne plus la carte actuelle.
+		// The displayed card has changed (prev/next navigation) while waiting —
+		// this response no longer concerns the current card.
 		if (host.currentScryfallId() !== requestedId) return;
 		ckValueEl.removeClass("mtg-loading-dots");
 		if (!entry) {
-			// Card Kingdom ne vend pas cette impression — colonne gardée
-			// (voir TCGplayer ci-dessus), pas de "Near Mint" à afficher
-			// puisqu'il n'y a aucun prix à qualifier.
+			// Card Kingdom doesn't sell this printing — column kept (see TCGplayer
+			// above), no "Near Mint" to display since there is no price to qualify.
 			ckValueEl.setText("—");
 			ckDetailEl.setText("");
 			ckCol.addClass("is-unavailable");
@@ -423,8 +410,8 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 		mpValueEl.removeClass("mtg-loading-dots");
 		if (!result) {
 			mpValueEl.setText("—");
-			// Sur téléphone / tablette le tarif n'est pas chargé du tout (trop gros pour la mémoire, voir manaPoolPricesSupported) :
-			// dit-le, plutôt que de laisser croire que Mana Pool ne vend pas cette carte.
+			// On phone / tablet the pricelist isn't loaded at all (too big for memory, see manaPoolPricesSupported): say so,
+			// rather than letting people think Mana Pool doesn't sell this card.
 			if (!manaPoolPricesSupported()) {
 				mpDetailEl.setText("Not on mobile");
 				mpDetailEl.addClass("is-note");
@@ -432,11 +419,10 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 			mpCol.addClass("is-unavailable");
 			return;
 		}
-		// Prix retombé sur "le plus bas disponible" faute d'exemplaire NM
-		// en stock chez Mana Pool — signalé en infobulle plutôt que
-		// silencieusement, pour ne pas faire passer un prix "Played" pour
-		// du Near Mint (même raisonnement que la précision TCGplayer
-		// ci-dessus).
+		// Price fell back to "the lowest available" for lack of an NM copy in
+		// stock at Mana Pool — flagged in a tooltip rather than silently, so as
+		// not to pass a "Played" price off as Near Mint (same reasoning as the
+		// TCGplayer clarification above).
 		if (!result.isNearMint) {
 			mpCol.setAttribute(
 				"title",
@@ -468,15 +454,13 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 				)}`
 			);
 		}
-		// Pas de lien produit exact : cardbase ne renvoie aucune URL sur cet
-		// endpoint (juste un prix), et deviner un chemin à partir de
-		// cardmarket_id échoue en pratique (vérifié en direct — Cardmarket
-		// n'a pas de redirection publique par ID, seulement des URLs à base
-		// de slug set+carte que cardbase ne fournit pas). Un lien de
-		// RECHERCHE par nom, lui, fonctionne de façon fiable et ne pointe
-		// jamais au mauvais endroit — la nuance ("cette impression précise"
-		// vs "toutes les versions de cette carte") est signalée en infobulle,
-		// même principe que les précisions TCGplayer/Mana Pool ci-dessus.
+		// No exact product link: cardbase returns no URL on this endpoint (just a
+		// price), and guessing a path from cardmarket_id fails in practice
+		// (checked live — Cardmarket has no public redirect by ID, only slug-based
+		// URLs of set+card that cardbase doesn't provide). A name SEARCH link,
+		// however, works reliably and never points to the wrong place — the nuance
+		// ("this precise printing" vs "all versions of this card") is flagged in a
+		// tooltip, same principle as the TCGplayer/Mana Pool clarifications above.
 		cmCol.setAttribute(
 			"title",
 			"Opens a Cardmarket search for this card name — not necessarily this exact printing."
@@ -506,20 +490,21 @@ export function renderCopiesInListsBox(
 	const track = carouselRow.createDiv({ cls: "mtg-copies-in-lists-track" });
 	const rightArrow = carouselRow.createDiv({ cls: "mtg-copies-in-lists-arrow" });
 	setIcon(rightArrow, "chevron-right");
-	// La carte active occupe toujours la première tuile (voir buildTile
-	// plus bas) : une seule "page" (3 tuiles, cf. mtg-copies-in-lists-tile
-	// flex-basis) reste possible même sans aucun doublon, d'où le +1.
+	// The active card always occupies the first tile (see buildTile further
+	// down): a single "page" (3 tiles, cf. mtg-copies-in-lists-tile
+	// flex-basis) remains possible even with no duplicate at all, hence the
+	// +1.
 	const hasOnePage = others.length + 1 <= 3;
 	leftArrow.toggleClass("is-disabled", hasOnePage);
 	rightArrow.toggleClass("is-disabled", hasOnePage);
 	leftArrow.addEventListener("click", () => track.scrollBy({ left: -track.clientWidth, behavior: "smooth" }));
 	rightArrow.addEventListener("click", () => track.scrollBy({ left: track.clientWidth, behavior: "smooth" }));
 
-	// Petite icône devant le nom (layers/swords/heart — les mêmes que la
-	// barre latérale gauche, voir makeNavItem dans view.ts, et le même
-	// mapping déjà utilisé par le badge de contexte du panneau "Add
-	// history", add-cards-modal.ts) : indique de quelle section vient
-	// chaque tuile, y compris la tuile active (cohérence visuelle).
+	// Small icon in front of the name (layers/swords/heart — the same as the
+	// left sidebar, see makeNavItem in view.ts, and the same mapping already
+	// used by the context badge of the "Add history" panel,
+	// add-cards-modal.ts): indicates which section each tile comes from, the
+	// active tile included (visual consistency).
 	const buildTile = (tile: Omit<CopyTile, "onClick">, isActive: boolean, onClick?: () => void) => {
 		const tileEl = track.createDiv({ cls: "mtg-copies-in-lists-tile" });
 		tileEl.toggleClass("is-active", isActive);
@@ -561,19 +546,19 @@ export function renderCopiesInListsBox(
 	others.forEach((other) => buildTile(other, false, other.onClick));
 }
 
-// Nom de la carte centré au-dessus des deux colonnes, flanqué de flèches précédent/suivant qui parcourent
-// `cards` (la liste filtrée/triée telle qu'elle était affichée à l'ouverture de la fenêtre), avec le repère
-// « Card X of Y » en dessous. goTo(carte) est appelé AU MILIEU de l'animation Cover Flow (voir
-// animateCardNav) : la modale y change de carte, réinitialise son état propre (finition retournée, split
-// pivoté, grading déplié…) puis redessine toute la fenêtre via draw().
+// Card name centered above the two columns, flanked by previous/next arrows that walk through `cards` (the
+// filtered/sorted list as it was displayed when the window opened), with the "Card X of Y" marker below.
+// goTo(card) is called IN THE MIDDLE of the Cover Flow animation (see animateCardNav): the modal changes
+// card there, resets its own state (flipped finish, rotated split, expanded grading…) then redraws the
+// whole window via draw().
 export function renderCardNavHeader<T>(
 	contentEl: HTMLElement,
 	nav: {
 	cards: T[];
-	// Position de la carte affichée dans `cards`, ou -1 si elle n'y figure pas (navigation alors masquée).
+	// Position of the displayed card in `cards`, or -1 if it isn't in there (navigation then hidden).
 	currentIndex: number;
 	name: string;
-	// Verrou de la modale : une navigation en cours (animation) ignore tout nouveau clic.
+	// The modal's lock: a navigation in progress (animation) ignores any new click.
 	isAnimating: () => boolean;
 	setAnimating: (animating: boolean) => void;
 	goTo: (card: T) => void;
@@ -583,10 +568,10 @@ export function renderCardNavHeader<T>(
 	const navHeader = contentEl.createDiv({ cls: "mtg-card-detail-nav-header" });
 	const canNavigate = cards.length > 1 && currentIndex !== -1;
 
-	// Les deux flèches sont toujours créées (même quand la navigation est impossible, auquel cas elles sont
-	// simplement masquées via is-hidden) pour que la grille à 3 colonnes garde des largeurs de colonnes
-	// latérales fixes — sinon le titre central se recale et la flèche restante changerait de position selon
-	// la longueur du nom.
+	// Both arrows are always created (even when navigation is impossible, in which case they are simply
+	// hidden via is-hidden) so that the 3-column grid keeps fixed side column widths — otherwise the
+	// central title re-centers itself and the remaining arrow would change position depending on the length
+	// of the name.
 	const addArrow = (direction: "prev" | "next") => {
 		const step = direction === "prev" ? -1 : 1;
 		const arrow = navHeader.createDiv({ cls: "mtg-tile-menu-btn mtg-tile-menu-btn-large" });

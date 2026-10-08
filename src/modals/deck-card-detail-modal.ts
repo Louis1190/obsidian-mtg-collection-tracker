@@ -14,12 +14,12 @@ import {
 } from "../core/data-model";
 import { detectDeckCardFunction, DECK_FUNCTION_CATEGORIES } from "../core/deck-function";
 
-// Options du picker "Category" — DECK_BOARD_TABS (data-model.ts, "onglets
-// de board" au-dessus de la liste des cartes d'un deck) plutôt qu'une
-// liste dupliquée ici : les deux représentent exactement le même concept
-// (les 3 vraies valeurs de DeckCardCategory), Commander n'en fait plus
-// partie depuis le 2026-09-07 (voir DeckCardCategory, data-model.ts — c'est
-// désormais une Function, choisie via la boîte "Function" juste à côté).
+// Options of the "Category" picker — DECK_BOARD_TABS (data-model.ts, "board
+// tabs" above a deck's card list) rather than a list duplicated here: the
+// two represent exactly the same concept (the 3 real values of
+// DeckCardCategory), Commander is no longer part of it since 2026-09-07
+// (see DeckCardCategory, data-model.ts — it is now a Function, chosen via
+// the "Function" box right next to it).
 import { ChangePrintingModal } from "./change-printing-modal";
 import { CopyCardModal } from "./copy-card-modal";
 import { GradingModal } from "./grading-modal";
@@ -60,15 +60,15 @@ import {
 } from "./shared-detail-boxes";
 
 /* -------------------------------------------------------------------------- */
-/*  Deck card detail modal — même trio Finish/Language/Condition + Graded/   */
-/*  Custom Price que CardDetailModal (harmonisation My Decks/My Collection,  */
-/*  2026-08-25, demandée explicitement). La boîte "Deck" ouvre CopyCardModal */
-/*  en mode "move", et une boîte "Copy card to…" dédiée l'ouvre en mode      */
-/*  "copy" (même jour, même harmonisation) — CopyCardModal accepte           */
-/*  maintenant "deck" comme 3ᵉ sourceKind, en plus de "collection"/          */
-/*  "wantlist". A maintenant aussi son propre "Copies in Lists"              */
-/*  (2026-09-08, cross-section — voir renderCopiesInListsBox plus bas ; le   */
-/*  rendu du carrousel est commun aux trois fenêtres, shared-detail-boxes.ts)*/
+/* Deck card detail modal — same Finish/Language/Condition trio + */
+/* Graded/Custom Price as CardDetailModal (My Decks/My Collection */
+/* harmonization, 2026-08-25, explicitly requested). The "Deck" box opens */
+/* CopyCardModal in "move" mode, and a dedicated "Copy card to…" box opens it */
+/* in "copy" mode (same day, same harmonization) — CopyCardModal now accepts */
+/* "deck" as a 3rd sourceKind, in addition to "collection"/"wantlist". Now */
+/* also has its own "Copies in Lists" (2026-09-08, cross-section — see */
+/* renderCopiesInListsBox further down; the carousel rendering is common to */
+/* the three windows, shared-detail-boxes.ts) */
 /* -------------------------------------------------------------------------- */
 
 export class DeckCardDetailModal extends Modal {
@@ -80,35 +80,34 @@ export class DeckCardDetailModal extends Modal {
 	private navCards: DeckCard[];
 	private navAnimating = false;
 	private bg = new BackgroundCrossfader();
-	// Voir CardDetailModal.copiesActiveTileMetaEl — même correctif, même
-	// raison (2026-09-08 : cette fenêtre a maintenant elle aussi un bloc
-	// "Copies in Lists", voir renderCopiesInListsBox plus bas).
+	// See CardDetailModal.copiesActiveTileMetaEl — same fix, same reason
+	// (2026-09-08: this window now also has a "Copies in Lists" block, see
+	// renderCopiesInListsBox further down).
 	private copiesActiveTileMetaEl: HTMLElement | null = null;
-	// Voir CardDetailModal.prefetchTimeout — même débounce, même raison.
+	// See CardDetailModal.prefetchTimeout — same debounce, same reason.
 	private prefetchTimeout: number | null = null;
-	// Voir CardDetailModal.flipped — même raisonnement (bouton "flip" 3D),
-	// réinitialisé aux 2 endroits où this.card est réassigné plus bas.
+	// See CardDetailModal.flipped — same reasoning (3D "flip" button), reset
+	// at the 2 places where this.card is reassigned further down.
 	private flipped = false;
-	// Voir CardDetailModal.splitRotated — même raisonnement (bouton "rotation"
-	// des cartes split, défaut async), réinitialisé aux 2 mêmes endroits.
+	// See CardDetailModal.splitRotated — same reasoning ("rotation" button of
+	// split cards, async default), reset at the same 2 places.
 	private splitRotated: boolean | null = null;
-	// Voir CardDetailModal.legalFormatsShownFor — même mécanisme (évite de
-	// rejouer le fondu de révélation sur un redessin de la même carte déjà
-	// résolue) et, comme là-bas, jamais réinitialisé à la navigation prev/
-	// next : revoir une carte déjà résolue rejoue le fondu une fois de
-	// plus, un compromis accepté plutôt que de suivre chaque carte visitée.
+	// See CardDetailModal.legalFormatsShownFor — same mechanism (avoids
+	// replaying the reveal fade on a redraw of the same already-resolved card)
+	// and, as there, never reset on prev/next navigation: seeing an
+	// already-resolved card again replays the fade once more, an accepted
+	// trade-off rather than tracking every visited card.
 	private legalFormatsState: LegalFormatsState = { shownFor: null };
-	// Voir CardDetailModal.gradingExpanded/gradingJustOpened — même
-	// raisonnement à l'identique (harmonisation My Decks/My Collection,
-	// 2026-08-25), recalculé aux mêmes 2 endroits où this.card change de
-	// référence plus bas (constructeur + les 2 flèches prev/next). Toujours
-	// pas de 3ᵉ point comme côté Collection/Wantlist : "Copies in Lists"
-	// existe maintenant ici aussi (2026-09-08), mais ferme systématiquement
-	// cette fenêtre au clic plutôt que de réassigner this.card en place
-	// (voir renderCopiesInListsBox — DeckCardDetailModal n'a pas
-	// l'équivalent de navAnchorId pour garder "Card X of Y" cohérent si
-	// this.card divergeait de navCards), donc jamais de réassignation en
-	// place à couvrir ici.
+	// See CardDetailModal.gradingExpanded/gradingJustOpened — same reasoning
+	// identically (My Decks/My Collection harmonization, 2026-08-25),
+	// recomputed at the same 2 places where this.card changes reference
+	// further down (constructor + the 2 prev/next arrows). Still no 3rd point
+	// as on the Collection/Wantlist side: "Copies in Lists" now exists here
+	// too (2026-09-08), but systematically closes this window on click rather
+	// than reassigning this.card in place (see renderCopiesInListsBox —
+	// DeckCardDetailModal doesn't have the equivalent of navAnchorId to keep
+	// "Card X of Y" consistent if this.card diverged from navCards), so there
+	// is never an in-place reassignment to cover here.
 	private gradingExpanded: boolean;
 	private gradingJustOpened = false;
 
@@ -131,14 +130,14 @@ export class DeckCardDetailModal extends Modal {
 
 	onOpen() {
 		this.modalEl.addClass("mtg-card-detail-modal-frame");
-		// Masque la croix native d'Obsidian (classe partagée par toutes les
-		// modales du plugin qui ont leur propre croix perso — voir modal-
-		// animation.ts) : ce bouton lui-même vit dans contentEl, rebâti à
-		// chaque draw() (voir plus bas), donc PAS ajouté via addModalCloseButton
-		// ici — seule cette classe de masquage est nécessaire dans onOpen().
+		// Hides Obsidian's native cross (class shared by all of the plugin's
+		// modals that have their own custom cross — see modal-animation.ts): this
+		// button itself lives in contentEl, rebuilt on every draw() (see below),
+		// so NOT added via addModalCloseButton here — only this hiding class is
+		// needed in onOpen().
 		this.modalEl.addClass("mtg-modal-hides-native-close");
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
 		this.draw();
 	}
@@ -172,9 +171,9 @@ export class DeckCardDetailModal extends Modal {
 
 	draw() {
 		const { contentEl } = this;
-		// On préserve le calque de fond (voir BackgroundCrossfader) : seul un
-		// vidage sélectif (pas contentEl.empty()) permet le fondu enchaîné
-		// entre deux illustrations lors de la navigation précédent/suivant.
+		// We preserve the background layer (see BackgroundCrossfader): only a
+		// selective clearing (not contentEl.empty()) allows the cross-fade between
+		// two illustrations during previous/next navigation.
 		this.bg.clearSiblingsIn(contentEl);
 		contentEl.addClass("mtg-card-detail-modal");
 		contentEl.addClass("mtg-card-detail-modal-fixed-height");
@@ -184,7 +183,7 @@ export class DeckCardDetailModal extends Modal {
 		closeBtn.setAttribute("title", "Close");
 		closeBtn.addEventListener("click", () => this.close());
 
-		// Fond flouté : l'illustration seule (art crop), pas la carte entière.
+		// Blurred background: the artwork alone (art crop), not the whole card.
 		if (this.card.artCropUrl) {
 			this.bg.update(contentEl, this.card.artCropUrl);
 		} else {
@@ -223,13 +222,13 @@ export class DeckCardDetailModal extends Modal {
 		const isAlpha = isAlphaSet(this.card.setCode);
 		const imageColumn = layout.createDiv({ cls: "mtg-card-detail-image-column" });
 
-		// Condition/langue affichées à deux endroits (icônes au-dessus de
-		// l'image + boîtes du panneau dans la section repliable) — voir
-		// CardDetailModal.draw pour le raisonnement complet, identique ici.
-		// Harmonisation My Decks/My Collection, 2026-08-25 : DeckCard porte
-		// maintenant condition/language (voir data-model.ts), retrouvées ici
-		// via deck.id + scryfallId (setDeckCardCondition/setDeckCardLanguage)
-		// plutôt qu'un id propre, comme changeDeckCardCount plus bas.
+		// Condition/language displayed in two places (icons above the image +
+		// panel boxes in the collapsible section) — see CardDetailModal.draw for
+		// the full reasoning, identical here. My Decks/My Collection
+		// harmonization, 2026-08-25: DeckCard now carries condition/language (see
+		// data-model.ts), found here via deck.id + scryfallId
+		// (setDeckCardCondition/setDeckCardLanguage) rather than an id of its own,
+		// like changeDeckCardCount further down.
 		let condGlyphImageEl: HTMLElement | null = null;
 		let condBtnImageEl: HTMLElement | null = null;
 		let langFlagImageEl: HTMLElement | null = null;
@@ -348,9 +347,9 @@ export class DeckCardDetailModal extends Modal {
 				cls: "mtg-card-detail-image",
 				attr: { src: this.card.imageUrl },
 			});
-			// Calques de couleur foil/holo — voir CardDetailModal pour le
-			// raisonnement complet, identique ici depuis que DeckCard porte
-			// un finish (harmonisation 2026-08-25).
+			// Foil/holo color layers — see CardDetailModal for the full reasoning,
+			// identical here since DeckCard carries a finish (harmonization
+			// 2026-08-25).
 			if (finishHasFoilLook(finish)) {
 				tilt.createDiv({
 					cls: finish === "etched" ? "mtg-foil-overlay-etched" : "mtg-foil-overlay mtg-foil-overlay-large",
@@ -367,12 +366,11 @@ export class DeckCardDetailModal extends Modal {
 			}
 			setupCardTilt(imageWrap, tilt);
 
-			// Bouton "flip" 3D — voir CardDetailModal pour le raisonnement complet
-			// (même fonction partagée, même guard de péremption). Ne nécessite que
-			// scryfallId, donc disponible ici comme pour Price History/Card Text
-			// (et, depuis le 2026-09-02, la colonne Store Prices TCGplayer —
-			// DeckCard porte désormais son propre prix Scryfall en cache, voir
-			// renderStorePricesBox plus bas).
+			// 3D "flip" button — see CardDetailModal for the full reasoning (same
+			// shared function, same staleness guard). Only needs scryfallId, hence
+			// available here like for Price History/Card Text (and, since 2026-09-02,
+			// the TCGplayer Store Prices column — DeckCard now carries its own cached
+			// Scryfall price, see renderStorePricesBox further down).
 			const flipRequestedId = this.card.scryfallId;
 			void this.plugin.getCardFaceImages(flipRequestedId).then((images) => {
 				if (!images || this.card.scryfallId !== flipRequestedId) return;
@@ -381,20 +379,20 @@ export class DeckCardDetailModal extends Modal {
 				});
 			});
 
-			// Bouton "rotation" — voir CardDetailModal pour le raisonnement complet.
-			// Ne nécessite que scryfallId, disponible ici comme pour Price History/
-			// Card Text/le flip ci-dessus.
+			// "Rotation" button — see CardDetailModal for the full reasoning. Only
+			// needs scryfallId, available here like for Price History/Card Text/the
+			// flip above.
 			const splitRequestedId = this.card.scryfallId;
 			void this.plugin.getSplitCardInfo(splitRequestedId).then((info) => {
 				if (!info || this.card.scryfallId !== splitRequestedId) return;
-				// Toujours portrait par défaut — voir CardDetailModal.
+				// Always portrait by default — see CardDetailModal.
 				if (this.splitRotated === null) this.splitRotated = false;
 				setupSplitCardRotation(imageColumn, tilt, this.splitRotated, (rotated) => {
 					this.splitRotated = rotated;
 				});
 			});
-			// Ruban en dehors de `tilt` (pas un enfant) : reste plat, épinglé au
-			// coin du wrap, plutôt que de pivoter avec la carte en 3D.
+			// Ribbon outside `tilt` (not a child): stays flat, pinned to the corner of
+			// the wrap, rather than pivoting with the card in 3D.
 			if (!isDeckCardOwned(this.card)) {
 				imageWrap.createDiv({ cls: "mtg-thumb-wanted-ribbon", text: "Wanted" });
 			}
@@ -403,14 +401,13 @@ export class DeckCardDetailModal extends Modal {
 		const panel = layout.createDiv({ cls: "mtg-card-detail-panel" });
 
 		const headerRow = panel.createDiv({ cls: "mtg-card-detail-header-row" });
-		// Même boîte cliquable → ChangePrintingModal que CardDetailModal/
-		// WantlistCardDetailModal (mtg-card-detail-set-box-clickable, "View all
-		// versions") — n'existait ici que sous sa forme non cliquable jusqu'ici
-		// (DeckCard n'a pas de champ id propre, voir "Data model notes" dans
-		// CLAUDE.md, ce qui bloquait la réutilisation directe de
-		// changeCollectionCardPrinting/changeWantlistCardPrinting) ; changeDeckCardPrinting
-		// (plugin.ts) retrouve la ligne par scryfallId + catégorie à la place,
-		// voir son propre commentaire.
+		// Same clickable box → ChangePrintingModal as
+		// CardDetailModal/WantlistCardDetailModal (mtg-card-detail-set-box-clickable, "View
+		// all versions") — only existed here in its non-clickable form until now (DeckCard
+		// has no id field of its own, see "Data model notes" in CLAUDE.md, which blocked
+		// direct reuse of changeCollectionCardPrinting/changeWantlistCardPrinting);
+		// changeDeckCardPrinting (plugin.ts) finds the row by scryfallId + category
+		// instead, see its own comment.
 		const setBox = headerRow.createDiv({
 			cls: "mtg-card-detail-box mtg-card-detail-set-box mtg-card-detail-set-box-clickable",
 		});
@@ -470,10 +467,10 @@ export class DeckCardDetailModal extends Modal {
 		});
 		const upBtn = controls.createDiv({ cls: "mtg-stepper-btn" });
 		setIcon(upBtn, "plus");
-		// Voir CardDetailModal.copiesActiveTileMetaEl — même correctif ciblé,
-		// depuis que cette fenêtre a elle aussi "Copies in Lists" (2026-09-08) :
-		// sans ça, changer la quantité laisserait la tuile active de ce
-		// carrousel affichée avec l'ancien nombre.
+		// See CardDetailModal.copiesActiveTileMetaEl — same targeted fix, since
+		// this window also has "Copies in Lists" (2026-09-08): without it,
+		// changing the quantity would leave the active tile of this carousel
+		// displayed with the old number.
 		const refreshCopiesActiveTile = () => {
 			if (this.copiesActiveTileMetaEl) {
 				this.copiesActiveTileMetaEl.setText(
@@ -501,10 +498,9 @@ export class DeckCardDetailModal extends Modal {
 			});
 		});
 
-		// Finish — même boîte/picker que CardDetailModal, harmonisation
-		// 2026-08-25. Pas de boîte "Copy card to…" ici (contrairement à
-		// Collection) : voir le commentaire sur "Deck" plus bas, un deck n'a
-		// pas de notion de copie/déplacement de carte.
+		// Finish — same box/picker as CardDetailModal, harmonization 2026-08-25.
+		// No "Copy card to…" box here (unlike Collection): see the comment on
+		// "Deck" further down, a deck has no notion of copying/moving a card.
 		const finishBox = attrRow.createDiv({ cls: "mtg-card-detail-box mtg-card-detail-finish-box" });
 		finishBox.setAttribute("title", "Change finish");
 		finishBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Finish" });
@@ -532,14 +528,14 @@ export class DeckCardDetailModal extends Modal {
 			);
 		});
 
-		// "Copy card to…" — même boîte/icône que CardDetailModal, demandée
-		// explicitement le même jour que "Deck" ouvrant "Move card" ci-dessous
-		// (harmonisation 2026-08-25). Mode "copy" (le défaut de CopyCardModal,
-		// non précisé ici comme dans CardDetailModal) : contrairement au clic
-		// sur "Deck" plus bas, la carte reste dans ce deck après la copie —
-		// this.draw() derrière this.view.render() n'a rien à rafraîchir de
-		// spécifique à ce bloc (pas de "Copies in Lists" côté Deck), mais suit
-		// la même convention que CardDetailModal par cohérence.
+		// "Copy card to…" — same box/icon as CardDetailModal, requested explicitly
+		// the same day as "Deck" opening "Move card" below (harmonization
+		// 2026-08-25). "copy" mode (CopyCardModal's default, not specified here as
+		// in CardDetailModal): unlike the click on "Deck" further down, the card
+		// stays in this deck after the copy — this.draw() behind
+		// this.view.render() has nothing specific to this block to refresh (no
+		// "Copies in Lists" on the Deck side), but follows the same convention as
+		// CardDetailModal for consistency.
 		const copyBox = attrRow.createDiv({ cls: "mtg-card-detail-box mtg-card-detail-icon-box" });
 		setIcon(copyBox, "copy");
 		copyBox.setAttribute("title", "Copy card to…");
@@ -558,9 +554,9 @@ export class DeckCardDetailModal extends Modal {
 			).open();
 		});
 
-		// Toggle Graded/Custom Price (+ Condition/Language dans la section
-		// repliable ci-dessous) — voir CardDetailModal.draw pour le
-		// raisonnement complet, identique ici.
+		// Graded/Custom Price toggle (+ Condition/Language in the collapsible
+		// section below) — see CardDetailModal.draw for the full reasoning,
+		// identical here.
 		const gradingToggleBox = attrRow.createDiv({
 			cls: "mtg-card-detail-box mtg-card-detail-icon-box",
 		});
@@ -576,8 +572,8 @@ export class DeckCardDetailModal extends Modal {
 					gradingWrapperEl.style.height = `${currentHeight}px`;
 					void gradingWrapperEl.offsetHeight;
 					gradingWrapperEl.removeClass("is-expanded");
-					// Plus de hauteur en ligne : la classe de base fait height:0 (styles.css), la transition part de
-					// la valeur en pixels posée juste au-dessus.
+					// No more inline height: the base class has height:0 (styles.css), the transition starts from
+					// the pixel value set just above.
 					gradingWrapperEl.style.removeProperty("height");
 					window.setTimeout(() => {
 						if (!this.gradingExpanded) this.draw();
@@ -698,7 +694,7 @@ export class DeckCardDetailModal extends Modal {
 					gradingWrapper.style.height = `${targetHeight}px`;
 				});
 				window.setTimeout(() => {
-					// "auto" est celui de .is-expanded (voir card-detail-modal.ts).
+					// "auto" is that of .is-expanded (see card-detail-modal.ts).
 					gradingWrapper.style.removeProperty("height");
 				}, 300);
 			} else {
@@ -706,16 +702,15 @@ export class DeckCardDetailModal extends Modal {
 			}
 		}
 
-		// Même boîte "List"/"Wantlist" cliquable → CopyCardModal (mode "move")
-		// que CardDetailModal/WantlistCardDetailModal — n'existait ici que
-		// sous sa forme non cliquable jusqu'ici ("un deck n'a pas de notion
-		// de déplacer cette carte", CopyCardModal ne prenait que des
-		// CollectionCard/WantlistCard en source) ; demandé explicitement le
-		// 2026-08-25, immédiatement après l'harmonisation Finish/Condition/
-		// Language/Grading — copyDeckCardToList/copyDeckCardToDeck/
-		// copyDeckCardToWantlist (plugin.ts) retrouvent la ligne par
-		// scryfallId + catégorie plutôt que par un id propre, voir leur
-		// commentaire.
+		// Same clickable "List"/"Wantlist" box → CopyCardModal ("move" mode) as
+		// CardDetailModal/WantlistCardDetailModal — only existed here in its
+		// non-clickable form until now ("a deck has no notion of moving this
+		// card", CopyCardModal only took CollectionCard/WantlistCard as a source);
+		// explicitly requested on 2026-08-25, immediately after the
+		// Finish/Condition/Language/Grading harmonization —
+		// copyDeckCardToList/copyDeckCardToDeck/copyDeckCardToWantlist (plugin.ts)
+		// find the row by scryfallId + category rather than by an id of their own,
+		// see their comment.
 		const deckBoxRow = panel.createDiv({ cls: "mtg-card-detail-box-row" });
 		const deckBox = deckBoxRow.createDiv({
 			cls: "mtg-card-detail-box mtg-card-detail-list-box mtg-card-detail-set-box-clickable",
@@ -738,24 +733,23 @@ export class DeckCardDetailModal extends Modal {
 			).open();
 		});
 
-		// "Board"/"Function" — juste après "Deck", pas dans le tiroir
-		// repliable Condition/Language/Graded (2026-09-02, demandé
-		// explicitement avec capture à l'appui, après une première version où
-		// "Function" vivait dans la rangée Condition/Language). Ce picker
-		// (DeckCardCategory — Mainboard/Sideboard/Maybeboard, voir
-		// DECK_BOARD_TABS/"onglets de board"/vue Stacks) est un attribut
-		// structurel de la place de la carte DANS ce deck, pas un détail
-		// secondaire de condition physique comme Condition/Language/Graded —
-		// mérite donc sa propre rangée, au même niveau que "Deck" plutôt
-		// qu'enfouie dans le tiroir. Function déplacée ici pour la même
-		// raison (regroupée avec ce picker plutôt qu'avec Condition/Language).
-		// Commander n'est PLUS l'une des options de ce picker depuis le
-		// 2026-09-07 (demandé explicitement : "Commander est une Function") —
-		// se désigne désormais depuis la boîte "Function" juste à côté.
-		// Libellé affiché "Board" plutôt que "Category" depuis le 2026-09-08
-		// (demandé explicitement, "cela sera plus clair") — variables/CSS
-		// internes gardées telles quelles (categoryBox/categoryFunctionRow,
-		// DeckCardCategory), seul le texte visible change.
+		// "Board"/"Function" — right after "Deck", not in the collapsible
+		// Condition/Language/Graded drawer (2026-09-02, explicitly requested with
+		// a screenshot in support, after a first version where "Function" lived in
+		// the Condition/Language row). This picker (DeckCardCategory —
+		// Mainboard/Sideboard/Maybeboard, see DECK_BOARD_TABS/"board tabs"/Stacks
+		// view) is a structural attribute of the card's place IN this deck, not a
+		// secondary physical-condition detail like Condition/Language/Graded — so
+		// it deserves its own row, at the same level as "Deck" rather than buried
+		// in the drawer. Function moved here for the same reason (grouped with
+		// this picker rather than with Condition/Language).
+		// Commander is NO LONGER one of this picker's options since 2026-09-07
+		// (explicitly requested: "Commander is a Function") — it is now designated
+		// from the "Function" box right next to it.
+		// Displayed label "Board" rather than "Category" since 2026-09-08
+		// (explicitly requested, "it will be clearer") — internal variables/CSS
+		// kept as is (categoryBox/categoryFunctionRow, DeckCardCategory), only the
+		// visible text changes.
 		const categoryFunctionRow = panel.createDiv({ cls: "mtg-card-detail-box-row" });
 
 		const categoryBox = categoryFunctionRow.createDiv({
@@ -784,10 +778,10 @@ export class DeckCardDetailModal extends Modal {
 			openPickerMenu(categoryBox, items, { matchAnchorWidth: true, menuClass: "mtg-finish-picker-menu" });
 		});
 
-		// "Function" (2026-09-02, voir "Group by Function"/vue Stacks) — même
-		// boîte/picker que Category ci-dessus. Le picker propose toujours
-		// "Auto (…)" en tête pour revenir à la détection automatique — jamais
-		// un état "aucune fonction" séparé.
+		// "Function" (2026-09-02, see "Group by Function"/Stacks view) — same
+		// box/picker as Category above. The picker always offers "Auto (…)" at the
+		// top to go back to automatic detection — never a separate "no function"
+		// state.
 		const funcBox = categoryFunctionRow.createDiv({
 			cls: "mtg-card-detail-box mtg-card-detail-finish-box",
 		});
@@ -835,17 +829,16 @@ export class DeckCardDetailModal extends Modal {
 		setupPanelScrollFade(panel);
 	}
 
-	// Même principe que CardDetailModal.renderCopiesInListsBox — cross-
-	// section (2026-09-08, demandé explicitement) : My Collection, My Decks
-	// (y compris CE deck-ci, en excluant la carte active par référence
-	// puisque DeckCard n'a pas d'id propre) et My Wantlists. À la différence
-	// de CardDetailModal/WantlistCardDetailModal, AUCUNE tuile ne réassigne
-	// this.card en place ici, pas même une autre carte de deck du même
-	// nom (même dans CE deck) : cette fenêtre n'a pas d'équivalent de
-	// navAnchorId pour garder "Card X of Y" cohérent si this.card
-	// divergeait de navCards (voir le commentaire sur gradingExpanded plus
-	// haut) — plus simple et plus sûr de toujours fermer cette fenêtre et
-	// ouvrir la bonne à la place, y compris pour une autre DeckCard.
+	// Same principle as CardDetailModal.renderCopiesInListsBox — cross-section
+	// (2026-09-08, explicitly requested): My Collection, My Decks (including
+	// THIS deck, excluding the active card by reference since DeckCard has no
+	// id of its own) and My Wantlists. Unlike
+	// CardDetailModal/WantlistCardDetailModal, NO tile reassigns this.card in
+	// place here, not even another deck card with the same name (even in THIS
+	// deck): this window has no equivalent of navAnchorId to keep "Card X of
+	// Y" consistent if this.card diverged from navCards (see the comment on
+	// gradingExpanded further up) — simpler and safer to always close this
+	// window and open the right one instead, including for another DeckCard.
 	private renderCopiesInListsBox(panel: HTMLElement) {
 		const others: CopyTile[] = [];
 
@@ -921,8 +914,8 @@ export class DeckCardDetailModal extends Modal {
 		);
 	}
 
-	// Les boîtes ci-dessous sont communes aux trois fenêtres de détail (voir shared-detail-boxes.ts) :
-	// ces méthodes ne font que leur donner ce qui est propre à CETTE section.
+	// The boxes below are common to the three detail windows (see shared-detail-boxes.ts): these
+	// methods only give them what is specific to THIS section.
 	private detailHost(): DetailBoxHost {
 		return { plugin: this.plugin, currentScryfallId: () => this.card.scryfallId };
 	}
@@ -953,10 +946,10 @@ export class DeckCardDetailModal extends Modal {
 		renderCardDescriptionBox(this.detailHost(), panel, this.card);
 	}
 
-	// Voir CardDetailModal.schedulePrefetchNeighbors — même logique, mais
-	// centerIndex se calcule par scryfallId (comme renderNavHeader ci-dessus,
-	// DeckCard n'a pas d'id propre ni de navAnchorId) — même exclusion Proxy
-	// (null) que CardDetailModal depuis l'harmonisation 2026-08-25.
+	// See CardDetailModal.schedulePrefetchNeighbors — same logic, but
+	// centerIndex is computed by scryfallId (like renderNavHeader above,
+	// DeckCard has neither an id of its own nor a navAnchorId) — same Proxy
+	// (null) exclusion as CardDetailModal since the 2026-08-25 harmonization.
 	private schedulePrefetchNeighbors() {
 		if (this.prefetchTimeout != null) window.clearTimeout(this.prefetchTimeout);
 		const centerIndex = this.navCards.findIndex((c) => c.scryfallId === this.card.scryfallId);

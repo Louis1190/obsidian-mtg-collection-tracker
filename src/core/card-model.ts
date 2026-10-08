@@ -3,16 +3,15 @@
 /* -------------------------------------------------------------------------- */
 
 
-// État physique de l'exemplaire, remplace l'ancien booléen "foil". "proxy"
-// n'est pas une finition Scryfall — c'est un exemplaire non-officiel possédé
-// par l'utilisateur, exclu du calcul de valeur (voir cardValue). "surged"
-// (Surge Foil, traitement propre à Kaldheim) n'a — contrairement à etched —
-// aucun champ de prix Scryfall dédié (`prices.usd_etched`/`eur_etched`
-// existent, l'équivalent "surge" n'existe pas dans leur API) : chaque
-// impression surge foil est son propre objet carte chez Scryfall (finition
-// foil uniquement pour cette impression précise), donc son prix se trouve
-// déjà dans les champs foil habituels — pas besoin de champs séparés, voir
-// getRawCardPrice plus bas.
+// Physical state of the copy, replaces the old "foil" boolean. "proxy" is
+// not a Scryfall finish — it is an unofficial copy owned by the user,
+// excluded from the value calculation (see cardValue). "surged" (Surge Foil,
+// a treatment specific to Kaldheim) has — unlike etched — no dedicated
+// Scryfall price field (`prices.usd_etched`/`eur_etched` exist, the "surge"
+// equivalent doesn't exist in their API): each surge foil printing is its
+// own card object at Scryfall (foil finish only for that precise printing),
+// so its price is already found in the usual foil fields — no separate
+// fields needed, see getRawCardPrice further down.
 export type Finish = "regular" | "foiled" | "etched" | "surged" | "proxy";
 
 export const FINISH_OPTIONS: { value: Finish; label: string }[] = [
@@ -27,16 +26,17 @@ export function getFinishLabel(finish: Finish): string {
 	return FINISH_OPTIONS.find((f) => f.value === finish)?.label ?? "Regular";
 }
 
-// Vrai pour les finitions qui ont un aspect brillant/texturé à l'image
-// (incrustation "foil" sur la vignette) — Regular et Proxy n'en ont pas.
+// True for the finishes that have a shiny/textured look on the image
+// ("foil" overlay on the thumbnail) — Regular and Proxy have none.
 export function finishHasFoilLook(finish: Finish): boolean {
 	return finish === "foiled" || finish === "etched" || finish === "surged";
 }
 
-// Reconnaît aussi bien la colonne CSV "Finish" (valeurs Regular/Foiled/
-// Etched/Surge Foil/Proxy) que l'ancienne colonne "Foil"/"foil/etched"
-// (valeurs comme "foil", "etched", "true", "1", ou vide) — un CSV exporté
-// par une version antérieure du plugin doit rester importable tel quel.
+// Recognizes both the CSV "Finish" column (values
+// Regular/Foiled/Etched/Surge Foil/Proxy) and the old "Foil"/"foil/etched"
+// column (values like "foil", "etched", "true", "1", or empty) — a CSV
+// exported by an earlier version of the plugin must remain importable as
+// is.
 export function parseFinishValue(raw: string | undefined): Finish {
 	const v = (raw ?? "").trim().toLowerCase();
 	if (v === "etched") return "etched";
@@ -46,12 +46,12 @@ export function parseFinishValue(raw: string | undefined): Finish {
 	return "regular";
 }
 
-// Grading/prix perso — My Collection uniquement (une carte de wantlist n'est
-// pas encore possédée, donc pas encore gradée ; un DeckCard n'a pas non plus
-// de finish, même asymétrie déjà établie). Barème volontairement minimal
-// (société + une seule note 1-10, pas de sous-notes/numéro de certificat) —
-// PSA/BGS/CGC utilisent tous une échelle 1-10 par pas de 0.5 sur l'essentiel
-// de la plage (vérifié via comics.ha.com/tutorial/tcg-card-grading.s).
+// Grading/custom price — My Collection only (a wantlist card isn't owned
+// yet, so not graded yet; a DeckCard doesn't have a finish either, same
+// asymmetry already established). Deliberately minimal scale (company + a
+// single 1-10 grade, no sub-grades/certificate number) — PSA/BGS/CGC all use
+// a 1-10 scale in 0.5 steps over most of the range (checked via
+// comics.ha.com/tutorial/tcg-card-grading.s).
 export type GradingCompany = "PSA" | "BGS" | "CGC" | "Other";
 
 export const GRADING_COMPANY_OPTIONS: { value: GradingCompany; label: string }[] = [
@@ -152,41 +152,40 @@ export interface CollectionCard {
 	dateAdded: number;
 	dateModified: number;
 	gradingCompany?: GradingCompany;
-	gradingGrade?: number; // 1-10, pas de 0.5
-	// Abréviation officielle (ex. "GEM MT") choisie dans GRADING_TERMS,
-	// stockée à part de gradingGrade car BGS/CGC ont chacune deux mentions
-	// différentes à la note 10 — la seule note ne suffit pas à les
-	// distinguer. undefined si la note a été tapée à la main sans passer
-	// par le menu déroulant de mentions.
+	gradingGrade?: number; // 1-10, in steps of 0.5
+	// Official abbreviation (e.g. "GEM MT") chosen from GRADING_TERMS, stored
+	// separately from gradingGrade because BGS/CGC each have two different
+	// labels at grade 10 — the grade alone isn't enough to tell them apart.
+	// undefined if the grade was typed by hand without going through the
+	// labels dropdown.
 	gradingLabel?: string;
-	customPrice?: string; // note libre, jamais utilisée dans les calculs de prix
-	// Bordure/cadre (filtre "border:", card-search.ts) — contrairement à
-	// gradingCompany/etc. ci-dessus, optionnel non pas parce que la valeur
-	// peut légitimement manquer, mais parce que cette donnée est IMMUABLE
-	// (une carte imprimée ne change jamais de bordure) et a été ajoutée à un
-	// modèle de données déjà mature : une entrée créée avant cette
-	// fonctionnalité n'a tout simplement pas encore ces champs en mémoire tant
-	// que MTGCollectionPlugin.backfillBorderData() ne les a pas rattrapés une
-	// fois — voir son propre commentaire (plugin.ts) pour pourquoi un simple
-	// rattrapage ponctuel suffit ici, contrairement au cache à TTL des
-	// légalités. Peuplée directement depuis ScryfallCard.border_color/frame/
-	// frame_effects à chaque site qui construit une entrée depuis une réponse
-	// Scryfall (addCardToCollection, importCsv, changeCollectionCardPrinting, etc.).
+	customPrice?: string; // free note, never used in price calculations
+	// Border/frame ("border:" filter, card-search.ts) — unlike gradingCompany/etc.
+	// above, optional not because the value can legitimately be missing, but because
+	// this data is IMMUTABLE (a printed card never changes border) and was added to
+	// an already mature data model: an entry created before this feature simply
+	// doesn't have these fields in memory until
+	// MTGCollectionPlugin.backfillBorderData() has caught them up once — see its own
+	// comment (plugin.ts) for why a simple one-off catch-up is enough here, unlike
+	// the TTL cache for legalities. Populated directly from
+	// ScryfallCard.border_color/frame/frame_effects at each site that builds an
+	// entry from a Scryfall response (addCardToCollection, importCsv,
+	// changeCollectionCardPrinting, etc.).
 	borderColor?: string;
 	frame?: string;
 	frameEffects?: string[];
-	// Texte de règles (filtre "oracle:", card-search.ts) — même raison d'être
-	// optionnelle que borderColor/frame/frameEffects ci-dessus (donnée
-	// immuable, ajoutée à un modèle déjà mature, rattrapée une fois par
-	// MTGCollectionPlugin.backfillOracleTextData()). Combine les deux faces
-	// pour une carte recto-verso (voir buildCardTextInfo, scryfall.ts).
+	// Rules text ("oracle:" filter, card-search.ts) — same reason for being
+	// optional as borderColor/frame/frameEffects above (immutable data, added
+	// to an already mature model, caught up once by
+	// MTGCollectionPlugin.backfillOracleTextData()). Combines both faces for a
+	// double-faced card (see buildCardTextInfo, scryfall.ts).
 	oracleText?: string;
 }
 
-// Même forme que CollectionCard, sans condition/langue : une carte désirée n'est
-// pas encore possédée, donc son état physique n'a pas de sens ici. finish et
-// prix restent utiles (on peut vouloir spécifiquement une version foil, et
-// le prix aide à évaluer le coût d'acquisition).
+// Same shape as CollectionCard, without condition/language: a wanted card isn't
+// owned yet, so its physical state makes no sense here. finish and price remain
+// useful (one may specifically want a foil version, and the price helps assess
+// the cost of acquisition).
 export interface WantlistCard {
 	id: string;
 	scryfallId: string;
@@ -215,7 +214,7 @@ export interface WantlistCard {
 	listId: string;
 	dateAdded: number;
 	dateModified: number;
-	// Voir le commentaire équivalent sur CollectionCard ci-dessus.
+	// See the equivalent comment on CollectionCard above.
 	borderColor?: string;
 	frame?: string;
 	frameEffects?: string[];
@@ -228,12 +227,12 @@ export interface LanguageOption {
 	flag: string;
 }
 
-// Langues d'impression officielles de Magic: The Gathering. "flag" est un
-// code pays ISO 3166-1 alpha-2, clé dans FLAG_SVGS ci-dessous. Pas d'entrée
-// "None" ici (essayé une première fois, revenu en arrière sur demande
-// explicite) : une carte sans langue choisie n'apparaît plus comme un choix
-// sélectionnable dans les pickers, seulement comme un repli visuel — voir
-// getLanguage/createLanguageIcon (ui/option-icons.ts).
+// Official Magic: The Gathering print languages. "flag" is an ISO 3166-1
+// alpha-2 country code, a key into FLAG_SVGS below. No "None" entry here
+// (tried once, reverted on explicit request): a card with no language
+// chosen no longer appears as a selectable choice in the pickers, only as a
+// visual fallback — see getLanguage/createLanguageIcon
+// (ui/option-icons.ts).
 export const LANGUAGES: LanguageOption[] = [
 	{ code: "en", label: "English", flag: "us" },
 	{ code: "es", label: "Spanish", flag: "es" },
@@ -248,22 +247,21 @@ export const LANGUAGES: LanguageOption[] = [
 	{ code: "zht", label: "Chinese (Traditional)", flag: "tw" },
 ];
 
-// Objet virtuel renvoyé pour un code vide/non reconnu — jamais un membre de
-// LANGUAGES (donc jamais itéré dans un picker), juste une description pour
-// l'affichage texte (ex. la boîte "Language" du panneau Graded/Custom
-// Price) et pour créditer flag: "" à createLanguageIcon (ui/option-icons.ts).
+// Virtual object returned for an empty/unrecognized code — never a member of
+// LANGUAGES (so never iterated in a picker), just a description for text
+// display (e.g. the "Language" box of the Graded/Custom Price panel) and for
+// supplying flag: "" to createLanguageIcon (ui/option-icons.ts).
 const UNSET_LANGUAGE: LanguageOption = { code: "", label: "None", flag: "" };
 
 export function getLanguage(code: string): LanguageOption {
 	return LANGUAGES.find((l) => l.code === code) ?? UNSET_LANGUAGE;
 }
 
-// Construit la liste des langues proposables dans un picker de carte : les
-// langues confirmées disponibles pour cette impression (availableCodes, déjà
-// filtré par plugin.getAvailableLanguages), ou la liste complète si Scryfall
-// n'en a signalé aucune. Petit helper DRY pour les 3 pickers qui en ont
-// besoin (ligne de liste, tuile Card view, panneau de détail) plutôt qu'une
-// logique dupliquée trois fois.
+// Builds the list of languages offerable in a card picker: the languages
+// confirmed available for this printing (availableCodes, already filtered by
+// plugin.getAvailableLanguages), or the full list if Scryfall reported none.
+// Small DRY helper for the 3 pickers that need it (list row, Card view tile,
+// detail panel) rather than logic duplicated three times.
 export function languagePickerOptions(availableCodes: string[]): LanguageOption[] {
 	const available = LANGUAGES.filter((l) => availableCodes.includes(l.code));
 	return available.length > 0 ? available : LANGUAGES;
@@ -286,21 +284,21 @@ export const CONDITIONS: ConditionOption[] = [
 	{ value: "PO", label: "Poor", glyph: "PO", color: "#cb444a" },
 ];
 
-// Objet virtuel renvoyé pour une valeur vide/non reconnue — jamais un membre
-// de CONDITIONS (donc jamais itéré dans un picker), même rôle que
-// UNSET_LANGUAGE plus haut : décrit l'état pour l'affichage texte (ex. la
-// recherche par puces, qui traite déjà "none" comme son propre mot-clé
-// condition — voir card-search.ts) et pour créditer glyph "–" à l'ancien
-// rendu badge encore utilisé par cette puce de recherche.
+// Virtual object returned for an empty/unrecognized value — never a member
+// of CONDITIONS (so never iterated in a picker), same role as UNSET_LANGUAGE
+// above: describes the state for text display (e.g. the chip search, which
+// already treats "none" as its own condition keyword — see card-search.ts)
+// and for supplying glyph "–" to the old badge rendering still used by that
+// search chip.
 const UNSET_CONDITION: ConditionOption = { value: "", label: "None", glyph: "–", color: "var(--text-faint)" };
 
 export function getCondition(value: string): ConditionOption {
 	return CONDITIONS.find((c) => c.value === value) ?? UNSET_CONDITION;
 }
 
-// Limited Edition Alpha (1993) avait des coins visiblement plus arrondis
-// que le reste des impressions Magic — reproduit via une classe CSS dédiée
-// partout où une image de carte est affichée.
+// Limited Edition Alpha (1993) had visibly more rounded corners than the
+// rest of the Magic printings — reproduced via a dedicated CSS class
+// wherever a card image is displayed.
 export function isAlphaSet(setCode: string): boolean {
 	return setCode.toLowerCase() === "lea";
 }

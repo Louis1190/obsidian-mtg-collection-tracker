@@ -15,12 +15,12 @@ import type { MTGCollectionView } from "../view";
 import { setSvgMarkup } from "../ui/svg-markup";
 
 /* ---------------------------------------------------------------------------- */
-/*  Barre de recherche à puces (My Collection / My Decks / My Wantlists) : puces, filtre numérique, suggestions.*/
+/* Chip search bar (My Collection / My Decks / My Wantlists): chips, numeric filter, suggestions. */
 /* ---------------------------------------------------------------------------- */
 
 export const FILTER_RENDER_DEBOUNCE_MS = 150;
-// Regroupe les render() rapprochés déclenchés en tapant dans un filtre
-// (voir le champ filterRenderDebounceTimer pour le pourquoi).
+// Groups together the close-together render() calls triggered by typing in
+// a filter (see the filterRenderDebounceTimer field for the why).
 
 export function scheduleFilterRender(this: MTGCollectionView) {
 	if (this.filterRenderDebounceTimer !== null) window.clearTimeout(this.filterRenderDebounceTimer);
@@ -29,9 +29,9 @@ export function scheduleFilterRender(this: MTGCollectionView) {
 		this.render();
 	}, FILTER_RENDER_DEBOUNCE_MS);
 }
-// Barre de recherche façon Delver : chaque mot validé (espace) devient une
-// puce supprimable ; un mot reconnu (couleur/rareté) s'affiche avec son
-// icône plutôt qu'en texte brut. Conserve le focus d'une frappe à l'autre.
+// Delver-style search bar: each validated word (space) becomes a removable
+// chip; a recognized word (color/rarity) is displayed with its icon rather
+// than as raw text. Keeps focus from one keystroke to the next.
 
 export function renderChipFilter(this: MTGCollectionView, 
 	container: HTMLElement,
@@ -43,12 +43,11 @@ export function renderChipFilter(this: MTGCollectionView,
 	onDraftChange: (draft: string) => void,
 	baseCards: SearchableCard[] = [],
 	recentlyAddedIds?: Set<string>,
-	// My Collection uniquement (voir renderListDetail) — Decks/Wantlists
-	// omettent ce paramètre, comme ils omettent déjà recentlyAddedIds
-	// ci-dessus, même précédent : "legal:" n'y est simplement jamais
-	// reconnu comme catégorie active côté données (categorizeToken le
-	// reconnaît partout, mais sans cette Map le jeton ne matche jamais
-	// rien, voir legalityTokenMatches).
+	// My Collection only (see renderListDetail) — Decks/Wantlists omit this
+	// parameter, as they already omit recentlyAddedIds above, same precedent:
+	// "legal:" is simply never recognized there as an active category on the
+	// data side (categorizeToken recognizes it everywhere, but without this
+	// Map the token never matches anything, see legalityTokenMatches).
 	legalitiesByScryfallId?: Map<string, Record<string, string>>
 ) {
 	const wrap = container.createDiv({ cls: "mtg-filter-chip-row" });
@@ -80,14 +79,12 @@ export function renderChipFilter(this: MTGCollectionView,
 
 		const recognized = recognizeKeywordToken(baseToken);
 
-		// Bascule "identité de couleur exacte" (voir isExactToken,
-		// card-search.ts) — seulement pour une puce couleur reconnue : ce
-		// concept n'a de sens que pour cette facette (contrairement à
-		// l'exclusion "-" ci-dessus, disponible sur n'importe quelle puce).
-		// Mutuellement exclusive avec la négation par construction : la
-		// bascule pose "=${baseToken}" où baseToken est déjà dépouillé de
-		// son éventuel préfixe "-" ci-dessus, donc cliquer ici retire
-		// silencieusement la négation le cas échéant (et vice versa).
+		// "Exact color identity" toggle (see isExactToken, card-search.ts) — only
+		// for a recognized color chip: this concept only makes sense for that
+		// facet (unlike the "-" exclusion above, available on any chip). Mutually
+		// exclusive with negation by construction: the toggle sets "=${baseToken}"
+		// where baseToken is already stripped of its possible "-" prefix above, so
+		// clicking here silently removes the negation if any (and vice versa).
 		if (recognized?.kind === "color") {
 			const toggleExactBtn = chip.createSpan({ cls: "mtg-filter-chip-exact-btn" });
 			setIcon(toggleExactBtn, "equal");
@@ -127,9 +124,9 @@ export function renderChipFilter(this: MTGCollectionView,
 			chip.createSpan({ text: recognized.label });
 		} else if (recognized?.kind === "language") {
 			chip.addClass("mtg-filter-chip-recognized");
-			// recognized.flag est toujours un vrai code pays ici : "None"
-			// n'est plus une entrée de LANGUAGES, donc jamais reconnu comme
-			// jeton de langue par recognizeKeywordToken (voir card-search.ts).
+			// recognized.flag is always a real country code here: "None" is no longer
+			// an entry of LANGUAGES, so never recognized as a language token by
+			// recognizeKeywordToken (see card-search.ts).
 			createFlagImg(chip, recognized.flag, "mtg-flag-img mtg-flag-img-inline");
 			chip.createSpan({ text: recognized.label });
 		} else if (recognized?.kind === "condition") {
@@ -249,9 +246,9 @@ export function renderChipFilter(this: MTGCollectionView,
 	input.addEventListener("input", () => {
 		const val = input.value;
 		this.suggestionHighlightIndex = -1;
-		// !hasUnclosedQuote : une phrase entre guillemets encore ouverte
-		// (ex. après "oracle:") ne doit pas être coupée au premier espace
-		// qu'elle contient — voir le commentaire de hasUnclosedQuote.
+		// !hasUnclosedQuote: a quoted phrase still open (e.g. after "oracle:")
+		// must not be cut at the first space it contains — see the comment of
+		// hasUnclosedQuote.
 		if (val.endsWith(" ") && !hasUnclosedQuote(val)) {
 			const token = val.trim();
 			if (token) {
@@ -294,14 +291,14 @@ export function renderChipFilter(this: MTGCollectionView,
 	});
 
 	if (this.lastFocusedFilterKey === key) {
-		// input est construit hors DOM à cet instant (render() assemble tout
-		// dans un clone détaché avant de l'échanger d'un coup — voir
-		// render()) : appeler focus() ici ne fait rien, un élément détaché ne
-		// peut pas recevoir le focus. render() exécute ce callback juste
-		// après l'échange, dans le MÊME passage synchrone (pas via
-		// setTimeout) : un délai, même court, laisse une fenêtre sans aucun
-		// élément focus entre le retrait de l'ancien input et le focus du
-		// nouveau, où une frappe tombant pile dedans se perdait.
+		// input is built off-DOM at this moment (render() assembles everything in
+		// a detached clone before swapping it in at once — see render()): calling
+		// focus() here does nothing, a detached element cannot receive focus.
+		// render() runs this callback right after the swap, in the SAME
+		// synchronous pass (not via setTimeout): a delay, even a short one, leaves
+		// a window with no focused element between the removal of the old input
+		// and the focus of the new one, where a keystroke landing right in it was
+		// lost.
 		this.pendingFocusRestore = () => {
 			input.focus();
 			if (this.lastFocusedFilterCursor != null) {
@@ -310,17 +307,17 @@ export function renderChipFilter(this: MTGCollectionView,
 		};
 	}
 
-	// Remet la saisie en vue (la barre défile partout), que la barre ait le focus ou non. La barre est
-	// encore détachée ici, le helper attend donc qu'elle soit mise en page — après
-	// l'échange de clone ET après pendingFocusRestore, dont le focus() natif fait lui
-	// aussi défiler : c'est le passage du helper qui doit avoir le dernier mot.
+	// Puts the input back in view (the bar scrolls everywhere), whether or not the bar has focus. The
+	// bar is still detached here, so the helper waits for it to be laid out — after the clone swap AND
+	// after pendingFocusRestore, whose native focus() also scrolls: it's the helper's pass that must
+	// have the last word.
 	setupChipRowScroll(inner);
 
-	// Le compte de résultats ("x of y cards match", et l'indicateur "Fetching
-	// legality data" qui l'accompagnait) vivait ici, sous la barre de
-	// recherche ; il est passé dans le titre "Cards: …" en tête de la zone
-	// de défilement (voir renderCardsCountTitle plus bas) — demandé
-	// explicitement, comme le titre "Lists" des galeries.
+	// The result count ("x of y cards match", and the "Fetching legality data"
+	// indicator that accompanied it) used to live here, under the search bar;
+	// it has moved into the "Cards: …" title at the head of the scroll area
+	// (see renderCardsCountTitle further down) — explicitly requested, like
+	// the "Lists" title of the galleries.
 
 	const numericField = matchNumericField(draft);
 	if (numericField) {
@@ -372,8 +369,8 @@ export function renderChipFilter(this: MTGCollectionView,
 			if (s.count !== undefined) {
 				nameAndCount.createSpan({ cls: "mtg-filter-suggestion-count", text: `(${s.count})` });
 			}
-			// mousedown+preventDefault plutôt que click : évite que l'input
-			// perde le focus avant que la sélection ne soit prise en compte.
+			// mousedown+preventDefault rather than click: prevents the input from
+			// losing focus before the selection is taken into account.
 			mainArea.addEventListener("mousedown", (evt) => {
 				evt.preventDefault();
 				commitToken(s.value);
@@ -390,9 +387,9 @@ export function renderChipFilter(this: MTGCollectionView,
 		});
 	}
 }
-// Compositeur visuel pour les filtres numériques (Mana Value/Price/Qty) :
-// des boutons d'opérateur (< ≤ = ≥ >) + un champ nombre, pour ne jamais
-// avoir à taper la syntaxe "cmc>3" soi-même.
+// Visual composer for the numeric filters (Mana Value/Price/Qty): operator
+// buttons (< ≤ = ≥ >) + a number field, so as never to have to type the
+// "cmc>3" syntax yourself.
 
 export function renderNumericFilterBuilder(this: MTGCollectionView, 
 	container: HTMLElement,
@@ -494,9 +491,9 @@ export function getKeywordSuggestions(this: MTGCollectionView,
 		(k) => !tokens.includes(k.value) && k.matchTexts.some((m) => m.startsWith(q))
 	);
 
-	// Suggestions dynamiques, tirées de la collection réelle (mises en cache
-	// côté plugin — voir getDistinctArtists/getDistinctSets — donc pas de
-	// recalcul coûteux à chaque frappe).
+	// Dynamic suggestions, drawn from the real collection (cached on the
+	// plugin side — see getDistinctArtists/getDistinctSets — so no expensive
+	// recomputation on every keystroke).
 	const artistMatches: SuggestKeyword[] = this.plugin
 		.getDistinctArtists()
 		.filter((a) => a.toLowerCase().startsWith(q) && !tokens.includes(`artist:${a}`))
@@ -510,10 +507,9 @@ export function getKeywordSuggestions(this: MTGCollectionView,
 
 	const setMatches: SuggestKeyword[] = this.plugin
 		.getDistinctSets()
-		// includes, pas startsWith — bug rapporté : taper "Alpha" ne
-		// suggérait pas "Limited Edition Alpha" (seul "Limited" marchait).
-		// Un nom d'édition se cherche naturellement par n'importe quel mot
-		// qu'il contient, pas seulement son premier mot.
+		// includes, not startsWith — reported bug: typing "Alpha" didn't suggest
+		// "Limited Edition Alpha" (only "Limited" worked). A set name is naturally
+		// searched by any word it contains, not only its first word.
 		.filter(
 			(s) => s.name.toLowerCase().includes(q) && !tokens.includes(`set:${s.code}`)
 		)
@@ -527,18 +523,17 @@ export function getKeywordSuggestions(this: MTGCollectionView,
 		}));
 
 	const allMatches = [...staticMatches, ...artistMatches, ...setMatches];
-	// Plafond de 6 conservé pour la plupart des requêtes (peu d'entrées
-	// possibles, ou un préfixe qui les distingue déjà) — mais "legal:"
-	// seul (parcourir les formats sans encore savoir lequel chercher)
-	// matche d'un coup les 10 entrées curatées en tête de
-	// LEGALITY_SEARCH_FORMATS (voir cette constante, card-search.ts) :
-	// 6 aurait coupé "Legal: Commander" (bug rapporté). "legal:" est un
-	// préfixe qu'aucune autre catégorie ne peut matcher (voir
-	// categorizeToken), donc "toutes les correspondances sont de
-	// catégorie legality" identifie sans ambiguïté ce cas précis, jamais
-	// vrai pour une autre catégorie. Même raisonnement pour "border:" seul
-	// (9 entrées, voir BORDER_SEARCH_OPTIONS) — sans ce même correctif, ce
-	// serait exactement le même bug une seconde fois.
+	// Cap of 6 kept for most queries (few possible entries, or a prefix that
+	// already distinguishes them) — but "legal:" alone (browsing the formats
+	// without yet knowing which one to look for) matches at once the 10
+	// curated entries at the head of LEGALITY_SEARCH_FORMATS (see that
+	// constant, card-search.ts): 6 would have cut off "Legal: Commander"
+	// (reported bug). "legal:" is a prefix that no other category can match
+	// (see categorizeToken), so "all the matches are of the legality category"
+	// unambiguously identifies this precise case, never true for another
+	// category. Same reasoning for "border:" alone (9 entries, see
+	// BORDER_SEARCH_OPTIONS) — without this same fix, it would be exactly the
+	// same bug a second time.
 	const cap =
 		allMatches.length > 0 &&
 		(allMatches.every((s) => s.category === "legality") || allMatches.every((s) => s.category === "border"))
@@ -546,10 +541,10 @@ export function getKeywordSuggestions(this: MTGCollectionView,
 			: 6;
 	const combined = allMatches.slice(0, cap);
 
-	// Seuil réglable dans les paramètres (Interface) : 0 = compteur
-	// désactivé, -1 = toujours actif (aucune limite), sinon nombre max de
-	// cartes de la liste/deck ouvert au-delà duquel on n'affiche plus le
-	// compteur (voir cette même méthode pour le détail des mesures).
+	// Threshold adjustable in the settings (Interface): 0 = counter disabled,
+	// -1 = always on (no limit), otherwise the max number of cards of the open
+	// list/deck beyond which the counter is no longer displayed (see this same
+	// method for the detail of the measurements).
 	const threshold = this.plugin.settings.suggestionCountThreshold;
 	if (
 		baseCards.length === 0 ||
@@ -559,8 +554,8 @@ export function getKeywordSuggestions(this: MTGCollectionView,
 		return combined;
 	}
 
-	// Pour chaque suggestion : combien de cartes matcheraient si on
-	// l'ajoutait aux jetons déjà validés (sans le brouillon en cours).
+	// For each suggestion: how many cards would match if it were added to the
+	// already validated tokens (without the current draft).
 	return combined.map((s) => ({
 		...s,
 		count: baseCards.filter((c) =>
@@ -568,14 +563,14 @@ export function getKeywordSuggestions(this: MTGCollectionView,
 		).length,
 	}));
 }
-// Appelée séparément (plutôt qu'inline dans render()) : lire puis vider
-// this.pendingFocusRestore directement dans render() faisait narrower
-// TypeScript vers "toujours null" à cet endroit précis (le compilateur
-// perdait le fil entre l'affectation à null en tout début de méthode et
-// la réaffectation par renderChipFilter, appelé entre-temps via
-// render*Section), rendant l'appel jugé inatteignable à la compilation
-// alors qu'il l'est bel et bien à l'exécution. Cet indirection suffit à
-// lui faire réévaluer le type correctement.
+// Called separately (rather than inline in render()): reading then
+// clearing this.pendingFocusRestore directly in render() made TypeScript
+// narrow to "always null" at that precise spot (the compiler lost track
+// between the assignment to null at the very start of the method and the
+// reassignment by renderChipFilter, called in the meantime via
+// render*Section), making the call judged unreachable at compile time
+// whereas it very much is at runtime. This indirection is enough to make
+// it re-evaluate the type correctly.
 
 export function runPendingFocusRestore(this: MTGCollectionView) {
 	const restore = this.pendingFocusRestore;

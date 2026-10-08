@@ -49,26 +49,26 @@ export class WantlistCardDetailModal extends Modal {
 	private card: WantlistCard;
 	private confirmingDelete = false;
 	private navCards: WantlistCard[];
-	// Voir CardDetailModal.navAnchorId : garde la barre "Card X of Y"/flèches
-	// active sur la position d'origine même quand this.card affiche un
-	// exemplaire cliqué depuis "Copies in Lists" (absent de navCards).
+	// See CardDetailModal.navAnchorId: keeps the "Card X of Y"/arrows bar
+	// active on the original position even when this.card shows a copy clicked
+	// from "Copies in Lists" (absent from navCards).
 	private navAnchorId: string;
-	// Empêche un second clic prev/next de couper court à l'animation en cours
-	// (voir animateCardNav) — levé dès le lancement de la transition d'entrée,
-	// pas forcément une fois celle-ci visuellement terminée.
+	// Prevents a second prev/next click from cutting short the animation in
+	// progress (see animateCardNav) — lifted as soon as the entrance
+	// transition starts, not necessarily once it is visually finished.
 	private navAnimating = false;
 	private bg = new BackgroundCrossfader();
-	// Voir CardDetailModal.copiesActiveTileMetaEl — même correctif, même raison.
+	// See CardDetailModal.copiesActiveTileMetaEl — same fix, same reason.
 	private copiesActiveTileMetaEl: HTMLElement | null = null;
-	// Voir CardDetailModal.legalFormatsShownFor — même correctif, même raison.
+	// See CardDetailModal.legalFormatsShownFor — same fix, same reason.
 	private legalFormatsState: LegalFormatsState = { shownFor: null };
-	// Voir CardDetailModal.prefetchTimeout — même débounce, même raison.
+	// See CardDetailModal.prefetchTimeout — same debounce, same reason.
 	private prefetchTimeout: number | null = null;
-	// Voir CardDetailModal.flipped — même raisonnement (bouton "flip" 3D),
-	// réinitialisé aux 3 endroits où this.card est réassigné plus bas.
+	// See CardDetailModal.flipped — same reasoning (3D "flip" button), reset
+	// at the 3 places where this.card is reassigned further down.
 	private flipped = false;
-	// Voir CardDetailModal.splitRotated — même raisonnement (bouton "rotation"
-	// des cartes split, défaut async), réinitialisé aux 3 mêmes endroits.
+	// See CardDetailModal.splitRotated — same reasoning ("rotation" button of
+	// split cards, async default), reset at the same 3 places.
 	private splitRotated: boolean | null = null;
 
 	constructor(
@@ -88,14 +88,14 @@ export class WantlistCardDetailModal extends Modal {
 
 	onOpen() {
 		this.modalEl.addClass("mtg-card-detail-modal-frame");
-		// Masque la croix native d'Obsidian (classe partagée par toutes les
-		// modales du plugin qui ont leur propre croix perso — voir modal-
-		// animation.ts) : ce bouton lui-même vit dans contentEl, rebâti à
-		// chaque draw() (voir plus bas), donc PAS ajouté via addModalCloseButton
-		// ici — seule cette classe de masquage est nécessaire dans onOpen().
+		// Hides Obsidian's native cross (class shared by all of the plugin's
+		// modals that have their own custom cross — see modal-animation.ts): this
+		// button itself lives in contentEl, rebuilt on every draw() (see below),
+		// so NOT added via addModalCloseButton here — only this hiding class is
+		// needed in onOpen().
 		this.modalEl.addClass("mtg-modal-hides-native-close");
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
 		this.draw();
 	}
@@ -125,9 +125,9 @@ export class WantlistCardDetailModal extends Modal {
 
 	draw() {
 		const { contentEl } = this;
-		// On préserve le calque de fond (voir BackgroundCrossfader) : seul un
-		// vidage sélectif (pas contentEl.empty()) permet le fondu enchaîné
-		// entre deux illustrations lors de la navigation précédent/suivant.
+		// We preserve the background layer (see BackgroundCrossfader): only a
+		// selective clearing (not contentEl.empty()) allows the cross-fade between
+		// two illustrations during previous/next navigation.
 		this.bg.clearSiblingsIn(contentEl);
 		contentEl.addClass("mtg-card-detail-modal");
 		contentEl.addClass("mtg-card-detail-modal-fixed-height");
@@ -179,36 +179,33 @@ export class WantlistCardDetailModal extends Modal {
 			cls: isAlpha ? "mtg-card-detail-image-wrap mtg-card-detail-image-wrap-alpha" : "mtg-card-detail-image-wrap",
 		});
 		if (this.card.imageUrl) {
-			// Le tilt/scintillement holographique (setupCardTilt) est posé sur
-			// ce niveau imbriqué, pas directement sur imageWrap : imageWrap
-			// porte déjà le transform du carrousel Cover Flow (animateCardNav)
-			// pour la navigation précédent/suivant, et les deux se
-			// disputeraient la même propriété transform s'ils visaient le même
-			// élément. Le tilt 3D lui-même s'applique à toutes les finitions —
-			// seuls les calques de couleur (foil-overlay/holo-shine/holo-sweep)
-			// restent réservés au foil/etched, puisqu'une carte regular ne
-			// scintille pas physiquement mais peut quand même être inclinée.
+			// The holographic tilt/shimmer (setupCardTilt) is set on this nested
+			// level, not directly on imageWrap: imageWrap already carries the
+			// transform of the Cover Flow carousel (animateCardNav) for previous/next
+			// navigation, and the two would fight over the same transform property if
+			// they targeted the same element. The 3D tilt itself applies to all
+			// finishes — only the color layers (foil-overlay/holo-shine/holo-sweep)
+			// remain reserved for foil/etched, since a regular card doesn't physically
+			// shimmer but can still be tilted.
 			const tilt = imageWrap.createDiv({ cls: "mtg-card-detail-tilt" });
 			tilt.createEl("img", {
 				cls: "mtg-card-detail-image",
 				attr: { src: this.card.imageUrl },
 			});
 			if (finishHasFoilLook(this.card.finish)) {
-				// Etched ne disperse pas la lumière comme foiled/surged — son
-				// halo ambiant reste neutre/argenté (mtg-foil-overlay-etched)
-				// plutôt que le dégradé arc-en-ciel partagé par les deux
-				// autres finitions.
+				// Etched doesn't scatter light like foiled/surged — its ambient halo stays
+				// neutral/silvery (mtg-foil-overlay-etched) rather than the rainbow
+				// gradient shared by the other two finishes.
 				tilt.createDiv({
 					cls:
 						this.card.finish === "etched"
 							? "mtg-foil-overlay-etched"
 							: "mtg-foil-overlay mtg-foil-overlay-large",
 				});
-				// Surge Foil obtient le reflet multi-calques façon carte Pokémon
-				// "V" (voir styles.css) ; Etched obtient un effet paillettes
-				// (voir styles.css) plutôt que le reflet arc-en-ciel simple
-				// utilisé pour foiled — demandé explicitement, etched "ne
-				// disperse pas la lumière" comme un vrai holo.
+				// Surge Foil gets the multi-layer shine in the style of the Pokémon "V"
+				// card (see styles.css); Etched gets a glitter effect (see styles.css)
+				// rather than the simple rainbow shine used for foiled — explicitly
+				// requested, etched "doesn't scatter light" like a real holo.
 				tilt.createDiv({
 					cls:
 						this.card.finish === "surged"
@@ -221,22 +218,22 @@ export class WantlistCardDetailModal extends Modal {
 			}
 			setupCardTilt(imageWrap, tilt);
 
-			// Repère "souhaité" (coin haut-gauche, cœur blanc sur fond couleur
-			// d'accent) — demandé explicitement, capture à l'appui, même badge
-			// que buildWantlistCardTile (view.ts). Enfant de `tilt` (pas de
-			// imageWrap) — demandé explicitement en suivi : contrairement au
-			// ruban "Wanted" de DeckCardDetailModal (qui reste volontairement
-			// plat/épinglé), ce badge doit suivre le tilt 3D au curseur comme les
-			// calques foil-overlay/holo-shine juste au-dessus, posés sur ce même
-			// élément pour la même raison. `tilt` porte déjà le clip aux coins
-			// arrondis (overflow:hidden + border-radius, voir son propre
-			// commentaire plus haut) — l'inset de 0.6em du badge (styles.css) le
-			// garde toujours à l'intérieur de cette zone, jamais rogné.
+			// "Wanted" marker (top-left corner, white heart on accent-color
+			// background) — explicitly requested, screenshot in support, same badge as
+			// buildWantlistCardTile (view.ts). Child of `tilt` (not of imageWrap) —
+			// explicitly requested as a follow-up: unlike the "Wanted" ribbon of
+			// DeckCardDetailModal (which deliberately stays flat/pinned), this badge
+			// must follow the 3D tilt toward the cursor like the
+			// foil-overlay/holo-shine layers just above, set on this same element for
+			// the same reason. `tilt` already carries the rounded-corner clip
+			// (overflow:hidden + border-radius, see its own comment above) — the
+			// badge's 0.6em inset (styles.css) always keeps it inside this area, never
+			// cropped.
 			const wantBadge = tilt.createDiv({ cls: "mtg-wantlist-heart-badge mtg-wantlist-heart-badge-large" });
 			setIcon(wantBadge, "heart");
 
-			// Bouton "flip" 3D — voir CardDetailModal pour le raisonnement complet
-			// (même fonction partagée, même guard de péremption).
+			// 3D "flip" button — see CardDetailModal for the full reasoning (same
+			// shared function, same staleness guard).
 			const flipRequestedId = this.card.scryfallId;
 			void this.plugin.getCardFaceImages(flipRequestedId).then((images) => {
 				if (!images || this.card.scryfallId !== flipRequestedId) return;
@@ -245,11 +242,11 @@ export class WantlistCardDetailModal extends Modal {
 				});
 			});
 
-			// Bouton "rotation" — voir CardDetailModal pour le raisonnement complet.
+			// "Rotation" button — see CardDetailModal for the full reasoning.
 			const splitRequestedId = this.card.scryfallId;
 			void this.plugin.getSplitCardInfo(splitRequestedId).then((info) => {
 				if (!info || this.card.scryfallId !== splitRequestedId) return;
-				// Toujours portrait par défaut — voir CardDetailModal.
+				// Always portrait by default — see CardDetailModal.
 				if (this.splitRotated === null) this.splitRotated = false;
 				setupSplitCardRotation(imageColumn, tilt, this.splitRotated, (rotated) => {
 					this.splitRotated = rotated;
@@ -351,9 +348,9 @@ export class WantlistCardDetailModal extends Modal {
 		setIcon(copyBox, "copy");
 		copyBox.setAttribute("title", "Copy card to…");
 		copyBox.addEventListener("click", () => {
-			// Voir CardDetailModal.copyBox : this.draw() en plus de
-			// this.view.render(), sinon "Copies in Lists" reste sur l'instantané
-			// capturé à l'ouverture de cette modale.
+			// See CardDetailModal.copyBox: this.draw() in addition to
+			// this.view.render(), otherwise "Copies in Lists" stays on the snapshot
+			// captured when this modal opened.
 			new CopyCardModal(this.app, this.plugin, [this.card], "wantlist", () => {
 				this.view.render();
 				this.draw();
@@ -428,13 +425,13 @@ export class WantlistCardDetailModal extends Modal {
 		setupPanelScrollFade(panel);
 	}
 
-	// Même principe que CardDetailModal.renderCopiesInListsBox — cross-
-	// section depuis le 2026-09-08 (My Collection + My Decks, en plus de My
-	// Wantlists lui-même). Clic sur une tuile wantlist (même section) :
-	// change this.card en place (comportement d'origine, inchangé). Clic
-	// sur une tuile collection/deck (section différente) : ferme cette
-	// fenêtre et ouvre la bonne à la place — voir le commentaire complet
-	// dans CardDetailModal.renderCopiesInListsBox, identique ici.
+	// Same principle as CardDetailModal.renderCopiesInListsBox — cross-section
+	// since 2026-09-08 (My Collection + My Decks, in addition to My Wantlists
+	// itself). Click on a wantlist tile (same section): changes this.card in
+	// place (original behavior, unchanged). Click on a collection/deck tile
+	// (different section): closes this window and opens the right one instead
+	// — see the full comment in CardDetailModal.renderCopiesInListsBox,
+	// identical here.
 	private renderCopiesInListsBox(panel: HTMLElement) {
 		const others: CopyTile[] = [];
 
@@ -511,8 +508,8 @@ export class WantlistCardDetailModal extends Modal {
 		);
 	}
 
-	// Les boîtes ci-dessous sont communes aux trois fenêtres de détail (voir shared-detail-boxes.ts) :
-	// ces méthodes ne font que leur donner ce qui est propre à CETTE section.
+	// The boxes below are common to the three detail windows (see shared-detail-boxes.ts): these
+	// methods only give them what is specific to THIS section.
 	private detailHost(): DetailBoxHost {
 		return { plugin: this.plugin, currentScryfallId: () => this.card.scryfallId };
 	}
@@ -543,7 +540,7 @@ export class WantlistCardDetailModal extends Modal {
 		renderCardDescriptionBox(this.detailHost(), panel, this.card);
 	}
 
-	// Voir CardDetailModal.schedulePrefetchNeighbors — même logique.
+	// See CardDetailModal.schedulePrefetchNeighbors — same logic.
 	private schedulePrefetchNeighbors() {
 		if (this.prefetchTimeout != null) window.clearTimeout(this.prefetchTimeout);
 		const centerIndex = this.navCards.findIndex((c) => c.id === this.navAnchorId);

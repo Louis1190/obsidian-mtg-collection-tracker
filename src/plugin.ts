@@ -44,14 +44,13 @@ import { setSvgMarkup } from "./ui/svg-markup";
 /*  (src/plugin/scryfall-cache.ts, since Phase 5's split on 2026-09-10)       */
 /* -------------------------------------------------------------------------- */
 
-// Une entrée mal formée (fichier corrompu, format d'une version antérieure
-// du plugin qui n'écrivait pas encore ce champ...) doit être ignorée en
-// silence à la lecture, jamais planter tout le chargement du cache — chacun
-// de ces validateurs décrit juste "est-ce la forme attendue", pas un
-// prédicat de type TypeScript (loadPersistedMapCache caste après coup, voir
-// son propre commentaire) : évite de se battre avec l'exactitude stricte
-// des prédicats de type génériques pour un simple filtre au moment de lire
-// un fichier JSON.
+// A malformed entry (corrupted file, format from an earlier plugin version
+// that didn't write this field yet...) must be silently ignored on read,
+// never crash the whole cache loading — each of these validators just
+// describes "is this the expected shape", not a TypeScript type predicate
+// (loadPersistedMapCache casts afterwards, see its own comment): avoids
+// fighting with the strict exactness of generic type predicates for a
+// simple filter when reading a JSON file.
 function isStringOrNull(v: unknown): boolean {
 	return v === null || typeof v === "string";
 }
@@ -73,172 +72,151 @@ export default class MTGCollectionPlugin extends Plugin {
 	settings: MTGCollectionSettings = DEFAULT_SETTINGS;
 	collectionRibbonIconEl: HTMLElement | null = null;
 	setIconCache: Map<string, string | null> = new Map();
-	// Persisté sur disque (voir allSetsCacheFilePath/loadPersistedAllSetsCache/
-	// persistAllSetsCache dans src/plugin/scryfall-cache.ts), CONTRAIREMENT aux caches "immuables" à
-	// droite de ce commentaire — Scryfall ajoute régulièrement de nouvelles
-	// éditions (plusieurs fois par mois), donc cette liste a besoin d'un vrai
-	// TTL (ALL_SETS_CACHE_TTL_MS) plutôt que d'être persistée pour toujours
-	// comme setIconCache/scryfallImmutableCache/etc. — mécanisme séparé, pas le
-	// même que loadPersistedMapCache (générique, sans notion de péremption).
+	// Persisted to disk (see allSetsCacheFilePath/loadPersistedAllSetsCache/persistAllSetsCache in
+	// src/plugin/scryfall-cache.ts), UNLIKE the "immutable" caches to the right of this comment —
+	// Scryfall regularly adds new sets (several times a month), so this list needs a real TTL
+	// (ALL_SETS_CACHE_TTL_MS) rather than being persisted forever like
+	// setIconCache/scryfallImmutableCache/etc. — separate mechanism, not the same as
+	// loadPersistedMapCache (generic, with no notion of expiry).
 	allSetsCache: ScryfallSetSummary[] | null = null;
 	symbologyCache: Map<string, string> | null = null;
 	symbologyFetchPromise: Promise<Map<string, string>> | null = null;
-	// Persisté sur disque (voir loadPersistedMapCache/scheduleMapCachePersist
-	// dans src/plugin/scryfall-cache.ts) — même raisonnement que setIconCache ci-dessus, les langues
-	// réellement imprimées pour une impression donnée ne changent pas une
-	// fois cette impression sortie.
+	// Persisted to disk (see loadPersistedMapCache/scheduleMapCachePersist in
+	// src/plugin/scryfall-cache.ts) — same reasoning as setIconCache above, the languages actually
+	// printed for a given printing don't change once that printing is out.
 	printLanguagesCache: Map<string, string[]> = new Map();
-	// Requêtes de symboles (set/mana) déjà en vol, indexées par clé de cache :
-	// évite que plusieurs lignes affichant le même set/symbole en même temps
-	// (rendu initial d'une longue liste, par ex.) ne déclenchent chacune leur
-	// propre requête réseau en parallèle pour exactement la même donnée.
+	// Symbol requests (set/mana) already in flight, indexed by cache key:
+	// prevents several rows displaying the same set/symbol at the same time
+	// (initial render of a long list, for example) from each triggering their
+	// own parallel network request for exactly the same data.
 	setIconInFlight: Map<string, Promise<string | null>> = new Map();
 	setIconFetchQueue: Promise<void> = Promise.resolve();
 	manaSymbolInFlight: Map<string, Promise<string | null>> = new Map();
-	// Légalités par carte (bloc "Legal Formats" du détail + filtre "legal:"
-	// de My Collection, voir card-search.ts) : cache mémoire, alimenté au
-	// démarrage depuis un fichier séparé persisté sur disque (voir
-	// legalitiesCacheFilePath/loadPersistedLegalitiesCache/
-	// scheduleLegalitiesPersist dans src/plugin/scryfall-cache.ts) — PAS dans settings.json/data.json
-	// comme le reste du plugin. Deux raisons : (1) c'est un objet volumineux
-	// (23 clés par carte désormais, potentiellement plusieurs Mo pour 10k
-	// cartes) que saveSettings() réécrirait en entier à CHAQUE mutation non
-	// liée (incrémenter une quantité, changer une couleur d'accent…), un
-	// vrai coût de perf pour une donnée qui change, elle, très rarement ;
-	// (2) contrairement au reste des settings, cette donnée devient
-	// obsolète avec le temps réel qui passe (rotations, bannissements), pas
-	// avec une action de l'utilisateur — un TTL (legalitiesFetchedAt +
-	// LEGALITIES_CACHE_TTL_MS, src/plugin/scryfall-cache.ts) a plus de sens porté par son propre
-	// mécanisme que mêlé au blob de settings, qui n'a aucune notion de
-	// péremption. On ne met en cache (et ne persiste) qu'un résultat obtenu
-	// avec succès (jamais un échec transitoire), même logique que
-	// setIconCache/setIconInFlight.
+	// Legalities per card ("Legal Formats" block of the detail + the "legal:" filter of My
+	// Collection, see card-search.ts): in-memory cache, fed at startup from a separate file persisted
+	// on disk (see legalitiesCacheFilePath/loadPersistedLegalitiesCache/scheduleLegalitiesPersist in
+	// src/plugin/scryfall-cache.ts) — NOT in settings.json/data.json like the rest of the plugin. Two
+	// reasons: (1) it is a bulky object (23 keys per card now, potentially several MB for 10k cards)
+	// that saveSettings() would rewrite in full on EVERY unrelated mutation (incrementing a quantity,
+	// changing an accent color…), a real performance cost for data that itself changes very rarely;
+	// (2) unlike the rest of the settings, this data goes stale with real time passing (rotations,
+	// bans), not with a user action — a TTL (legalitiesFetchedAt + LEGALITIES_CACHE_TTL_MS,
+	// src/plugin/scryfall-cache.ts) makes more sense carried by its own mechanism than mixed into the
+	// settings blob, which has no notion of expiry. Only a successfully obtained result is cached
+	// (and persisted) (never a transient failure), same logic as setIconCache/setIconInFlight.
 	legalitiesCache: Map<string, Record<string, string>> = new Map();
 	legalitiesInFlight: Map<string, Promise<Record<string, string> | null>> = new Map();
-	// Horodatage (Date.now()) du dernier fetch RÉUSSI par id — distinct de
-	// legalitiesCache elle-même : la valeur affichée reste celle en cache
-	// même une fois expirée (une légalité vieille d'une semaine reste très
-	// probablement correcte, mieux vaut l'afficher tout de suite qu'un état
-	// "chargement" pour re-vérifier une donnée presque sûrement encore
-	// bonne) — seule la décision de RE-fetcher (isLegalitiesFresh,
-	// bulkFetchLegalities) consulte cette Map, jamais l'affichage.
+	// Timestamp (Date.now()) of the last SUCCESSFUL fetch per id — distinct
+	// from legalitiesCache itself: the displayed value remains the cached one
+	// even once expired (a week-old legality is very probably still correct,
+	// better to display it right away than a "loading" state to re-verify data
+	// almost certainly still good) — only the decision to RE-fetch
+	// (isLegalitiesFresh, bulkFetchLegalities) consults this Map, never the
+	// display.
 	legalitiesFetchedAt: Map<string, number> = new Map();
-	// Même idiome de regroupement que pendingSaveTimer plus bas (champ) /
-	// SAVE_DEBOUNCE_MS (src/plugin/lifecycle.ts) pour saveSettings(), mais sur un délai plus long : un pré-fetch complet
-	// de la collection (voir maybeAutoRefreshLegalities) résout un par un
-	// beaucoup d'ids sur plusieurs secondes — écrire sur disque à chaque
-	// résolution individuelle serait bien plus d'écritures que nécessaire
-	// pour une donnée qui n'a pas besoin d'être persistée à la milliseconde
-	// près.
+	// Same grouping idiom as pendingSaveTimer further down (field) / SAVE_DEBOUNCE_MS (src/plugin/lifecycle.ts) for
+	// saveSettings(), but over a longer delay: a complete pre-fetch of the collection (see
+	// maybeAutoRefreshLegalities) resolves many ids one by one over several seconds — writing to disk on every
+	// individual resolution would be far more writes than necessary for data that doesn't need to be persisted to
+	// the millisecond.
 	legalitiesPersistTimer: number | null = null;
-	// Même idiome que legalitiesPersistTimer ci-dessus / LEGALITIES_PERSIST_DEBOUNCE_MS
-	// (src/plugin/scryfall-cache.ts), pour setIconCache (voir son propre commentaire plus haut) —
-	// un fichier séparé plutôt qu'une même écriture groupée avec les
-	// légalités : chaque cache de ce plugin possède son propre aller-retour
-	// de persistance de bout en bout (même raisonnement déjà établi pour
-	// scryfallImmutableCache plus bas).
-	// Lien produit TCGplayer, texte de règles + stats ("Card Text"), images
-	// recto/verso (bouton "flip") et info split (bouton "rotate") — 4
-	// fonctionnalités qui, jusqu'à cette fusion (revue du 2026-08-18),
-	// avaient chacune leur PROPRE cache + fetch de bout en bout (choix
-	// délibéré, documenté à l'époque pour tcgplayerUrlCache : "chaque cache
-	// possède son propre aller-retour, pas de promesse partagée entre
-	// concepts indépendants"). Ce découplage tenait pour 1-2 caches, mais à 4
-	// il avait un coût réel et mesuré : ouvrir une carte jamais vue cette
-	// session tirait 4 requêtes /cards/collection quasi simultanées pour le
-	// MÊME scryfallId, chacune redemandant en réalité le même objet
-	// ScryfallCard déjà récupéré par les 3 autres. Les 4 caches sont donc
-	// fusionnés en un seul, `scryfallImmutableCache` (voir aussi getScryfall
-	// ImmutableSnapshot dans src/plugin/scryfall-cache.ts) — un seul fetch par carte, dont les 4
-	// méthodes publiques (getTcgplayerUrl/getCardTextInfo/getCardFaceImages/
-	// getSplitCardInfo, signatures ET comportement inchangés pour leurs
-	// appelants) dérivent leur résultat synchronement. legalitiesCache reste
-	// volontairement à part (voir plus haut) : seul cache de ce groupe à
-	// avoir un vrai TTL, le fusionner aurait ajouté de la complexité
-	// ("immuable" + "périssable" dans un seul mécanisme) pour un bénéfice
-	// marginal — son propre pré-chauffage en arrière-plan le garde déjà
-	// quasiment toujours chaud au moment où une fiche s'ouvre. `null` est
-	// une réponse valide et mise en cache (carte trouvée mais confirmée sans
-	// verso/sans lien TCGplayer/etc. — un vrai résultat, pas un échec) ;
-	// seul un échec confirmé après retentative n'est pas mis en cache.
-	// ScryfallImmutableSnapshot (scryfall.ts) exclut délibérément prices/
-	// legalities — voir son propre commentaire pour pourquoi.
+	// Same idiom as legalitiesPersistTimer above / LEGALITIES_PERSIST_DEBOUNCE_MS
+	// (src/plugin/scryfall-cache.ts), for setIconCache (see its own comment higher up) — a
+	// separate file rather than a write grouped with the legalities: each cache of this plugin
+	// has its own end-to-end persistence round trip (same reasoning already established for
+	// scryfallImmutableCache below).
+	// TCGplayer product link, rules text + stats ("Card Text"), front/back images ("flip" button)
+	// and split info ("rotate" button) — 4 features which, until this merge (review of
+	// 2026-08-18), each had their OWN cache + fetch end to end (a deliberate choice, documented
+	// at the time for tcgplayerUrlCache: "each cache has its own round trip, no shared promise
+	// between independent concepts"). This decoupling held for 1-2 caches, but at 4 it had a
+	// real, measured cost: opening a card never seen this session pulled 4 nearly simultaneous
+	// /cards/collection requests for the SAME scryfallId, each actually re-requesting the same
+	// ScryfallCard object already fetched by the other 3. The 4 caches are therefore merged into
+	// one, `scryfallImmutableCache` (see also getScryfallImmutableSnapshot in
+	// src/plugin/scryfall-cache.ts) — a single fetch per card, from which the 4 public methods
+	// (getTcgplayerUrl/getCardTextInfo/getCardFaceImages/getSplitCardInfo, signatures AND
+	// behavior unchanged for their callers) derive their result synchronously. legalitiesCache
+	// deliberately stays apart (see above): the only cache of this group with a real TTL, merging
+	// it would have added complexity ("immutable" + "perishable" in a single mechanism) for a
+	// marginal benefit — its own background warm-up already keeps it almost always warm by the
+	// time a sheet opens. `null` is a valid, cached answer (card found but confirmed to have no
+	// back/no TCGplayer link/etc. — a real result, not a failure); only a failure confirmed after
+	// retry isn't cached. ScryfallImmutableSnapshot (scryfall.ts) deliberately excludes
+	// prices/legalities — see its own comment for why.
 	scryfallImmutableCache: Map<string, ScryfallImmutableSnapshot | null> = new Map();
 	scryfallImmutableInFlight: Map<string, Promise<ScryfallImmutableSnapshot | null>> = new Map();
-	// Tarif Card Kingdom (bloc "Store Prices" du détail) : même raisonnement
-	// que symbologyCache — un seul fichier pour tout le catalogue, jamais
-	// persisté (encore plus vrai ici : ~67 Mo, bien trop volumineux pour
-	// settings.json).
+	// Card Kingdom pricelist ("Store Prices" block of the detail): same
+	// reasoning as symbologyCache — a single file for the whole catalog, never
+	// persisted (even more true here: ~67 MB, far too big for settings.json).
 	cardKingdomPricesCache: Map<string, CardKingdomPriceEntry> | null = null;
 	cardKingdomPricesFetchPromise: Promise<Map<string, CardKingdomPriceEntry>> | null = null;
-	// Tarif Mana Pool (3ᵉ ligne "Store Prices") : même raisonnement que
-	// cardKingdomPricesCache ci-dessus — un seul fichier pour tout le
-	// catalogue (~50 Mo), jamais persisté.
+	// Mana Pool pricelist (3rd "Store Prices" row): same reasoning as
+	// cardKingdomPricesCache above — a single file for the whole catalog (~50
+	// MB), never persisted.
 	manaPoolPricesCache: Map<string, ManaPoolCardPrices> | null = null;
 	manaPoolPricesFetchPromise: Promise<Map<string, ManaPoolCardPrices>> | null = null;
-	// Historique de prix cardbase.dev (boîte "Price History", sous Store
-	// Prices) : point d'accès par impression, pas un fichier catalogue
-	// complet — donc même forme per-ID que legalitiesCache/scryfallImmutableCache
-	// ci-dessus, pas la forme "tout le dataset" de Card Kingdom/Mana Pool.
-	// Clé composite scryfallId:finish (une même carte peut être consultée
-	// sous plusieurs finitions selon la section — Collection/Wantlist/Deck).
-	// Un résultat "succès confirmé" (même une série vide — carte réellement
-	// sans historique chez ces deux magasins) est mis en cache ; seul un
-	// échec réseau/HTTP ne l'est pas, voir fetchCardbasePriceHistory.
+	// cardbase.dev price history ("Price History" box, under Store Prices):
+	// per-printing endpoint, not a full catalog file — so the same per-ID shape
+	// as legalitiesCache/scryfallImmutableCache above, not the "whole dataset"
+	// shape of Card Kingdom/Mana Pool. Composite key scryfallId:finish (the same
+	// card can be viewed under several finishes depending on the section —
+	// Collection/Wantlist/Deck). A "confirmed success" result (even an empty
+	// series — a card that truly has no history at these two stores) is cached;
+	// only a network/HTTP failure isn't, see fetchCardbasePriceHistory.
 	cardbasePriceHistoryCache: Map<string, CardbasePriceHistory | undefined> = new Map();
 	cardbasePriceHistoryInFlight: Map<string, Promise<CardbasePriceHistory | undefined>> = new Map();
-	// cardmarket_id (GET /printings/{scryfall_id}) et prix natif Cardmarket
-	// (GET /cardmarket/{cardmarket_id}/prices, price_type="trend") — voir
-	// cardbase.ts pour pourquoi ces deux endpoints existent en plus de
-	// fetchCardbasePriceHistory ci-dessus. `null` = réponse confirmée sans
-	// résultat (pas de cardmarket_id pour cette impression, ou prix "trend"
-	// absent) ; clé absente = pas encore demandé — même distinction que
-	// scryfallImmutableCache plus haut. cardmarketIdCache est scryfallId → id,
-	// cardmarketNativePricesCache est cardmarketId → résultat (une même
-	// impression Cardmarket peut être visée par plusieurs scryfallId — art
-	// variants — donc les deux caches sont volontairement séparés plutôt que
-	// composés en une seule clé). Seul cardmarketIdCache est persisté sur
-	// disque (un identifiant produit ne change pas) — PAS
-	// cardmarketNativePricesCache juste en dessous, qui contient un vrai
-	// PRIX (change quotidiennement, même exclusion que cardKingdomPricesCache/
-	// manaPoolPricesCache/cardbasePriceHistoryCache ailleurs dans ce fichier).
+	// cardmarket_id (GET /printings/{scryfall_id}) and Cardmarket native price
+	// (GET /cardmarket/{cardmarket_id}/prices, price_type="trend") — see
+	// cardbase.ts for why these two endpoints exist in addition to
+	// fetchCardbasePriceHistory above. `null` = confirmed response with no
+	// result (no cardmarket_id for this printing, or "trend" price absent);
+	// absent key = not yet requested — same distinction as
+	// scryfallImmutableCache above. cardmarketIdCache is scryfallId → id,
+	// cardmarketNativePricesCache is cardmarketId → result (a single
+	// Cardmarket printing can be targeted by several scryfallIds — art
+	// variants — so the two caches are deliberately separate rather than
+	// composed into a single key). Only cardmarketIdCache is persisted to disk
+	// (a product identifier doesn't change) — NOT cardmarketNativePricesCache
+	// just below, which contains a real PRICE (changes daily, same exclusion
+	// as cardKingdomPricesCache/manaPoolPricesCache/cardbasePriceHistoryCache
+	// elsewhere in this file).
 	cardmarketIdCache: Map<string, number | null> = new Map();
 	cardmarketIdInFlight: Map<string, Promise<number | null>> = new Map();
 	cardmarketNativePricesCache: Map<number, CardmarketNativePrices | undefined> = new Map();
 	cardmarketNativePricesInFlight: Map<number, Promise<CardmarketNativePrices | undefined>> = new Map();
-	// Résultats "Market Trends" (GET /movers, bloc du dashboard Home depuis
-	// le 2026-09-22 — voir home-render.ts, anciennement sa propre modale) —
-	// clé `${period}:${vendor ?? "all"}`, pas de requête-en-vol dédoublonnée
-	// (contrairement aux caches ci-dessus) : un seul bloc à la fois déclenche
-	// ce fetch, sur interaction utilisateur (changement de période/vendeur)
-	// plutôt que potentiellement en concurrence depuis plusieurs lignes
-	// d'une même liste comme les autres caches de ce fichier — le risque de
-	// doublon en vol est donc négligeable ici.
+	// "Market Trends" results (GET /movers, Home dashboard block since
+	// 2026-09-22 — see home-render.ts, formerly its own modal) — key
+	// `${period}:${vendor ?? "all"}`, no deduplicated in-flight request
+	// (unlike the caches above): a single block at a time triggers this fetch,
+	// on user interaction (period/vendor change) rather than potentially in
+	// competition from several rows of a same list like the other caches of
+	// this file — the risk of an in-flight duplicate is therefore negligible
+	// here.
 	cardbaseMoversCache: Map<string, CardbaseMoversResult | undefined> = new Map();
-	// Taux de change USD/EUR (frankfurter.dev), pour unifier l'axe Y du
-	// graphique "Price History" en une seule devise (voir card-detail-fx.ts) —
-	// même forme "un seul fetch par session" que symbologyCache/allSetsCache
-	// ci-dessus, pas la forme par-ID de legalitiesCache : ce plugin ne suit
-	// qu'une seule paire de devises (voir PriceCurrency, price.ts), un seul
-	// taux couvre toute la session.
+	// USD/EUR exchange rate (frankfurter.dev), to unify the Y axis of the
+	// "Price History" chart in a single currency (see card-detail-fx.ts) —
+	// same "a single fetch per session" shape as symbologyCache/allSetsCache
+	// above, not the per-ID shape of legalitiesCache: this plugin only tracks
+	// a single currency pair (see PriceCurrency, price.ts), a single rate
+	// covers the whole session.
 	usdEurRateCache: UsdEurRate | null = null;
 	usdEurRateFetchPromise: Promise<UsdEurRate | undefined> | null = null;
 
-	// Champs déplacés depuis la zone des méthodes lors du découpage Phase 5 (2026-09-10)
-	// -- restent des champs d'instance réels, juste relocalisés ici pour rester groupés avec les autres.
+	// Fields moved from the methods area during the Phase 5 split (2026-09-10) -- they remain real
+	// instance fields, just relocated here to stay grouped with the others.
 	immutableCachePersistTimers: Map<string, number> = new Map();
 	cachedArtists: string[] | null = null;
 	cachedSets: { code: string; name: string }[] | null = null;
 	pendingSaveTimer: number | null = null;
 	dataVersion = 0;
-	// Synchronisation multi-appareils de data.json (src/plugin/settings-sync.ts).
-	// diskText : contenu de data.json tel que CE plugin le connaît (sa dernière
-	// écriture ou ce qu'il a lu) ; syncBaseText : dernière version venue d'ailleurs
-	// (ou lue au démarrage), point de départ des fusions à trois voies — jamais
-	// avancée par nos propres écritures ; diskSig : mtime+taille correspondants,
-	// pour éviter de relire 6 Mo à chaque contrôle ; knownKeys : entités connues à la
-	// dernière écriture, pour repérer les suppressions ; persistChain : file qui
-	// sérialise toute opération disque.
+	// Multi-device synchronization of data.json (src/plugin/settings-sync.ts).
+	// diskText: content of data.json as THIS plugin knows it (its last write or what
+	// it read); syncBaseText: last version coming from elsewhere (or read at
+	// startup), starting point of the three-way merges — never advanced by our own
+	// writes; diskSig: matching mtime+size, to avoid re-reading 6 MB on every check;
+	// knownKeys: entities known at the last write, to spot deletions; persistChain:
+	// queue that serializes every disk operation.
 	diskText: string | null = null;
 	syncBaseText: string | null = null;
 	diskSig: settingsSync.DiskSignature | null = null;
@@ -252,7 +230,7 @@ export default class MTGCollectionPlugin extends Plugin {
 	saveFailed = false;
 	saveRetryTimer: number | null = null;
 	lastDeviceLocal: string | null = null;
-	// Dossier de la vault qui contient le fichier de données ("" = dossier du plugin), voir settings-sync.ts.
+	// Vault folder that contains the data file ("" = the plugin's folder), see settings-sync.ts.
 	dataFolderInUse = "";
 	// Synchronisation GitHub optionnelle (src/plugin/github-sync.ts).
 	github: githubSync.GithubSyncState = githubSync.createGithubState();
@@ -260,18 +238,17 @@ export default class MTGCollectionPlugin extends Plugin {
 	recentlyAddedWantlistCardIds = new Set<string>();
 	async onload() {
 		await this.loadSettings();
-		// Recharge le cache de légalités persisté d'une session précédente
-		// (voir loadPersistedLegalitiesCache) avant maybeAutoRefreshLegalities
-		// plus bas, sans quoi ce dernier ne verrait aucune entrée fraîche et
-		// re-téléchargerait toute la collection à chaque démarrage.
+		// Reloads the legalities cache persisted by a previous session (see
+		// loadPersistedLegalitiesCache) before maybeAutoRefreshLegalities further
+		// down, without which the latter would see no fresh entry and would
+		// re-download the whole collection at every startup.
 		await this.loadPersistedLegalitiesCache();
-		// Même raisonnement pour les 4 caches "immuables" persistés séparément
-		// (voir loadPersistedMapCache/loadPersistedAllSetsCache, et le
-		// commentaire de chaque champ de cache concerné plus haut) — avant
-		// registerView plus bas, pour qu'une vue restaurée par Obsidian au
-		// démarrage (leaf déjà ouvert) affiche son contenu dès son tout
-		// premier rendu plutôt que d'attendre un aller-retour Scryfall pour
-		// chaque icône/texte/lien.
+		// Same reasoning for the 4 "immutable" caches persisted separately (see
+		// loadPersistedMapCache/loadPersistedAllSetsCache, and the comment of each
+		// cache field concerned above) — before registerView further down, so that
+		// a view restored by Obsidian at startup (leaf already open) displays its
+		// content from its very first render rather than waiting for a Scryfall
+		// round trip for each icon/text/link.
 		await Promise.all([
 			this.loadPersistedMapCache(scryfallCache.ICON_CACHE_FILENAME, this.setIconCache, isStringOrNull),
 			this.loadPersistedMapCache(
@@ -292,10 +269,9 @@ export default class MTGCollectionPlugin extends Plugin {
 			this.loadPersistedAllSetsCache(),
 		]);
 
-		// Icône custom pour le bouton "1 colonne" (view.ts) -- enregistrée une
-		// fois ici plutôt qu'à chaque render() de la vue, puisqu'addIcon()
-		// ajoute l'icône à la bibliothèque globale d'Obsidian pour la durée de
-		// la session.
+		// Custom icon for the "1 column" button (view.ts) -- registered once here
+		// rather than at every render() of the view, since addIcon() adds the icon
+		// to Obsidian's global library for the duration of the session.
 		addIcon("mtg-one-column", ONE_COLUMN_ICON_SVG);
 
 		this.registerView(
@@ -313,14 +289,15 @@ export default class MTGCollectionPlugin extends Plugin {
 
 		this.addSettingTab(new MTGCollectionSettingTab(this.app, this));
 
-		// Surveille data.json hors écriture (autre appareil via Syncthing) — voir
-		// src/plugin/settings-sync.ts. Après loadSettings(), qui amorce l'état de départ.
+		// Watches data.json outside of writes (another device via Syncthing) — see
+		// src/plugin/settings-sync.ts. After loadSettings(), which primes the starting
+		// state.
 		this.setupSettingsSync();
 		this.setupGithubSync();
 
-		// Vérifie en arrière-plan si le délai configuré est écoulé (ne bloque
-		// pas le chargement du plugin). Revérifie ensuite toutes les heures au
-		// cas où Obsidian reste ouvert plus longtemps que l'intervalle choisi.
+		// Checks in the background whether the configured delay has elapsed
+		// (doesn't block the plugin's loading). Then re-checks every hour in case
+		// Obsidian stays open longer than the chosen interval.
 		this.registerInterval(
 			window.setInterval(() => void this.maybeAutoRefreshPrices(), 60 * 60 * 1000)
 		);
@@ -329,60 +306,55 @@ export default class MTGCollectionPlugin extends Plugin {
 			window.setInterval(() => void this.maybeAutoRefreshLegalities(), 60 * 60 * 1000)
 		);
 
-		// Sauvegardes automatiques (voir maybeAutoBackup juste plus bas /
-		// runAutoBackup dans src/plugin/backup.ts) — même mécanique hourly-check que les deux ci-dessus, mais
-		// volontairement PAS chaînée dans l'IIFE séquentielle plus bas : cette
-		// passe n'appelle jamais Scryfall (une écriture de fichier locale
-		// pure), donc rien à sérialiser avec les 4 passes réseau qui suivent.
+		// Automatic backups (see maybeAutoBackup just below / runAutoBackup in src/plugin/backup.ts) — same
+		// hourly-check mechanism as the two above, but deliberately NOT chained into the sequential IIFE
+		// further down: this pass never calls Scryfall (a purely local file write), so there is nothing to
+		// serialize with the 4 network passes that follow.
 		this.registerInterval(window.setInterval(() => void this.maybeAutoBackup(), 60 * 60 * 1000));
 		void this.maybeAutoBackup();
 
 		void (async () => {
 			await this.maybeAutoRefreshPrices();
 			await this.maybeAutoRefreshLegalities();
-			// Rattrapage ponctuel de bordure/cadre (voir backfillBorderData) —
-			// pas d'intervalle horaire contrairement aux légalités ci-dessus :
-			// une fois toute la collection couverte, plus jamais besoin de
-			// repasser, cette donnée ne périme jamais.
+			// One-off catch-up of border/frame (see backfillBorderData) — no hourly
+			// interval unlike the legalities above: once the whole collection is
+			// covered, no need to ever pass again, this data never goes stale.
 			await this.backfillBorderData();
-			// Même raisonnement, pour le texte de règles (voir
-			// backfillOracleTextData) — appel séparé plutôt que fusionné avec
-			// backfillBorderData, voir son propre commentaire.
+			// Same reasoning, for the rules text (see backfillOracleTextData) — a
+			// separate call rather than merged with backfillBorderData, see its own
+			// comment.
 			await this.backfillOracleTextData();
-			// Rattrapage ponctuel du prix pour les decks existants (voir
-			// backfillDeckCardPrices) — contrairement à maybeAutoRefreshPrices
-			// tout en haut de cette chaîne (gated par l'intervalle configuré,
-			// jamais garanti de tourner juste après cette mise à jour si le
-			// dernier rafraîchissement est encore récent), ce rattrapage ne
-			// dépend d'aucun intervalle : il ne regarde que "ce deck a-t-il
-			// déjà ce champ", une fois pour toutes, comme les deux juste
-			// au-dessus.
+			// One-off catch-up of the price for existing decks (see
+			// backfillDeckCardPrices) — unlike maybeAutoRefreshPrices at the very top
+			// of this chain (gated by the configured interval, never guaranteed to run
+			// right after this update if the last refresh is still recent), this
+			// catch-up depends on no interval: it only looks at "does this deck
+			// already have this field", once and for all, like the two just above.
 			await this.backfillDeckCardPrices();
 		})();
 	}
 
 	onunload() {
-		// Écrit immédiatement toute sauvegarde encore en attente (voir
-		// saveSettings) : sans ça, désactiver le plugin dans la fenêtre de
-		// debounce perdrait la dernière modification.
+		// Immediately writes any save still pending (see saveSettings): without
+		// it, disabling the plugin within the debounce window would lose the last
+		// change.
 		void this.flushPendingSave();
-		// Envoi au mieux de ce qui attend encore pour GitHub (voir flushGithubSync).
+		// Best-effort sending of what is still waiting for GitHub (see flushGithubSync).
 		void this.flushGithubSync();
-		// Même raisonnement pour le cache de légalités (voir
-		// scheduleLegalitiesPersist) — non attendu (onunload() n'est pas
-		// garanti d'attendre une Promise par Obsidian), mais mieux que de
-		// perdre silencieusement les dernières entrées résolues juste avant
-		// la fermeture.
+		// Same reasoning for the legalities cache (see scheduleLegalitiesPersist)
+		// — not awaited (Obsidian isn't guaranteed to await a Promise in
+		// onunload()), but better than silently losing the last entries resolved
+		// just before closing.
 		if (this.legalitiesPersistTimer !== null) {
 			window.clearTimeout(this.legalitiesPersistTimer);
 			this.legalitiesPersistTimer = null;
 			void this.flushLegalitiesPersist();
 		}
-		// Même raisonnement pour les 4 caches "immuables" persistés séparément
-		// (voir scheduleMapCachePersist/flushPendingImmutableCaches).
+		// Same reasoning for the 4 "immutable" caches persisted separately (see
+		// scheduleMapCachePersist/flushPendingImmutableCaches).
 		this.flushPendingImmutableCaches();
-		// Ceinture et bretelles avec le register() de la vue (src/view/mobile-bars.ts) : une classe
-		// restée sur <body> masquerait les barres d'Obsidian dans TOUTE l'appli.
+		// Belt and braces with the view's register() (src/view/mobile-bars.ts): a class left on
+		// <body> would hide Obsidian's bars across the WHOLE app.
 		document.body.removeClass(HIDE_BARS_CLASS);
 	}
 
@@ -417,8 +389,8 @@ export default class MTGCollectionPlugin extends Plugin {
 		this.collectionRibbonIconEl = el;
 	}
 
-	// Répercute la couleur d'accent choisie dans les réglages sur toutes les
-	// vues collection actuellement ouvertes.
+	// Applies the accent color chosen in the settings to all the currently
+	// open collection views.
 	refreshAccentColor() {
 		this.app.workspace.getLeavesOfType(VIEW_TYPE_MTG_COLLECTION).forEach((leaf) => {
 			const view = leaf.view;
@@ -428,11 +400,11 @@ export default class MTGCollectionPlugin extends Plugin {
 		});
 	}
 
-	// Répercute settings.hideObsidianMobileBars sur toutes les vues collection
-	// actuellement ouvertes (mobile-bars.ts, syncMobileBars ne s'applique de
-	// toute façon que sur téléphone). Un changement dans Settings ne modifie
-	// pas la feuille active — la seule chose qui re-synchronise sinon (voir
-	// mobile-bars.ts) — donc il faut le déclencher ici explicitement.
+	// Applies settings.hideObsidianMobileBars to all the currently open
+	// collection views (mobile-bars.ts, syncMobileBars only applies on phone
+	// anyway). A change in Settings doesn't alter the active leaf — the only
+	// thing that otherwise re-synchronizes (see mobile-bars.ts) — so it has to
+	// be triggered explicitly here.
 	refreshMobileBars() {
 		this.app.workspace.getLeavesOfType(VIEW_TYPE_MTG_COLLECTION).forEach((leaf) => {
 			const view = leaf.view;
@@ -442,8 +414,8 @@ export default class MTGCollectionPlugin extends Plugin {
 		});
 	}
 
-	// Force un nouveau rendu de toutes les vues collection ouvertes (ex. après
-	// un changement de devise d'affichage dans les réglages).
+	// Forces a new render of all open collection views (e.g. after a change of
+	// display currency in the settings).
 	refreshOpenViews() {
 		this.app.workspace.getLeavesOfType(VIEW_TYPE_MTG_COLLECTION).forEach((leaf) => {
 			const view = leaf.view;
@@ -453,27 +425,24 @@ export default class MTGCollectionPlugin extends Plugin {
 		});
 	}
 
-	// Récupère (et met en cache pour la session) le SVG de l'icône d'édition
-	// officielle fournie par Scryfall pour un code d'édition donné.
+	// Retrieves (and caches for the session) the SVG of the official set icon
+	// supplied by Scryfall for a given set code.
 	//
-	// Deux pièges évités ici, qui faisaient qu'une icône chargeait "parfois
-	// oui, parfois non" selon les sessions :
-	// 1. Un échec transitoire (limite de requêtes, coupure réseau...) était
-	//    mis en cache comme "pas d'icône" au même titre qu'un vrai 404 — cette
-	//    édition ne retentait alors plus jamais de la session, même une fois
-	//    la cause du problème disparue. On ne met en cache "pas d'icône" que
-	//    sur un 404 confirmé (l'édition n'existe vraiment pas).
-	// 2. Plusieurs lignes affichant le même set en même temps (rendu initial
-	//    d'une longue liste) déclenchaient chacune leur propre requête pour
-	//    la même icône ; setIconInFlight les fait maintenant partager une
-	//    seule requête.
-	// 3. Plusieurs SETS DIFFÉRENTS encore non mis en cache, affichés en même
-	//    temps (même scénario, mais aucun des deux pièges ci-dessus ne s'y
-	//    applique puisque ce sont des codes distincts) déclenchaient chacun
-	//    leur propre requête EN PARALLÈLE, sans aucun espacement — voir
-	//    setIconFetchQueue pour le raisonnement complet et le bug de
-	//    rate-limit Scryfall que ça a causé. Un nouveau fetch chaîne
-	//    désormais sur cette file plutôt que de partir immédiatement.
+	// Two pitfalls avoided here, which made an icon load "sometimes yes,
+	// sometimes no" depending on the session:
+	// 1. A transient failure (rate limit, network cut...) was cached as "no
+	//    icon" just like a real 404 — that set then never retried for the
+	//    whole session, even once the cause of the problem had gone. "No icon"
+	//    is now only cached on a confirmed 404 (the set really doesn't exist).
+	// 2. Several rows displaying the same set at the same time (initial render
+	//    of a long list) each triggered their own request for the same icon;
+	//    setIconInFlight now makes them share a single request.
+	// 3. Several DIFFERENT not-yet-cached SETS displayed at the same time
+	//    (same scenario, but neither of the two pitfalls above applies since
+	//    they are distinct codes) each triggered their own request IN
+	//    PARALLEL, with no spacing at all — see setIconFetchQueue for the full
+	//    reasoning and the Scryfall rate-limit bug this caused. A new fetch
+	//    now chains on this queue rather than going out immediately.
 
 	// -------------------------------------------------------------------
 	// Method implementations below live in src/plugin/*.ts (split out on

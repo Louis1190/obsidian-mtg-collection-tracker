@@ -25,10 +25,9 @@ import { CardPreviewModal } from "../modals/card-preview-modal";
 
 
 const HOME_RECENT_CARDS_LIMIT = 10;
-// Market Trends : lignes visibles par colonne, repliée puis dépliée
-// ("Show more", 2026-09-23). Le plafond déplié est aussi le nombre de lignes
-// par côté dont on va chercher les snapshots Scryfall d'emblée (voir
-// loadAndDraw).
+// Market Trends: visible rows per column, collapsed then expanded ("Show
+// more", 2026-09-23). The expanded cap is also the number of rows per side
+// for which the Scryfall snapshots are fetched right away (see loadAndDraw).
 const HOME_MOVERS_COLLAPSED_LIMIT = 5;
 const HOME_MOVERS_EXPANDED_LIMIT = 20;
 
@@ -154,8 +153,8 @@ export function renderHomeOverview(this: MTGCollectionView, container: HTMLEleme
 	buildStatBlock(
 		"layers",
 		"Collection",
-		// Même chiffre que l'en-tête de My Collection : Inbox n'est pas comptée
-		// comme une liste (voir renderCollectionSection).
+		// Same figure as the My Collection header: Inbox is not counted as a list
+		// (see renderCollectionSection).
 		`${lists.filter((l) => !l.isInbox).length} lists · ${totalCollectionCards} cards · ${formatMoney(totalCollectionValue, currency)}`,
 		() => {
 			this.activeSection = "collection";
@@ -199,10 +198,10 @@ export function renderHomeOverview(this: MTGCollectionView, container: HTMLEleme
 	const backupStatus = backupBody.createDiv({ cls: "mtg-home-overview-row", text: backupStatusText() });
 	backupStatus.addEventListener("click", () => this.openPluginSettings());
 
-	// État de la synchronisation GitHub (2026-10-05) : seulement si elle est activée sur CET appareil. Repeint
-	// à chaque changement d'état du moteur, sans refaire le rendu de Home (render() reconstruirait aussi les
-	// carrousels pour une ligne de texte). Le render() suivant crée une nouvelle ligne : on remplace l'abonnement
-	// de la précédente ; l'ancienne ligne, détachée, est ignorée d'ici là (isConnected).
+	// GitHub sync status (2026-10-05): only if it is enabled on THIS device. Repainted on every change of the
+	// engine's state, without redoing Home's render (render() would also rebuild the carousels for a line of
+	// text). The next render() creates a new line: we replace the subscription of the previous one; the old,
+	// detached line is ignored in the meantime (isConnected).
 	const syncRow = backupBody.createDiv({ cls: "mtg-home-overview-row mtg-home-sync-row" });
 	syncRow.addEventListener("click", () => this.openPluginSettings());
 	const paintSync = () => {
@@ -242,18 +241,18 @@ interface HomeCarouselOptions {
 	onAction: () => void;
 }
 
-// Même mécanisme que "Copies in Lists" (card-detail-modal.ts et ses 2
-// variantes : piste défilante scroll-snap + flèches qui font scrollBy(±
-// track.clientWidth)) — sa propre famille de classes (mtg-home-carousel-*)
-// plutôt que réutiliser mtg-copies-in-lists-* telles quelles : les tuiles
-// y sont une fraction (1/3) de la largeur du panneau modal (~1100px connue
-// d'avance), alors qu'ici la largeur d'un bloc dépend de mtg-home-grid —
-// des tuiles de largeur fixe (px) s'adaptent à n'importe quelle largeur de
-// bloc sans recalcul. Partagée entre Collection et Wantlists (appelée deux
-// fois avec des options différentes) plutôt que triplée : contrairement au
-// rendu d'une section entière, ceci est un bloc de présentation pur, dans
-// le même esprit que renderThumbWithBadge (déjà partagé entre les 3
-// sections pour la même raison).
+// Same mechanism as "Copies in Lists" (card-detail-modal.ts and its 2
+// variants: scrolling scroll-snap track + arrows that do
+// scrollBy(±track.clientWidth)) — its own family of classes
+// (mtg-home-carousel-*) rather than reusing mtg-copies-in-lists-* as is:
+// the tiles there are a fraction (1/3) of the modal panel's width (~1100px
+// known in advance), whereas here a block's width depends on mtg-home-grid
+// — fixed-width tiles (px) adapt to any block width without recalculation.
+// Shared between Collection and Wantlists (called twice with different
+// options) rather than tripled: unlike the rendering of a whole section,
+// this is a pure presentation block, in the same spirit as
+// renderThumbWithBadge (already shared between the 3 sections for the same
+// reason).
 export function renderHomeRecentCarousel(
 	this: MTGCollectionView,
 	container: HTMLElement,
@@ -274,10 +273,10 @@ export function renderHomeRecentCarousel(
 	const track = row.createDiv({ cls: "mtg-home-carousel-track" });
 	const rightArrow = row.createDiv({ cls: "mtg-home-carousel-arrow" });
 	setIcon(rightArrow, "chevron-right");
-	// Pas de mesure de layout ici (contrairement à "Copies in Lists", qui
-	// connaît sa largeur de piste à l'avance) — une seule carte suffit à
-	// savoir qu'il n'y a rien à faire défiler ; au-delà, scrollBy() sur une
-	// piste qui ne déborde pas encore ne fait simplement rien de visible.
+	// No layout measurement here (unlike "Copies in Lists", which knows its
+	// track width in advance) — a single card is enough to know there is
+	// nothing to scroll; beyond that, scrollBy() on a track that doesn't
+	// overflow yet simply does nothing visible.
 	leftArrow.toggleClass("is-disabled", opts.cards.length <= 1);
 	rightArrow.toggleClass("is-disabled", opts.cards.length <= 1);
 	leftArrow.addEventListener("click", () => track.scrollBy({ left: -track.clientWidth, behavior: "smooth" }));
@@ -310,22 +309,22 @@ export function renderHomeRecentCarousel(
 	actionTile.addEventListener("click", opts.onAction);
 }
 
-// Clé propre (pas un `in` : "toString"/"constructor" sont "dans" tout objet)
-// pour valider une valeur lue dans data.json contre une table de libellés.
+// Own key (not an `in`: "toString"/"constructor" are "in" any object) to
+// validate a value read from data.json against a label table.
 function isKnownKey(table: object, key: string): boolean {
 	return Object.prototype.hasOwnProperty.call(table, key);
 }
 
-// Tout ce dont drawResults() a besoin pour (re)dessiner sans nouvelle
-// requête — c'est ce qui permet à "Show more"/"Show less" de basculer
-// instantanément. gainers/losers sont DÉJÀ filtrés (silencieusement, voir
-// core/market-movers.ts) et triés, tronqués à HOME_MOVERS_EXPANDED_LIMIT.
+// Everything drawResults() needs to (re)draw without a new request — this
+// is what lets "Show more"/"Show less" toggle instantly. gainers/losers
+// are ALREADY filtered (silently, see core/market-movers.ts) and sorted,
+// truncated to HOME_MOVERS_EXPANDED_LIMIT.
 interface MoversDrawData {
 	gainers: CardbaseMover[];
 	losers: CardbaseMover[];
 	snapshots: Map<string, ScryfallImmutableSnapshot>;
-	// undefined = taux de change indisponible → montants natifs du vendeur
-	// (voir getMoverPriceDisplay).
+	// undefined = exchange rate unavailable → vendor's native amounts (see
+	// getMoverPriceDisplay).
 	convert: MoverConvert | undefined;
 	asOf: string | undefined;
 }
@@ -333,18 +332,17 @@ interface MoversDrawData {
 export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLElement) {
 	const grid = makeHomeSection(container, "Market trend");
 	const body = makeHomeBlock(grid, "trending-up", "Market trends");
-	// Capturés ici plutôt que lus via `this` : setVendor ci-dessous est une
-	// déclaration `function` (hissée), dont le `this` n'est PAS celui de la vue.
+	// Captured here rather than read via `this`: setVendor below is a `function`
+	// declaration (hoisted), whose `this` is NOT the view's.
 	const plugin = this.plugin;
 	const settings = plugin.settings;
 
-	// Possession et wantlist par impression ET finition (voir moverFinishOf,
-	// core/market-movers.ts : le prix d'un foil bouge indépendamment du non-
-	// foil, un badge "possédée" n'a de sens que pour la même finition).
-	// ownedEntryByPrinting ne sert qu'au CLIC, pour garder l'ancien
-	// comportement quand aucun exemplaire de la finition exacte n'existe :
-	// une impression possédée dans une autre finition ouvre quand même sa
-	// fiche plutôt que l'aperçu en lecture seule.
+	// Ownership and wantlist by printing AND finish (see moverFinishOf,
+	// core/market-movers.ts: a foil's price moves independently of the
+	// non-foil, an "owned" badge only makes sense for the same finish).
+	// ownedEntryByPrinting is only used for the CLICK, to keep the old
+	// behavior when no copy of the exact finish exists: a printing owned in
+	// another finish still opens its sheet rather than the read-only preview.
 	const ownedCountByKey = new Map<string, number>();
 	const ownedEntryByKey = new Map<string, CollectionCard>();
 	const ownedEntryByPrinting = new Map<string, CollectionCard>();
@@ -362,10 +360,10 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 		if (finish) wantedKeys.add(moverOwnershipKey(w.scryfallId, finish));
 	}
 
-	// Choix mémorisés (MTGCollectionSettings.homeMoversPeriod/Vendor) ; une
-	// valeur qui n'est plus une période/un vendeur connu (data.json édité à la
-	// main, vendeur retiré plus tard) retombe sur le défaut plutôt que de
-	// casser tout le bloc.
+	// Remembered choices (MTGCollectionSettings.homeMoversPeriod/Vendor); a
+	// value that is no longer a known period/vendor (data.json edited by hand,
+	// vendor removed later) falls back to the default rather than breaking the
+	// whole block.
 	const storedVendor = settings.homeMoversVendor;
 	let period: CardbaseMoverPeriod = isKnownKey(HOME_MOVER_PERIOD_LABELS, settings.homeMoversPeriod)
 		? settings.homeMoversPeriod
@@ -454,8 +452,8 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 		const sign = mover.changePct > 0 ? "+" : "";
 		changeEl.createSpan({ text: `${sign}${mover.changePct.toFixed(1)}%` });
 
-		// Toujours créée, même sans snapshot (texte vide) : c'est elle qui,
-		// avec flex: 1, garde le prix collé à droite.
+		// Always created, even without a snapshot (empty text): it is what, with
+		// flex: 1, keeps the price stuck to the right.
 		const lineEl = bodyEl.createDiv({ cls: "mtg-home-trends-row-line" });
 		lineEl.createDiv({
 			cls: "mtg-home-trends-row-set",
@@ -502,18 +500,17 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 		});
 	};
 
-	// Dessine (ou redessine) tout resultsEl depuis lastData, sans requête :
-	// appelée par loadAndDraw une fois les données prêtes, et directement par
-	// "Show more"/"Show less".
+	// Draws (or redraws) all of resultsEl from lastData, without a request:
+	// called by loadAndDraw once the data is ready, and directly by "Show
+	// more"/"Show less".
 	const drawResults = () => {
 		const data = lastData;
 		if (!data) return;
 		resultsEl.empty();
 
-		// Bandeau d'ancienneté AU-DESSUS de tout le reste (colonnes comme message
-		// "aucun mouvement") : c'est la clé de lecture de ce qui suit — les
-		// mouvements "24h" d'une donnée vieille de deux semaines ne sont pas ceux
-		// des dernières 24h.
+		// Age banner ABOVE everything else (columns as well as the "no movement"
+		// message): it is the key to reading what follows — the "24h" movements of
+		// data two weeks old are not those of the last 24h.
 		const ageDays = getMoversAgeDays(data.asOf, Date.now());
 		if (data.asOf && isMoversDataStale(ageDays)) {
 			const stale = resultsEl.createDiv({ cls: "mtg-home-trends-stale" });
@@ -546,8 +543,8 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 				.forEach((m) => buildMoverRow(col, m, "is-down", data.snapshots.get(m.scryfallId), data.convert));
 		}
 
-		// Seulement s'il y a réellement plus à montrer que le haut de liste —
-		// jamais un bouton qui ne ferait rien.
+		// Only if there is really more to show than the top of the list — never a
+		// button that would do nothing.
 		if (Math.max(data.gainers.length, data.losers.length) > HOME_MOVERS_COLLAPSED_LIMIT) {
 			const more = resultsEl.createDiv({ cls: "mtg-home-trends-more" });
 			const moreBtn = more.createEl("button", { cls: "mtg-home-trends-more-btn" });
@@ -562,9 +559,9 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 			});
 		}
 
-		// meta.as_of, déjà présent sur cette même réponse — voir
-		// CardbaseMoversResult.asOf (api/cardbase.ts) pour pourquoi ça ne
-		// demande aucun appel GET /status séparé.
+		// meta.as_of, already present on this same response — see
+		// CardbaseMoversResult.asOf (api/cardbase.ts) for why it requires no
+		// separate GET /status call.
 		if (data.asOf) {
 			const footer = resultsEl.createDiv({
 				cls: "mtg-price-history-source",
@@ -578,22 +575,22 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 		resultsEl.empty();
 		setIcon(resultsEl.createDiv({ cls: "mtg-price-history-loading" }), "loader-2");
 		const token = ++requestToken;
-		// Le taux USD/EUR est demandé EN MÊME TEMPS que les mouvements (en cache
-		// de session après le premier appel) mais ne doit jamais les retenir :
-		// rejet, échec ou lenteur (4 s max) donnent simplement des montants
-		// natifs — voir getMoverPriceDisplay.
+		// The USD/EUR rate is requested AT THE SAME TIME as the movers
+		// (session-cached after the first call) but must never hold them back:
+		// rejection, failure or slowness (4 s max) simply give native amounts —
+		// see getMoverPriceDisplay.
 		const ratePromise = Promise.race([
 			plugin.getUsdEurRate().catch(() => undefined),
 			new Promise<undefined>((resolve) => window.setTimeout(() => resolve(undefined), 4000)),
 		]);
 		void Promise.all([plugin.getCardbaseMovers(period, vendor), ratePromise]).then(async ([result, rate]) => {
-			// Home reconstruit tout bodyEl à chaque render() (voir render(),
-			// view.ts) : si l'utilisateur a déjà quitté Home, resultsEl est un
-			// nœud détaché — isConnected l'évite. requestToken couvre en plus
-			// le cas où period/vendor changent deux fois de suite en restant
-			// sur Home (la 1re réponse, plus lente, pouvait sinon écraser la
-			// 2e une fois arrivée après elle) — même garde que l'ancienne
-			// MarketTrendsModal (son propre requestToken).
+			// Home rebuilds the whole bodyEl on every render() (see render(),
+			// view.ts): if the user has already left Home, resultsEl is a detached
+			// node — isConnected avoids that. requestToken also covers the case where
+			// period/vendor change twice in a row while staying on Home (the 1st
+			// response, slower, could otherwise overwrite the 2nd once it arrived
+			// after it) — same guard as the old MarketTrendsModal (its own
+			// requestToken).
 			if (token !== requestToken || !resultsEl.isConnected) return;
 
 			if (!result) {
@@ -602,21 +599,20 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 				return;
 			}
 
-			// Filtre d'anomalies muet + tri + plafond à 20 par côté (le maximum
-			// jamais affiché, "Show more") : voir core/market-movers.ts.
+			// Silent anomaly filter + sort + cap at 20 per side (the maximum ever
+			// displayed, "Show more"): see core/market-movers.ts.
 			const gainers = selectDisplayMovers(result.gainers, "up", HOME_MOVERS_EXPANDED_LIMIT);
 			const losers = selectDisplayMovers(result.losers, "down", HOME_MOVERS_EXPANDED_LIMIT);
 
-			// Thumbnails need each mover's real Scryfall card data (image/set/
-			// rarity/collector number), which CardbaseMover doesn't carry
-			// (see its own comment, api/cardbase.ts) — one batched /cards/
-			// collection request for all gainers+losers at once (never one
-			// request per row) via the shared immutable-snapshot cache. Ceux de
-			// "Show more" sont demandés d'emblée (jusqu'à 40 ids, toujours UNE
-			// requête, 75 max par lot) : le dépliage reste instantané et ces
-			// snapshots sont de toute façon persistés pour les prochaines fois.
-			// Stays behind the same loading spinner as the movers fetch itself,
-			// same "one spinner, then fully-formed content" shape as before,
+			// Thumbnails need each mover's real Scryfall card data
+			// (image/set/rarity/collector number), which CardbaseMover doesn't carry
+			// (see its own comment, api/cardbase.ts) — one batched /cards/collection
+			// request for all gainers+losers at once (never one request per row) via
+			// the shared immutable-snapshot cache. Those of "Show more" are requested
+			// right away (up to 40 ids, still ONE request, 75 max per batch):
+			// expanding stays instantaneous and these snapshots are persisted anyway
+			// for next time. Stays behind the same loading spinner as the movers fetch
+			// itself, same "one spinner, then fully-formed content" shape as before,
 			// rather than a per-row skeleton this block never had.
 			const ids = [...gainers, ...losers].map((m) => m.scryfallId);
 			const snapshots = ids.length > 0 ? await plugin.getScryfallImmutableSnapshots(ids) : new Map<string, ScryfallImmutableSnapshot>();

@@ -37,7 +37,7 @@ export class DeckSettingsModal extends Modal {
 	private pickingMergeTarget = false;
 	private pickingCoverImage = false;
 	private pickingIcon = false;
-	// État du sélecteur d'icône (choix en cours, onglet, éditions dédupliquées), voir IconPickerState.
+	// State of the icon picker (current choice, tab, deduplicated sets), see IconPickerState.
 	private iconPicker = newIconPickerState();
 
 	constructor(app: App, plugin: MTGCollectionPlugin, view: MTGCollectionView, deckId: string) {
@@ -48,11 +48,11 @@ export class DeckSettingsModal extends Modal {
 	}
 
 	onOpen() {
-		// Fondu + zoom d'ouverture, partagé par toutes les modales du plugin —
-		// voir modal-animation.ts.
+		// Opening fade + zoom, shared by all of the plugin's modals — see
+		// modal-animation.ts.
 		applyModalOpenAnimation(this);
-		// Croix ronde de fermeture + masquage de la croix native d'Obsidian,
-		// partagés par toutes les modales du plugin — voir modal-animation.ts.
+		// Round close cross + hiding of Obsidian's native cross, shared by all of
+		// the plugin's modals — see modal-animation.ts.
 		addModalCloseButton(this);
 		this.draw();
 	}
@@ -90,9 +90,9 @@ export class DeckSettingsModal extends Modal {
 			return;
 		}
 
-		// Même écran de confirmation plein-format que « Delete deck? » ci-dessus (pas le swap Delete/Cancel en place
-		// de la barre d'actions groupées) — cohérent avec l'autre action destructive de cette fenêtre. L'entité
-		// elle-même n'est pas supprimée, donc pas de close*IfOpen/close() ici, juste un rafraîchissement.
+		// Same full-format confirmation screen as "Delete deck?" above (not the in-place Delete/Cancel swap of the
+		// bulk-actions bar) — consistent with the other destructive action in this window. The entity itself is not
+		// deleted, so no close*IfOpen/close() here, just a refresh.
 		if (this.confirmingClear) {
 			const cardCount = deck.cards.length;
 			renderConfirmScreen(contentEl, {
@@ -114,8 +114,8 @@ export class DeckSettingsModal extends Modal {
 			return;
 		}
 
-		// Écran de choix de la 2ᵉ entité (renderMergeTargetScreen, entity-settings-screens.ts) ; la fusion elle-même
-		// est déléguée à MergeDecksModal (merge-modals.ts).
+		// Screen for choosing the 2nd entity (renderMergeTargetScreen, entity-settings-screens.ts); the merge itself
+		// is delegated to MergeDecksModal (merge-modals.ts).
 		if (this.pickingMergeTarget) {
 			const otherDecks = this.plugin.settings.decks.filter((d) => d.id !== deck.id);
 			renderMergeTargetScreen(contentEl, {
@@ -139,7 +139,7 @@ export class DeckSettingsModal extends Modal {
 			return;
 		}
 
-		// Écran « Choose cover image » (renderCoverPickerScreen, entity-settings-screens.ts).
+		// "Choose cover image" screen (renderCoverPickerScreen, entity-settings-screens.ts).
 		if (this.pickingCoverImage) {
 			renderCoverPickerScreen(contentEl, {
 				noun: "deck",
@@ -161,8 +161,8 @@ export class DeckSettingsModal extends Modal {
 			return;
 		}
 
-		// Écran « Choose icon » (renderIconPickerScreen, entity-settings-screens.ts) ; son état (choix en cours, onglet,
-		// éditions dédupliquées) vit dans this.iconPicker pour survivre aux changements d'onglet.
+		// "Choose icon" screen (renderIconPickerScreen, entity-settings-screens.ts); its state (current choice, tab,
+		// deduplicated sets) lives in this.iconPicker to survive tab changes.
 		if (this.pickingIcon) {
 			renderIconPickerScreen(contentEl, {
 				plugin: this.plugin,
@@ -186,9 +186,9 @@ export class DeckSettingsModal extends Modal {
 
 		const nameInput = renderNameField(contentEl, "Deck name", deck.name);
 
-		// Format — même liste LEGALITY_SEARCH_FORMATS que NewDeckModal (voir son propre commentaire), modifiable après
-		// coup plutôt que figé à la création. "None" en tête = pas de format choisi (Deck.format redevient undefined
-		// via setDeckFormat).
+		// Format — same LEGALITY_SEARCH_FORMATS list as NewDeckModal (see its own comment), editable afterwards rather
+		// than frozen at creation. "None" at the top = no format chosen (Deck.format becomes undefined again via
+		// setDeckFormat).
 		const formatField = contentEl.createDiv({ cls: "mtg-search-field" });
 		formatField.createEl("label", { text: "Format" });
 		const formatSelect = formatField.createEl("select");
@@ -217,11 +217,11 @@ export class DeckSettingsModal extends Modal {
 
 		addSectionTitle(contentEl, "Actions");
 
-		// Les 8 boutons « Actions » vivent tous dans UN SEUL conteneur en grille (3-3-2) plutôt que 3 rangées
-		// séparées : 8 n'est pas un multiple de 3, et la rangée à 2 boutons laissait une 3ᵉ cellule vide bien
-		// visible (signalé explicitement, capture d'écran) — voir createWrapRow, et InboxSettingsModal, même
-		// recette. Pas de « Move deck », contrairement au « Move list » de ListSettingsModal : un deck ne vit dans
-		// aucun conteneur qu'il pourrait quitter, contrairement à une carte de liste qui peut être réaffectée.
+		// The 8 "Actions" buttons all live in ONE grid container (3-3-2) rather than 3 separate rows: 8 is not a
+		// multiple of 3, and the 2-button row left a clearly visible empty 3rd cell (explicitly reported,
+		// screenshot) — see createWrapRow, and InboxSettingsModal, same recipe. No "Move deck", unlike
+		// ListSettingsModal's "Move list": a deck lives in no container it could leave, unlike a list card which
+		// can be reassigned.
 		const actionsRow = createWrapRow(contentEl);
 		addActionButton(actionsRow, {
 			icon: "copy",
@@ -273,7 +273,7 @@ export class DeckSettingsModal extends Modal {
 			importTxt: () => this.view.triggerImportTxtIntoDeck(deck.id),
 		});
 
-		// Sauvegarde le nom (si non vide) ET le format ensemble, puis ferme.
+		// Saves the name (if non-empty) AND the format together, then closes.
 		renderSaveRow(contentEl, () => {
 			const newName = nameInput.value.trim();
 			if (newName) this.plugin.renameDeck(deck.id, newName);
