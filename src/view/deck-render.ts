@@ -34,6 +34,7 @@ import {
 } from "../core/card-search";
 import {
 	formatCardPrice,
+	getCardPriceNumber,
 	cardValue,
 	formatMoney,
 	resolveDeckCoverImage,
@@ -1276,7 +1277,10 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 			this.deckSortBy,
 			this.deckSortReverse,
 			this.deckGroupReverse,
-			this.plugin.settings.lists
+			this.plugin.settings.lists,
+			// The price the row shows; a deck card's price fields are optional, hence
+			// toDeckPricedCard (a card not yet backfilled counts as 0).
+			(c) => getCardPriceNumber(toDeckPricedCard(c), this.plugin.settings.priceCurrency)
 		);
 		this.cachedDeckCardGroups = cardGroups;
 		this.lastDeckDataSignature = dataSignature;

@@ -70,11 +70,19 @@ export function setupCardTileRadiusObserver(this: MTGCollectionView) {
 // this.mainEl, which never moves. With no tile currently displayed
 // (List/Grid/Table view active, or Card view on an empty list), does
 // nothing — nothing to update.
+// The sample is the first tile that has a layout box, NOT simply the first in the
+// document: a tile inside a collapsed group is `display: none` and measures 0 wide, and
+// stopping there left the variable unset, so every visible tile fell back to the 16px CSS
+// default (10.9px expected at a 217px tile) until the next render — in whichever section
+// had its first group collapsed (found 2026-10-08, "Collection's radius is not the same
+// as Decks/Wantlists").
 
 export function updateCardTileRadius(this: MTGCollectionView) {
-	const sampleWrap = this.containerEl.querySelector<HTMLElement>(".mtg-card-tile-thumb-shadow-wrap");
-	if (!sampleWrap) return;
-	const width = sampleWrap.getBoundingClientRect().width;
+	let width = 0;
+	for (const wrap of Array.from(this.containerEl.querySelectorAll<HTMLElement>(".mtg-card-tile-thumb-shadow-wrap"))) {
+		width = wrap.getBoundingClientRect().width;
+		if (width) break;
+	}
 	if (!width) return;
 	this.containerEl.style.setProperty("--mtg-card-tile-radius", `${computeCardTileRadius(width)}px`);
 }

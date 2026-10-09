@@ -16,9 +16,12 @@ import {
 	SortableCard,
 	CardGroup,
 	DECK_GROUP_BY_OPTIONS,
+	DECK_SORT_BY_OPTIONS,
+	WANTLIST_SORT_BY_OPTIONS,
 	GROUP_BY_OPTIONS,
 	estimateStackColumnHeight,
 } from "./card-sorting";
+import { getCardPriceNumber, toDeckPricedCard } from "./price";
 
 function makeCard(overrides: Partial<SortableCard> & { releasedAt?: string; listId?: string } = {}): SortableCard {
 	return {
@@ -34,10 +37,12 @@ function makeCard(overrides: Partial<SortableCard> & { releasedAt?: string; list
 		count: 1,
 		dateAdded: 0,
 		dateModified: 0,
-		priceUsd: "0",
 		...overrides,
 	};
 }
+
+// Stand-in for the displayed-price function the views inject (USD, regular finish).
+const noPrice = () => 0;
 
 const lists = [
 	{ id: "list1", name: "Zeta list" },
@@ -250,6 +255,7 @@ describe("sliceGroupsForRender", () => {
 });
 
 describe("compareCardsBy", () => {
+	const priceUsdOf = (c: SortableCard) => parseFloat((c as unknown as { priceUsd: string }).priceUsd) || 0;
 	const a = makeCard({
 		name: "Beta",
 		artist: "Zed",
@@ -284,7 +290,7 @@ describe("compareCardsBy", () => {
 	} as any);
 
 	it("sorts by name by default", () => {
-		expect(compareCardsBy("name", lists)(a, b)).toBeGreaterThan(0);
+		expect(compareCardsBy("name", lists, noPrice)(a, b)).toBeGreaterThan(0);
 	});
 
 	it.each([
@@ -301,14 +307,79 @@ describe("compareCardsBy", () => {
 		["type", 1],
 		["releasedAt", -1],
 	] as const)("sorts by %s in the expected direction", (sortBy, expectedSign) => {
-		const result = compareCardsBy(sortBy, lists)(a, b);
+		const result = compareCardsBy(sortBy, lists, priceUsdOf)(a, b);
 		expect(Math.sign(result)).toBe(expectedSign);
 	});
 
 	it("resolves listName sort against the collection's lists", () => {
 		// a is on "list2" (Alpha list), b on "list1" (Zeta list): "Alpha list" <
 		// "Zeta list" so a must come before b.
-		expect(compareCardsBy("listName", lists)(a, b)).toBeLessThan(0);
+		expect(compareCardsBy("listName", lists, noPrice)(a, b)).toBeLessThan(0);
+	});
+});
+
+describe("sort options per section", () => {
+	const values = (opts: { value: string }[]) => opts.map((o) => o.value);
+
+	it("offers Price for the cards of a deck, which have real prices", () => {
+		expect(values(DECK_SORT_BY_OPTIONS)).toContain("price");
+	});
+
+	it("still leaves out what a deck card does not have", () => {
+		expect(values(DECK_SORT_BY_OPTIONS)).not.toContain("listName");
+		expect(values(DECK_SORT_BY_OPTIONS)).not.toContain("releasedAt");
+	});
+
+	it("keeps Price for wantlist cards and leaves out the collection-only list name", () => {
+		expect(values(WANTLIST_SORT_BY_OPTIONS)).toContain("price");
+		expect(values(WANTLIST_SORT_BY_OPTIONS)).not.toContain("listName");
+	});
+});
+
+describe("sorting by the displayed price", () => {
+	type PricedSortable = SortableCard & Parameters<typeof toDeckPricedCard>[0];
+	const priced = (overrides: Partial<PricedSortable>): PricedSortable => ({
+		...makeCard(),
+		finish: "regular",
+		...overrides,
+	});
+	const displayed = (currency: "usd" | "eur") => (c: PricedSortable) =>
+		getCardPriceNumber(toDeckPricedCard(c), currency);
+	const order = (cards: PricedSortable[], currency: "usd" | "eur") =>
+		groupAndSortCards(cards, "none", "price", false, false, lists, displayed(currency))[0].cards.map((c) => c.name);
+
+	it("uses the foil price for a foil copy", () => {
+		const regular = priced({ name: "Regular", priceUsd: "5.00", priceUsdFoil: "6.00" });
+		const foil = priced({ name: "Foil", finish: "foiled", priceUsd: "0.10", priceUsdFoil: "30.00" });
+		expect(order([foil, regular], "usd")).toEqual(["Regular", "Foil"]);
+	});
+
+	it("sorts by the display currency, not always by USD", () => {
+		const a = priced({ name: "A", priceUsd: "10.00", priceEur: "5.00" });
+		const b = priced({ name: "B", priceUsd: "8.00", priceEur: "7.00" });
+		expect(order([a, b], "usd")).toEqual(["B", "A"]);
+		expect(order([a, b], "eur")).toEqual(["A", "B"]);
+	});
+
+	it("keeps a card that only has a EUR price in its place instead of putting it first", () => {
+		const eurOnly = priced({ name: "EurOnly", priceUsd: "", priceEur: "3.00" });
+		const cheap = priced({ name: "Cheap", priceUsd: "1.00", priceEur: "1.00" });
+		const dear = priced({ name: "Dear", priceUsd: "5.00", priceEur: "5.00" });
+		expect(order([dear, eurOnly, cheap], "eur")).toEqual(["Cheap", "EurOnly", "Dear"]);
+	});
+
+	it("treats a proxy as free, whatever price Scryfall lists for the printing", () => {
+		const proxy = priced({ name: "Proxy", finish: "proxy", priceUsd: "40.00" });
+		const real = priced({ name: "Real", priceUsd: "0.50" });
+		expect(order([real, proxy], "usd")).toEqual(["Proxy", "Real"]);
+	});
+
+	it("puts the most expensive first when the order is reversed, within each group", () => {
+		const cheap = priced({ name: "Cheap", rarity: "rare", priceUsd: "1.00" });
+		const dear = priced({ name: "Dear", rarity: "rare", priceUsd: "9.00" });
+		const other = priced({ name: "Other", rarity: "common", priceUsd: "50.00" });
+		const groups = groupAndSortCards([cheap, other, dear], "rarity", "price", true, false, lists, displayed("usd"));
+		expect(groups.map((g) => g.cards.map((c) => c.name))).toEqual([["Other"], ["Dear", "Cheap"]]);
 	});
 });
 
@@ -320,29 +391,29 @@ describe("groupAndSortCards", () => {
 	];
 
 	it("returns a single unlabeled group when not grouping, sorted per sortBy", () => {
-		const groups = groupAndSortCards(cards, "none", "name", false, false, lists);
+		const groups = groupAndSortCards(cards, "none", "name", false, false, lists, noPrice);
 		expect(groups).toHaveLength(1);
 		expect(groups[0].label).toBe("");
 		expect(groups[0].cards.map((c) => c.name)).toEqual(["Ancestral", "Bolt", "Colorless Golem"]);
 	});
 
 	it("respects sortReverse within groups", () => {
-		const groups = groupAndSortCards(cards, "none", "name", true, false, lists);
+		const groups = groupAndSortCards(cards, "none", "name", true, false, lists, noPrice);
 		expect(groups[0].cards.map((c) => c.name)).toEqual(["Colorless Golem", "Bolt", "Ancestral"]);
 	});
 
 	it("groups by rarity in RARITY_ORDER (common, uncommon, mythic)", () => {
-		const groups = groupAndSortCards(cards, "rarity", "name", false, false, lists);
+		const groups = groupAndSortCards(cards, "rarity", "name", false, false, lists, noPrice);
 		expect(groups.map((g) => g.label)).toEqual(["Common", "Uncommon", "Mythic"]);
 	});
 
 	it("reverses group order when groupReverse is set", () => {
-		const groups = groupAndSortCards(cards, "rarity", "name", false, true, lists);
+		const groups = groupAndSortCards(cards, "rarity", "name", false, true, lists, noPrice);
 		expect(groups.map((g) => g.label)).toEqual(["Mythic", "Uncommon", "Common"]);
 	});
 
 	it("attaches colorKeys for single-color groups and the Colorless special case", () => {
-		const groups = groupAndSortCards(cards, "color", "name", false, false, lists);
+		const groups = groupAndSortCards(cards, "color", "name", false, false, lists, noPrice);
 		const colorless = groups.find((g) => g.label === "Colorless");
 		expect(colorless?.colorKeys).toEqual(["C"]);
 		const red = groups.find((g) => g.label === "Red");

@@ -40,19 +40,10 @@ export interface PricedCard {
 	count: number;
 }
 
-// Returns the raw price (string) for a card, according to the chosen currency
-// and its finish — does use usd_foil/eur_foil for a foiled card, or
-// usd_etched/eur_etched for an etched card (falls back to the non-foil price if
-// that card has no known etched printing at Scryfall), rather than the non-foil
-// price by mistake. Surge Foil (surged) has NO dedicated price fields on
-// Scryfall's side (no usd_surge/eur_surge in their API, unlike etched) — each
-// surge foil printing is its own card object at Scryfall, available in foil
-// only for that precise printing, so its price is already found in the usual
-// foil fields: treated as "foiled" here rather than as "etched" (no separate
-// fallback needed). A Proxy card has no price: it isn't a really
-// owned/tradeable object, it must not weigh into the collection's total value.
-// No silent fallback to another currency: if the requested price is missing, we
-// return "" (rather than display a misleading figure from another currency).
+function isPricedInFoilOnly(card: PricedCard): boolean {
+	return !card.priceUsd && !card.priceEur && Boolean(card.priceUsdFoil || card.priceEurFoil);
+}
+
 export function getRawCardPrice(card: PricedCard, currency: PriceCurrency): string {
 	if (card.finish === "proxy") return "";
 	if (card.finish === "etched") {
@@ -60,7 +51,10 @@ export function getRawCardPrice(card: PricedCard, currency: PriceCurrency): stri
 		if (etched) return etched;
 		return (currency === "eur" ? card.priceEur : card.priceUsd) || "";
 	}
-	const usesFoilPrice = card.finish === "foiled" || card.finish === "surged";
+	const usesFoilPrice =
+		card.finish === "foiled" ||
+		card.finish === "surged" ||
+		(card.finish === "regular" && isPricedInFoilOnly(card));
 	if (currency === "eur") return (usesFoilPrice ? card.priceEurFoil : card.priceEur) || "";
 	return (usesFoilPrice ? card.priceUsdFoil : card.priceUsd) || card.priceUsd || "";
 }

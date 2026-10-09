@@ -31,6 +31,7 @@ import {
 import {
 	ListGroup,
 	formatCardPrice,
+	getCardPriceNumber,
 	cardValue,
 	formatMoney,
 	pickCoverImage,
@@ -896,7 +897,10 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 			this.listSortBy,
 			this.sortReverse,
 			this.groupReverse,
-			this.plugin.settings.lists
+			this.plugin.settings.lists,
+			// The price the row shows (finish + currency), not the USD field: the cache
+			// is rebuilt on a currency change since saveSettings() bumps dataVersion.
+			(c) => getCardPriceNumber(c, this.plugin.settings.priceCurrency)
 		);
 		this.cachedListCardGroups = cardGroups;
 		this.lastListDataSignature = dataSignature;

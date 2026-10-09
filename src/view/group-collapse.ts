@@ -97,6 +97,10 @@ export function toggleGroupRows(this: MTGCollectionView,
 		this.flipListChange(list, () => {
 			rows.forEach((r) => r.removeClass("mtg-hidden"));
 		});
+		// These Card view tiles may be the first ones with a layout box since the last render (every
+		// group was collapsed then, so nothing could be measured): measure the corner radius now, no
+		// render() follows an expand.
+		this.updateCardTileRadius();
 		void list.offsetHeight;
 		window.requestAnimationFrame(() => {
 			rows.forEach((r) => r.removeClass("mtg-row-collapsed"));

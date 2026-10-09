@@ -100,6 +100,17 @@ and it never sends your collection anywhere except to the GitHub repository you 
 
 Requests to Scryfall are rate-limited as their guidelines ask, and carry a `User-Agent` that names this plugin.
 
+### Links that open in your browser
+
+A few buttons open a web page in your default browser, **only when you click them**. These are links, not requests: the plugin
+itself sends nothing to these sites, and nothing is opened in the background.
+
+| Where | Opens |
+| --- | --- |
+| *Source: cardbase.dev* footer (card details, Home) | `cardbase.dev` |
+| Cardmarket column of *Store prices* | A search on `www.cardmarket.com` for the card's name (the name is part of the link) |
+| TCGplayer, Card Kingdom and Mana Pool columns of *Store prices* | The product page link that Scryfall, Card Kingdom and Mana Pool give for that printing (`https://` only) |
+
 ## Files outside your vault
 
 Everything the plugin keeps lives inside your vault: its own folder (`data.json`, caches, safety copies), the data folder you

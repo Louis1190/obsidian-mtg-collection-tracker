@@ -23,6 +23,7 @@ import {
 } from "../core/card-search";
 import {
 	formatCardPrice,
+	getCardPriceNumber,
 	cardValue,
 	formatMoney,
 	pickCoverImage,
@@ -1088,7 +1089,9 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 			this.wantlistSortBy,
 			this.wantlistSortReverse,
 			this.wantlistGroupReverse,
-			this.plugin.settings.lists
+			this.plugin.settings.lists,
+			// See the equivalent comment in renderListDetail.
+			(c) => getCardPriceNumber(c, this.plugin.settings.priceCurrency)
 		);
 		this.cachedWantlistCardGroups = cardGroups;
 		this.lastWantlistDataSignature = dataSignature;

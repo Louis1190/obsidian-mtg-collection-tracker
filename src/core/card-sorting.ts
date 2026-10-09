@@ -169,17 +169,21 @@ export const LIST_GRID_SORT_OPTIONS: { value: "name" | "dateCreated" | "cardCoun
 	{ value: "price", label: "Price" },
 ];
 
-// No "price" here: deck cards have no price (see further down).
+// No "price" here: this sorts the decks themselves, and a deck tile shows no total
+// value (which boards would count?). "Price" does exist for the CARDS of a deck,
+// see DECK_SORT_BY_OPTIONS.
 export const DECK_GRID_SORT_OPTIONS: { value: "name" | "dateCreated" | "cardCount"; label: string }[] = [
 	{ value: "name", label: "Alphabetical" },
 	{ value: "dateCreated", label: "Date created" },
 	{ value: "cardCount", label: "Number of cards" },
 ];
 
-// Deck cards have no price, no list membership, no recorded release date:
-// these criteria make no sense for a deck.
+// Deck cards have no list membership and no recorded release date: these two
+// criteria make no sense for a deck. They DO have a price (real persisted fields
+// since 2026-09-02, see toDeckPricedCard), so "Price" is offered, sorted by the
+// same displayed price as in My Collection (2026-10-09).
 export const DECK_SORT_BY_OPTIONS = SORT_BY_OPTIONS.filter(
-	(o) => o.value !== "price" && o.value !== "listName" && o.value !== "releasedAt"
+	(o) => o.value !== "listName" && o.value !== "releasedAt"
 );
 
 // Wantlist cards keep price and release date, but "listName" resolves
@@ -252,8 +256,10 @@ export function isLand(typeLine: string): boolean {
 }
 
 // Common fields needed for sorting/grouping, shared by collection cards
-// (CollectionCard) and deck cards (DeckCard). priceUsd/listId are optional
-// because absent from deck cards.
+// (CollectionCard) and deck cards (DeckCard). listId is optional because absent
+// from deck cards. There is no price field here on purpose: what "Price" sorts
+// by depends on the finish and the display currency, so the caller passes a
+// `priceOf` function (see compareCardsBy).
 export interface SortableCard {
 	name: string;
 	setName: string;
@@ -267,7 +273,6 @@ export interface SortableCard {
 	count: number;
 	dateAdded: number;
 	dateModified: number;
-	priceUsd?: string;
 	listId?: string;
 	// Absent from a DeckCard (the "Release Date" sort isn't offered in a deck, see DECK_SORT_BY_OPTIONS).
 	releasedAt?: string;
@@ -341,9 +346,16 @@ export function getListNameFor(lists: ListNameSource, card: { listId?: string })
 	return lists.find((l) => l.id === card.listId)?.name ?? "";
 }
 
+// `priceOf` is the unit price a card is DISPLAYED at (finish and currency
+// included: getCardPriceNumber, price.ts), injected rather than imported because
+// price.ts -> card-search.ts -> this file would make an import cycle. It is
+// required, not optional: sorting on `priceUsd` alone (the first version) ignored
+// the foil/etched price and the EUR currency, so a list shown in euros came out
+// in an order the visible prices contradicted.
 export function compareCardsBy<T extends SortableCard>(
 	sortBy: SortByOption,
-	lists: ListNameSource
+	lists: ListNameSource,
+	priceOf: (card: T) => number
 ): (a: T, b: T) => number {
 	return (a, b) => {
 		switch (sortBy) {
@@ -362,7 +374,7 @@ export function compareCardsBy<T extends SortableCard>(
 			case "manaValue":
 				return (a.manaValue ?? 0) - (b.manaValue ?? 0);
 			case "price":
-				return (parseFloat(a.priceUsd || "0") || 0) - (parseFloat(b.priceUsd || "0") || 0);
+				return priceOf(a) - priceOf(b);
 			case "quantity":
 				return a.count - b.count;
 			case "rarity":
@@ -567,9 +579,10 @@ export function groupAndSortCards<T extends SortableCard>(
 	sortBy: SortByOption,
 	sortReverse: boolean,
 	groupReverse: boolean,
-	lists: ListNameSource
+	lists: ListNameSource,
+	priceOf: (card: T) => number
 ): CardGroup<T>[] {
-	const cmp = compareCardsBy<T>(sortBy, lists);
+	const cmp = compareCardsBy<T>(sortBy, lists, priceOf);
 
 	if (groupBy === "none") {
 		const sorted = [...cards].sort(cmp);

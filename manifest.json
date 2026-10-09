@@ -1,7 +1,7 @@
 {
 	"id": "mtg-collection-tracker",
 	"name": "MTG Collection Tracker",
-	"version": "1.0.542",
+	"version": "1.0.546",
 	"minAppVersion": "1.8.7",
 	"description": "Track your physical Magic: The Gathering collection, decks and wantlists, with card data and prices from Scryfall.",
 	"author": "Louis",

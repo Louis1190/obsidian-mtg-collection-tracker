@@ -105,6 +105,48 @@ describe("getRawCardPrice", () => {
 		expect(getRawCardPrice(card, "usd")).toBe("1.00");
 	});
 
+	describe("a printing that only exists in foil, left on the regular finish", () => {
+		it("shows its foil price in the display currency", () => {
+			const card = makePricedCard({ priceUsdFoil: "5.00", priceEurFoil: "4.50" });
+			expect(getRawCardPrice(card, "usd")).toBe("5.00");
+			expect(getRawCardPrice(card, "eur")).toBe("4.50");
+		});
+
+		it("counts that foil price in the value of the stack", () => {
+			const card = makePricedCard({ priceEurFoil: "4.50", count: 3 });
+			expect(cardValue(card, "eur")).toBeCloseTo(13.5);
+		});
+
+		it("does not borrow the other currency when the foil price exists in one only", () => {
+			// Seventh Edition ★: a USD foil price and nothing in EUR.
+			const card = makePricedCard({ priceUsdFoil: "5.00" });
+			expect(getRawCardPrice(card, "usd")).toBe("5.00");
+			expect(getRawCardPrice(card, "eur")).toBe("");
+		});
+
+		it("leaves a card that exists in non-foil alone when only ONE currency lacks the plain price", () => {
+			// Tales of Middle-earth Commander: plain USD price, no plain EUR price, EUR foil price.
+			const card = makePricedCard({ priceUsd: "2.00", priceEurFoil: "900.00" });
+			expect(getRawCardPrice(card, "eur")).toBe("");
+			expect(getRawCardPrice(card, "usd")).toBe("2.00");
+		});
+
+		it("keeps the plain price whenever there is one", () => {
+			const card = makePricedCard({ priceEur: "1.00", priceEurFoil: "9.00" });
+			expect(getRawCardPrice(card, "eur")).toBe("1.00");
+		});
+
+		it("stays empty when no price is known at all", () => {
+			expect(getRawCardPrice(makePricedCard(), "eur")).toBe("");
+		});
+
+		it("never prices a proxy, and does not change the etched finish", () => {
+			expect(getRawCardPrice(makePricedCard({ finish: "proxy", priceEurFoil: "9.00" }), "eur")).toBe("");
+			const etched = makePricedCard({ finish: "etched", priceEurFoil: "9.00" });
+			expect(getRawCardPrice(etched, "eur")).toBe("");
+		});
+	});
+
 	it("does NOT fall back to the plain EUR price when the foil EUR price is missing", () => {
 		// Existing asymmetry of getRawCardPrice: the USD branch falls back to
 		// priceUsd, the EUR branch falls back to nothing else.
