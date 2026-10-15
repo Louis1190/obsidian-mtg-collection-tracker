@@ -1,4 +1,5 @@
-import { CardbaseFinish, CardbasePriceHistory, fetchCardbasePriceHistory, fetchCardbasePrintingCardmarketId, CardmarketNativePrices, fetchCardmarketNativePrices, withNativeCardmarketTrend, pickCardmarketTrendSeries, pickCardmarketLatestPrice, fetchCardbaseMovers, CardbaseVendor, CardbaseMoversResult, CardbaseMoverPeriod } from "../api/cardbase";
+import { fetchOwnMovers } from "../api/price-history";
+import { CARDBASE_SOURCE, CardbaseFinish, CardbasePriceHistory, fetchCardbasePriceHistory, fetchCardbasePrintingCardmarketId, CardmarketNativePrices, fetchCardmarketNativePrices, withNativeCardmarketTrend, pickCardmarketTrendSeries, pickCardmarketLatestPrice, fetchCardbaseMovers, CardbaseVendor, CardbaseMoversResult, CardbaseMoverPeriod } from "../api/cardbase";
 import { sleep } from "../api/scryfall";
 import type MTGCollectionPlugin from "../plugin";
 
@@ -14,6 +15,8 @@ export async function getCardbasePriceHistory(this: MTGCollectionPlugin,
 	scryfallId: string,
 	finish: CardbaseFinish
 ): Promise<CardbasePriceHistory | undefined> {
+	// Switched off (api/cardbase.ts CARDBASE_SOURCE): no history from there, at once, with nothing to retry or cache.
+	if (!CARDBASE_SOURCE.enabled) return undefined;
 	const cacheKey = `${scryfallId}:${finish}`;
 	const cached = this.cardbasePriceHistoryCache.get(cacheKey);
 	if (cached !== undefined) return cached;
@@ -66,6 +69,13 @@ export async function prefetchCardbaseNeighbors(this: MTGCollectionPlugin,
 	for (const idx of order) {
 		const item = items[idx];
 		if (!item) continue;
+		// Our own files: a neighbour is one more small download of a static file, no rate limit to protect and
+		// nothing to pause for; its shard is then in the session cache by the time the user gets there.
+		if (this.ownPriceHistoryEnabled()) {
+			await this.getOwnPriceHistory(item.scryfallId, item.finish);
+			continue;
+		}
+		if (!CARDBASE_SOURCE.enabled) return; // nothing else to warm up
 		const cacheKey = `${item.scryfallId}:${item.finish}`;
 		const alreadyKnown = this.cardbasePriceHistoryCache.has(cacheKey);
 		await this.getCardbasePriceHistory(item.scryfallId, item.finish);
@@ -116,6 +126,7 @@ export function cardbaseDaysForTier(this: MTGCollectionPlugin): number {
 // side by cardbase), not for a network failure.
 
 export async function getCardbaseCardmarketId(this: MTGCollectionPlugin, scryfallId: string): Promise<number | null> {
+	if (!CARDBASE_SOURCE.enabled) return null;
 	const cached = this.cardmarketIdCache.get(scryfallId);
 	if (cached !== undefined) return cached;
 
@@ -153,6 +164,7 @@ export async function fetchCardmarketIdWithRetry(this: MTGCollectionPlugin, scry
 // product, may as well share the cache between them).
 
 export async function getCardmarketNativePrices(this: MTGCollectionPlugin, cardmarketId: number): Promise<CardmarketNativePrices | undefined> {
+	if (!CARDBASE_SOURCE.enabled) return undefined;
 	const cached = this.cardmarketNativePricesCache.get(cardmarketId);
 	if (cached !== undefined) return cached;
 
@@ -194,6 +206,14 @@ export async function getCardbasePriceHistoryWithNativeCardmarket(this: MTGColle
 	scryfallId: string,
 	finish: CardbaseFinish
 ): Promise<CardbasePriceHistory | undefined> {
+	// Our own files first when that source is on (price-history-cache.ts); cardbase only when they have
+	// nothing for this card. Off = this line costs one boolean and the rest below is the old path, unchanged.
+	if (this.ownPriceHistoryEnabled()) {
+		const own = await this.getOwnPriceHistory(scryfallId, finish);
+		if (own) return own;
+	}
+	// Switched off: a card our files know nothing about simply has no history (the box says so), and nothing is asked elsewhere.
+	if (!CARDBASE_SOURCE.enabled) return undefined;
 	const history = await this.getCardbasePriceHistory(scryfallId, finish);
 	if (!history) return undefined;
 	const cardmarketId = await this.getCardbaseCardmarketId(scryfallId);
@@ -212,14 +232,23 @@ export async function getCardbasePriceHistoryWithNativeCardmarket(this: MTGColle
 // modal) — top gainers/losers of the whole market, not of the user's
 // collection (see cardbase.ts; Home filters client-side to owned cards to
 // make some rows clickable, but this request itself always stays
-// unfiltered). `limit` fixed at the API's MAXIMUM (100 per side, still a
-// single request — see cardbase.ts) since 2026-09-23: before, 20 was enough
-// for a list scanned by eye, but the top of each list is dominated by
-// aberrant prices (see core/market-movers.ts) that Home discards client-side
-// — with 20 rows, this filter could leave almost nothing. We cache the RAW
-// rows, not the filtered result: the filter is pure and instantaneous, and a
-// future threshold setting must not require a new request.
+// unfiltered).
+//
+// Since 2026-10-15 the lists come from OUR files first (api/price-history.ts fetchOwnMovers: twelve small files our daily job writes from
+// the same price data as the history, with the anomaly filter, a price floor and, for 7 and 30 days, a second vendor's confirmation applied
+// BEFORE ranking, see tools/price-history/lib/movers.mjs) and from cardbase's /movers only when they cannot be read: cardbase has been
+// frozen since 2026-09-09. The two answer in the same shape, so nothing downstream knows which one it got except the footer
+// (CardbaseMoversResult.source).
+//
+// cardbase's `limit` is fixed at the API's MAXIMUM (100 per side, still a single request — see cardbase.ts) since 2026-09-23: the top of
+// each of ITS lists is dominated by aberrant prices (see core/market-movers.ts) that Home discards client-side, and with 20 rows that
+// filter could leave almost nothing. We cache the RAW rows, not the filtered result: the filter is pure and instantaneous, and a future
+// threshold setting must not require a new request. Our own files are already filtered; the same client-side filter then changes nothing.
 const MOVERS_FETCH_LIMIT = 100;
+// The lists change once a day. After this long a cached list is read again (and kept as the answer if that fails).
+const MOVERS_CACHE_TTL_MS = 3 * 60 * 60 * 1000;
+// After a failure our files are not asked again for this long (cardbase is asked in the meantime), see ownMoversFailedUntil.
+const OWN_MOVERS_FAILURE_PAUSE_MS = 30 * 1000;
 
 export async function getCardbaseMovers(this: MTGCollectionPlugin,
 	period: CardbaseMoverPeriod,
@@ -227,14 +256,28 @@ export async function getCardbaseMovers(this: MTGCollectionPlugin,
 ): Promise<CardbaseMoversResult | undefined> {
 	const cacheKey = `${period}:${vendor ?? "all"}`;
 	const cached = this.cardbaseMoversCache.get(cacheKey);
-	if (cached !== undefined) return cached;
+	if (cached !== undefined && Date.now() - cached.at < MOVERS_CACHE_TTL_MS) return cached.result;
+	const remember = (result: CardbaseMoversResult) => {
+		this.cardbaseMoversCache.set(cacheKey, { result, at: Date.now() });
+		return result;
+	};
+	// Not ownPriceHistoryEnabled(): that one also needs gunzip (the shard files are gzip), whereas a movers list is plain JSON, which any device reads.
+	if (this.priceHistoryBaseUrl !== "" && Date.now() >= (this.ownMoversFailedUntil.get(cacheKey) ?? 0)) {
+		const base = await this.getPriceHistoryBase();
+		for (let attempt = 0; attempt < 2; attempt++) {
+			const own = await fetchOwnMovers(base, period, vendor);
+			if (own) return remember(own);
+			if (attempt === 0) await sleep(300);
+		}
+		this.ownMoversFailedUntil.set(cacheKey, Date.now() + OWN_MOVERS_FAILURE_PAUSE_MS);
+	}
+	// Switched off (api/cardbase.ts CARDBASE_SOURCE): when our lists cannot be read there is nothing else to ask, only what was read earlier.
+	if (!CARDBASE_SOURCE.enabled) return cached?.result;
 	for (let attempt = 0; attempt < 2; attempt++) {
 		const result = await fetchCardbaseMovers(this.settings.cardbaseApiKey, period, vendor, MOVERS_FETCH_LIMIT);
-		if (result) {
-			this.cardbaseMoversCache.set(cacheKey, result);
-			return result;
-		}
+		if (result) return remember(result);
 		if (attempt === 0) await sleep(300);
 	}
-	return undefined;
+	// Neither answered: what was read earlier, however old, still beats an error line.
+	return cached?.result;
 }

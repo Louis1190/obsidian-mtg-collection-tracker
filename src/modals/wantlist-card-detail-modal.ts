@@ -14,7 +14,7 @@ import {
 	BackgroundCrossfader,
 	setupCardTilt,
 	setupPanelScrollFade,
-	toCardbaseFinish,
+	cardbaseFinishOf,
 	setupDoubleFacedFlip,
 	setupSplitCardRotation,
 } from "../ui/card-detail-fx";
@@ -531,7 +531,7 @@ export class WantlistCardDetailModal extends Modal {
 		renderPriceHistoryBox(
 			this.detailHost(),
 			panel,
-			{ scryfallId: this.card.scryfallId, finish: this.card.finish },
+			{ scryfallId: this.card.scryfallId, finish: this.card.finish, pricedCard: this.card },
 			() => this.schedulePrefetchNeighbors()
 		);
 	}
@@ -547,7 +547,7 @@ export class WantlistCardDetailModal extends Modal {
 		if (centerIndex === -1 || this.navCards.length < 2) return;
 		this.prefetchTimeout = window.setTimeout(() => {
 			const items = this.navCards.map((c) =>
-				c.finish === "proxy" ? null : { scryfallId: c.scryfallId, finish: toCardbaseFinish(c.finish) }
+				c.finish === "proxy" ? null : { scryfallId: c.scryfallId, finish: cardbaseFinishOf(c) }
 			);
 			void this.plugin.prefetchCardbaseNeighbors(items, centerIndex);
 		}, 500);

@@ -132,21 +132,21 @@ export async function shareVaultFile(app: App, path: string): Promise<void> {
 	}
 }
 
-export function getLastExportFolder(): string {
+export function getLastExportFolder(app: App): string {
 	try {
-		const stored = window.localStorage?.getItem(LAST_FOLDER_KEY);
+		const stored: unknown = app.loadLocalStorage(LAST_FOLDER_KEY);
 		if (typeof stored === "string" && stored !== "") return stored;
 	} catch {
-		/* localStorage may be unavailable (site data blocked, etc.) */
+		/* the local storage may be unavailable (site data blocked, etc.) */
 	}
 	return DEFAULT_EXPORT_FOLDER;
 }
 
-export function rememberExportFolder(folder: string): void {
+export function rememberExportFolder(app: App, folder: string): void {
 	try {
-		window.localStorage?.setItem(LAST_FOLDER_KEY, folder);
+		app.saveLocalStorage(LAST_FOLDER_KEY, folder);
 	} catch {
-		/* voir getLastExportFolder */
+		/* see getLastExportFolder */
 	}
 }
 
@@ -308,22 +308,22 @@ export async function writeToDeviceFolder(
 // Last device folder used successfully, per device: lets the export window
 // (Android) offer a "Save to <folder>" in a single gesture, without reopening
 // the native picker each time. null = none.
-export function getLastDeviceFolder(): string | null {
+export function getLastDeviceFolder(app: App): string | null {
 	try {
-		const stored = window.localStorage?.getItem(LAST_DEVICE_FOLDER_KEY);
+		const stored: unknown = app.loadLocalStorage(LAST_DEVICE_FOLDER_KEY);
 		if (typeof stored === "string" && stored.trim() !== "") return stored;
 	} catch {
-		/* voir getLastExportFolder */
+		/* see getLastExportFolder */
 	}
 	return null;
 }
 
-export function rememberDeviceFolder(folder: string): void {
+export function rememberDeviceFolder(app: App, folder: string): void {
 	if (folder.trim() === "") return;
 	try {
-		window.localStorage?.setItem(LAST_DEVICE_FOLDER_KEY, folder);
+		app.saveLocalStorage(LAST_DEVICE_FOLDER_KEY, folder);
 	} catch {
-		/* voir getLastExportFolder */
+		/* see getLastExportFolder */
 	}
 }
 

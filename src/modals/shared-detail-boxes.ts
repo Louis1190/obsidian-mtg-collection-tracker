@@ -2,15 +2,18 @@ import { setIcon } from "obsidian";
 import { manaPoolPricesSupported } from "../api/manapool";
 import type MTGCollectionPlugin from "../plugin";
 import { Finish, finishHasFoilLook } from "../core/card-model";
-import { formatCardPrice, formatMoney, LEGALITY_FORMATS, PricedCard } from "../core/price";
+import { effectiveFinish, formatCardPrice, formatMoney, LEGALITY_FORMATS, PricedCard } from "../core/price";
 import { legalityStatusClass } from "../core/card-search";
-import { getCardbaseLatestPrice, getCardbaseDayChange } from "../api/cardbase";
+import { CARDBASE_SOURCE, getCardbaseLatestPrice, getCardbaseDayChange, type CardbasePriceHistory, type CardbaseVendor } from "../api/cardbase";
+import { getStaleDataAgeDays, formatAsOfShort } from "../core/market-movers";
 import {
 	animateCardNav,
-	toCardbaseFinish,
+	cardbaseFinishOf,
 	renderPriceHistoryChart,
 	renderPriceHistorySourceFooter,
 	appendAsOfToSourceFooter,
+	PRICE_HISTORY_SOURCES,
+	priceHistorySourceOf,
 	renderLoadingDots,
 	renderDayChangeBadge,
 	renderManaCostIcons,
@@ -147,6 +150,24 @@ export function renderCardDescriptionBox(
 	});
 }
 
+// "Price history" says out loud when cardbase's data has stopped: the chart, the Cardmarket price
+// and the day-change badges all read the same pipeline, which froze on 2026-09-09 — the last point
+// of a series looked like today's price. Same warning-tinted line as Home's Market trends banner
+// (.mtg-home-trends-stale), placed under the chart, above the source line.
+function renderStaleDataNotice(box: HTMLElement, before: HTMLElement, asOf: string, ageDays: number) {
+	const notice = createDiv({ cls: "mtg-stale-data-notice" });
+	setIcon(notice.createSpan({ cls: "mtg-stale-data-notice-icon" }), "triangle-alert");
+	notice.createSpan({ text: `Latest price data is from ${asOf} (${ageDays} days ago) — the chart stops there.` });
+	box.insertBefore(notice, before);
+}
+
+// A change between the last two points of a series that stopped weeks ago is not "since
+// yesterday": the badge is dropped rather than shown next to a current price (the notice of the
+// Price history box and the date under the Cardmarket price say why).
+function dayChangeIfFresh(history: CardbasePriceHistory | undefined, vendor: CardbaseVendor) {
+	return getStaleDataAgeDays(history?.asOf, Date.now()) === undefined ? getCardbaseDayChange(history, vendor) : undefined;
+}
+
 // Price history (cardbase.dev, see cardbase.ts/card-detail-fx.ts) — under
 // Store Prices. Card Kingdom + TCGplayer only: cardbase doesn't cover Mana
 // Pool. Same Proxy exclusion as renderStorePricesBox (a Proxy card has no
@@ -154,7 +175,7 @@ export function renderCardDescriptionBox(
 export function renderPriceHistoryBox(
 	host: DetailBoxHost,
 	panel: HTMLElement,
-	card: { scryfallId: string; finish: Finish },
+	card: Pick<StorePricesCard, "scryfallId" | "finish" | "pricedCard">,
 	onResolved: () => void
 ) {
 	if (card.finish === "proxy") return;
@@ -167,16 +188,19 @@ export function renderPriceHistoryBox(
 	// class/icon itself once the real content is ready (container.empty()).
 	const body = box.createDiv({ cls: "mtg-price-history-body mtg-price-history-loading" });
 	setIcon(body, "loader-2");
-	const sourceFooterEl = renderPriceHistorySourceFooter(box);
+	// cardbase.dev is the label only while that source is on; off (api/cardbase.ts CARDBASE_SOURCE) our files are the only source there is.
+	const sourceFooterEl = renderPriceHistorySourceFooter(box, host.plugin.ownPriceHistoryEnabled() || !CARDBASE_SOURCE.enabled ? "price-history" : "cardbase");
 
 	const requestedId = card.scryfallId;
-	const finish = toCardbaseFinish(card.finish);
+	const finish = cardbaseFinishOf(card.pricedCard);
 	const targetCurrency = host.plugin.settings.priceCurrency;
 	void Promise.all([host.plugin.getCardbasePriceHistoryWithNativeCardmarket(requestedId, finish), host.plugin.getUsdEurRate()]).then(
 		([history, rate]) => {
 			if (host.currentScryfallId() !== requestedId) return;
 			renderPriceHistoryChart(body, history, targetCurrency, rate);
-			appendAsOfToSourceFooter(sourceFooterEl, history?.asOf);
+			const staleDays = getStaleDataAgeDays(history?.asOf, Date.now());
+			if (history?.asOf && staleDays !== undefined) renderStaleDataNotice(box, sourceFooterEl, history.asOf, staleDays);
+			appendAsOfToSourceFooter(sourceFooterEl, history?.asOf, priceHistorySourceOf(history));
 			// The displayed card is resolved — background preloading of the Cover Flow
 			// neighbors, never in competition with this request (see
 			// schedulePrefetchNeighbors/MTGCollectionPlugin.prefetchCardbaseNeighbors
@@ -321,9 +345,9 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 		// call, see their comment) — just for the yesterday→today change, the
 		// price itself remains Scryfall's displayed just above, already known
 		// synchronously.
-		void host.plugin.getCardbasePriceHistoryWithNativeCardmarket(tcgRequestedId, toCardbaseFinish(card.finish)).then((history) => {
+		void host.plugin.getCardbasePriceHistoryWithNativeCardmarket(tcgRequestedId, cardbaseFinishOf(card.pricedCard)).then((history) => {
 			if (host.currentScryfallId() !== tcgRequestedId) return;
-			renderDayChangeBadge(tcgChangeEl, getCardbaseDayChange(history, "tcgplayer"));
+			renderDayChangeBadge(tcgChangeEl, dayChangeIfFresh(history, "tcgplayer"));
 		});
 	} else {
 		// Scryfall has no price for this printing/finish — column kept (not
@@ -373,8 +397,11 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 	const cmChangeEl = cmCol.createDiv({ cls: "mtg-store-price-col-change" });
 
 	const requestedId = card.scryfallId;
-	const isFoil = finishHasFoilLook(card.finish);
-	const cardbaseFinish = toCardbaseFinish(card.finish);
+	// The finish every store is asked for is the card's EFFECTIVE one (core/price.ts): a foil-only printing followed as "regular" is looked up as
+	// the foil it is, in Card Kingdom's and Mana Pool's lists as in the history, like the TCGplayer price above already is (formatCardPrice).
+	const storeFinish = effectiveFinish(card.pricedCard);
+	const isFoil = finishHasFoilLook(storeFinish);
+	const cardbaseFinish = cardbaseFinishOf(card.pricedCard);
 
 	// Combined into a single Promise.all rather than two independent .then():
 	// the Card Kingdom price comes from card-kingdom.ts (direct fetch), the
@@ -402,10 +429,10 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 		}
 		ckValueEl.setText(formatMoney(entry.priceRetail, "usd"));
 		ckCol.addEventListener("click", () => openExternalUrl(entry.url));
-		renderDayChangeBadge(ckChangeEl, getCardbaseDayChange(history, "cardkingdom"));
+		renderDayChangeBadge(ckChangeEl, dayChangeIfFresh(history, "cardkingdom"));
 	});
 
-	void host.plugin.getManaPoolPrice(requestedId, card.finish).then((result) => {
+	void host.plugin.getManaPoolPrice(requestedId, storeFinish).then((result) => {
 		if (host.currentScryfallId() !== requestedId) return;
 		mpValueEl.removeClass("mtg-loading-dots");
 		if (!result) {
@@ -445,7 +472,21 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 			return;
 		}
 		cmValueEl.setText(formatMoney(entry.price, entry.currency.toLowerCase() === "eur" ? "eur" : "usd"));
-		renderDayChangeBadge(cmChangeEl, getCardbaseDayChange(history, "cardmarket"));
+		renderDayChangeBadge(cmChangeEl, dayChangeIfFresh(history, "cardmarket"));
+		// Unlike the other three columns, this price comes from cardbase itself: when that
+		// pipeline is stale the "Market price" label gives way to the date it is from. `is-note`
+		// lets it wrap, and the date is the short "Sep 9" (see formatAsOfShort): "As of 2026-09-09" is
+		// 83px wide, a column at a 1024px window is 78px (measured) and an ISO date breaks in the
+		// middle at its hyphens; the full date stays in the tooltip.
+		const cmStaleDays = getStaleDataAgeDays(history?.asOf, Date.now());
+		if (history?.asOf && cmStaleDays !== undefined) {
+			cmDetailEl.setText(`As of ${formatAsOfShort(history.asOf, Date.now())}`);
+			cmDetailEl.addClass("is-stale", "is-note");
+			cmDetailEl.setAttribute(
+				"title",
+				`${PRICE_HISTORY_SOURCES[priceHistorySourceOf(history)].label} has published no newer Cardmarket price since ${history.asOf} (${cmStaleDays} days ago).`
+			);
+		}
 		if (history?.cardmarketLow) {
 			cmLowEl.setText(
 				`Low ${formatMoney(

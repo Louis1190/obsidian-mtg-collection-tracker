@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // A scripted fake network: each request consumes the next step (the last one repeats). Simpler, here, than a
 // vi.fn() whose state (mockReset / rejecting implementation) behaves surprisingly in vitest 4.
@@ -14,6 +14,7 @@ vi.mock("obsidian", () => ({
 import { fetchCardKingdomPricelist } from "./card-kingdom";
 import { fetchManaPoolPricelist } from "./manapool";
 import {
+	CARDBASE_SOURCE,
 	fetchCardbaseMovers,
 	fetchCardbasePriceHistory,
 	fetchCardbasePrintingCardmarketId,
@@ -27,7 +28,10 @@ const response = (status: number, json: unknown = {}) => () => ({ status, json, 
 const down = () => { throw transportError(); };
 const script = (...steps: (() => unknown)[]) => { net.steps = steps; };
 
-beforeEach(() => { net.steps = []; net.calls = []; });
+// The cardbase.dev fetchers are tested with the source switched ON (it is OFF as shipped, api/cardbase.ts): with it off every one of them
+// answers its failure value without sending anything, which would make these tests prove nothing.
+beforeEach(() => { net.steps = []; net.calls = []; CARDBASE_SOURCE.enabled = true; });
+afterEach(() => { CARDBASE_SOURCE.enabled = false; });
 
 describe("requestUrlOrNull", () => {
 	it("returns the response, asking requestUrl not to throw on HTTP statuses", async () => {

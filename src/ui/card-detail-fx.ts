@@ -1,5 +1,6 @@
 import { Platform } from "obsidian";
 import { Finish } from "../core/card-model";
+import { effectiveFinish, PricedCard } from "../core/price";
 import { CardbaseDayChange, CardbaseFinish, CardbasePriceHistory, CardbasePricePoint, CardbaseVendor } from "../api/cardbase";
 import { UsdEurRate, convertUsdEur } from "../api/frankfurter";
 import { CardTextFace } from "../api/scryfall";
@@ -347,6 +348,11 @@ export function toCardbaseFinish(finish: Finish): CardbaseFinish {
 	if (finish === "etched") return "etched";
 	if (finish === "foiled" || finish === "surged") return "foil";
 	return "normal";
+}
+
+/** The finish to ask a price SOURCE for, for a card of any section: its effective finish (core/price.ts), in the sources' vocabulary. */
+export function cardbaseFinishOf(card: PricedCard): CardbaseFinish {
+	return toCardbaseFinish(effectiveFinish(card));
 }
 
 // 4 of the 5 cardbase vendors — cardhoarder (Magic Online, not paper) stays
@@ -788,15 +794,33 @@ function setupPriceHistoryCrosshair(
 // loading) and not only once the data has arrived, which answers the
 // passing request "can we display the source" even while waiting rather
 // than only afterwards.
-export function renderPriceHistorySourceFooter(box: HTMLElement): HTMLElement {
+// Where the history comes from, for the "Source:" line and the stale-data tooltip. Absent `source` on a
+// CardbasePriceHistory = cardbase.dev (the only source before our own files, see core/price-history.ts).
+export type PriceHistorySource = "cardbase" | "price-history";
+export const PRICE_HISTORY_SOURCES: Record<PriceHistorySource, { label: string; url: string }> = {
+	cardbase: { label: "cardbase.dev", url: "https://cardbase.dev" },
+	// The files are built from MTGJSON's price data (Cardmarket, TCGplayer, Card Kingdom): credited by the aggregator.
+	"price-history": { label: "MTGJSON", url: "https://mtgjson.com" },
+};
+
+export function priceHistorySourceOf(history: Pick<CardbasePriceHistory, "source"> | undefined): PriceHistorySource {
+	return history?.source ?? "cardbase";
+}
+
+// The link a footer opens follows whatever source it currently names (it can change once the history is
+// resolved), kept here rather than in a DOM attribute so the markup stays what it always was.
+const footerUrls = new WeakMap<HTMLElement, string>();
+
+export function renderPriceHistorySourceFooter(box: HTMLElement, source: PriceHistorySource = "cardbase"): HTMLElement {
 	const footer = box.createDiv({ cls: "mtg-price-history-source" });
-	footer.setText("Source: cardbase.dev");
-	footer.addEventListener("click", () => window.open("https://cardbase.dev", "_blank"));
+	footer.setText(`Source: ${PRICE_HISTORY_SOURCES[source].label}`);
+	footerUrls.set(footer, PRICE_HISTORY_SOURCES[source].url);
+	footer.addEventListener("click", () => window.open(footerUrls.get(footer), "_blank"));
 	return footer;
 }
 
 // Completes the footer once the history is resolved, with the freshness
-// date of the cardbase data (CardbasePriceHistory.asOf — see cardbase.ts
+// date of the data (CardbasePriceHistory.asOf — see cardbase.ts
 // for why it comes from the same response already fetched, no separate GET
 // /status call). Called from the .then() of renderPriceHistoryBox (the 3
 // modals), after renderPriceHistoryChart — separate from
@@ -804,10 +828,13 @@ export function renderPriceHistorySourceFooter(box: HTMLElement): HTMLElement {
 // information is only known after the fetch whereas the footer itself must
 // exist from the first paint (see its own comment). A missing asOf (network
 // failure, or malformed response) leaves the existing "Source:
-// cardbase.dev" text as is rather than adding a missing date.
-export function appendAsOfToSourceFooter(footer: HTMLElement, asOf: string | undefined) {
+// cardbase.dev" text as is rather than adding a missing date. A history that
+// came from another source than the one named at the first paint (our own
+// files unreachable, cardbase answered) corrects the name and the link too.
+export function appendAsOfToSourceFooter(footer: HTMLElement, asOf: string | undefined, source: PriceHistorySource = "cardbase") {
 	if (!asOf) return;
-	footer.setText(`Source: cardbase.dev · Data as of ${asOf}`);
+	footer.setText(`Source: ${PRICE_HISTORY_SOURCES[source].label} · Data as of ${asOf}`);
+	footerUrls.set(footer, PRICE_HISTORY_SOURCES[source].url);
 }
 
 export function renderLoadingDots(container: HTMLElement) {

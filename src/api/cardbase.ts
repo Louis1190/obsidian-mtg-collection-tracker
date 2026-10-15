@@ -1,5 +1,12 @@
 import { requestUrlOrNull } from "./safe-request";
 
+export const CARDBASE_SOURCE = { enabled: false };
+
+function cardbaseRequest(params: Parameters<typeof requestUrlOrNull>[0]): ReturnType<typeof requestUrlOrNull> {
+	if (!CARDBASE_SOURCE.enabled) return Promise.resolve(null);
+	return requestUrlOrNull(params);
+}
+
 /* -------------------------------------------------------------------------- */
 /* cardbase.dev — price history ("Price History" box) AND, since the */
 /* Cardmarket column was added to "Store Prices", the current Cardmarket */
@@ -76,9 +83,23 @@ export interface CardbasePriceSeries {
 	finish: CardbaseFinish;
 	currency: string;
 	points: CardbasePricePoint[];
+	// false = the vendor stopped listing this card days before the data's as-of day, so the last point is
+	// history, not a current price (the chart still draws it; the Cardmarket price and the day-change badge don't
+	// read it). Only our own history sets it (core/price-history.ts); absent for cardbase's, which keeps its old
+	// behaviour exactly.
+	live?: boolean;
+	// What the day-change badge compares, when the source knows better than "the last two points": our own files say each vendor's latest day
+	// of REAL price changes (a vendor sometimes repeats the previous day's whole list, and the last two points are then identical for every card),
+	// so core/price-history.ts reads the change at that day. null = no usable day change (that vendor's list has not moved for days, or the card
+	// had no price the day before). Absent = last two points, which is exactly what cardbase's histories always did.
+	dayChange?: { previous: number; current: number } | null;
 }
 
+// The common shape of every price-history source: cardbase.dev (this file) and our own files
+// (core/price-history.ts, source "price-history"). The name is cardbase's from the days it was the only one.
 export interface CardbasePriceHistory {
+	// Absent = cardbase.dev. Read by the "Source:" line and the stale-data tooltip (card-detail-fx.ts).
+	source?: "price-history";
 	scryfallId: string;
 	series: CardbasePriceSeries[];
 	historyBegins?: string;
@@ -131,7 +152,7 @@ export async function fetchCardbasePriceHistory(
 	const headers: Record<string, string> = { ...CARDBASE_HEADERS };
 	if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-	const res = await requestUrlOrNull({ url, headers });
+	const res = await cardbaseRequest({ url, headers });
 	if (!res || res.status !== 200) return undefined;
 
 	const rawSeries = (res.json as CardbaseHistoryBody | undefined)?.data?.series ?? [];
@@ -177,6 +198,7 @@ export function getCardbaseLatestPrice(
 	vendor: CardbaseVendor
 ): CardbaseLatestPrice | undefined {
 	const series = history?.series.find((s) => s.vendor === vendor);
+	if (series?.live === false) return undefined;
 	const last = series?.points[series.points.length - 1];
 	return last ? { price: last.price, currency: series.currency } : undefined;
 }
@@ -199,9 +221,18 @@ export function getCardbaseDayChange(
 	vendor: CardbaseVendor
 ): CardbaseDayChange | undefined {
 	const series = history?.series.find((s) => s.vendor === vendor);
-	if (!series || series.points.length < 2) return undefined;
-	const prev = series.points[series.points.length - 2].price;
-	const curr = series.points[series.points.length - 1].price;
+	if (!series || series.live === false) return undefined;
+	let prev: number;
+	let curr: number;
+	if (series.dayChange !== undefined) {
+		if (series.dayChange === null) return undefined;
+		prev = series.dayChange.previous;
+		curr = series.dayChange.current;
+	} else {
+		if (series.points.length < 2) return undefined;
+		prev = series.points[series.points.length - 2].price;
+		curr = series.points[series.points.length - 1].price;
+	}
 	if (!prev) return undefined;
 	const changePct = ((curr - prev) / prev) * 100;
 	const direction: CardbaseDayChange["direction"] = changePct > 0 ? "up" : changePct < 0 ? "down" : "flat";
@@ -223,7 +254,7 @@ export async function fetchCardbasePrintingCardmarketId(
 ): Promise<number | undefined | null> {
 	const headers: Record<string, string> = { ...CARDBASE_HEADERS };
 	if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-	const res = await requestUrlOrNull({ url: `${CARDBASE_BASE_URL}/printings/${scryfallId}`, headers });
+	const res = await cardbaseRequest({ url: `${CARDBASE_BASE_URL}/printings/${scryfallId}`, headers });
 	if (res && res.status === 404) return null;
 	if (!res || res.status !== 200) return undefined;
 	const data = (res.json as { data?: CardbasePrintingRaw } | undefined)?.data;
@@ -268,7 +299,7 @@ export async function fetchCardmarketNativePrices(
 ): Promise<CardmarketNativePrices | undefined> {
 	const headers: Record<string, string> = { ...CARDBASE_HEADERS };
 	if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-	const res = await requestUrlOrNull({
+	const res = await cardbaseRequest({
 		url: `${CARDBASE_BASE_URL}/cardmarket/${cardmarketId}/prices?days=${days}`,
 		headers,
 	});
@@ -377,9 +408,12 @@ export interface CardbaseMoversResult {
 	// See CardbasePriceHistory.asOf above for the full reasoning (meta.as_of
 	// already present on this response, no separate /status call).
 	asOf?: string;
+	// Where the lists come from: absent = cardbase.dev (its /movers, below); "price-history" = the files our own daily job publishes
+	// (api/price-history.ts fetchOwnMovers), written in this very response shape and read with the same parser.
+	source?: "price-history";
 }
 
-interface CardbaseMoverRaw {
+export interface CardbaseMoverRaw {
 	scryfall_id?: string;
 	name?: string;
 	vendor?: string;
@@ -391,12 +425,12 @@ interface CardbaseMoverRaw {
 }
 
 // Body of /movers (`res.json` is `any`: we type it here, once).
-interface CardbaseMoversBody {
-	data?: { gainers?: CardbaseMoverRaw[]; losers?: CardbaseMoverRaw[] };
+export interface CardbaseMoversBody {
+	data?: { period?: string; gainers?: CardbaseMoverRaw[]; losers?: CardbaseMoverRaw[] };
 	meta?: { as_of?: string };
 }
 
-function parseCardbaseMovers(raw: CardbaseMoverRaw[] | undefined): CardbaseMover[] {
+export function parseCardbaseMovers(raw: CardbaseMoverRaw[] | undefined): CardbaseMover[] {
 	const result: CardbaseMover[] = [];
 	for (const m of raw ?? []) {
 		if (
@@ -438,7 +472,7 @@ export async function fetchCardbaseMovers(
 	let url = `${CARDBASE_BASE_URL}/movers?period=${period}&limit=${limit}`;
 	if (vendor) url += `&vendor=${vendor}`;
 
-	const res = await requestUrlOrNull({ url, headers });
+	const res = await cardbaseRequest({ url, headers });
 	if (!res || res.status !== 200) return undefined;
 
 	return {
@@ -480,7 +514,7 @@ export type CardbaseConnectionStatus = "ok" | "rejected" | "error";
 // "no key entered" case separately, which needs no network round trip to be
 // diagnosed (always limited to 30 days, by definition).
 export async function testCardbaseConnection(apiKey: string): Promise<CardbaseConnectionStatus> {
-	const res = await requestUrlOrNull({
+	const res = await cardbaseRequest({
 		url: `${CARDBASE_BASE_URL}/bulk/prices/${CARDBASE_TEST_BULK_DATE}`,
 		headers: { ...CARDBASE_HEADERS, Authorization: `Bearer ${apiKey}` },
 	});

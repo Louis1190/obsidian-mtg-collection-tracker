@@ -14,6 +14,8 @@ import {
 	CardbaseMoversResult,
 } from "./api/cardbase";
 import { UsdEurRate } from "./api/frankfurter";
+import { PRICE_HISTORY_BASE_URL } from "./api/price-history";
+import type { PriceHistoryShard } from "./core/price-history";
 import {
 	MTGCollectionSettings,
 	DEFAULT_SETTINGS,
@@ -25,6 +27,7 @@ import { HIDE_BARS_CLASS } from "./view/mobile-bars";
 import * as scryfallCache from "./plugin/scryfall-cache";
 import * as storePrices from "./plugin/store-prices";
 import * as cardbaseCache from "./plugin/cardbase-cache";
+import * as priceHistoryCache from "./plugin/price-history-cache";
 import * as exchangeRate from "./plugin/exchange-rate";
 import * as priceRefresh from "./plugin/price-refresh";
 import * as lifecycle from "./plugin/lifecycle";
@@ -185,6 +188,18 @@ export default class MTGCollectionPlugin extends Plugin {
 	cardmarketIdInFlight: Map<string, Promise<number | null>> = new Map();
 	cardmarketNativePricesCache: Map<number, CardmarketNativePrices | undefined> = new Map();
 	cardmarketNativePricesInFlight: Map<number, Promise<CardmarketNativePrices | undefined>> = new Map();
+	// Our own price history (src/plugin/price-history-cache.ts), tried before cardbase when it is on. The shard
+	// files are keyed by the first 3 hex characters of the Scryfall id: `null` = the files don't know the card
+	// (a confirmed 404), absent = not requested yet; a failed download is not cached, only paused
+	// (priceHistoryShardFailedUntil). `priceHistoryBaseUrl` is a field, not a setting: see PRICE_HISTORY_BASE_URL.
+	priceHistoryBaseUrl: string = PRICE_HISTORY_BASE_URL;
+	priceHistoryShardCache: Map<string, { shard: PriceHistoryShard | null; at: number }> = new Map();
+	priceHistoryShardInFlight: Map<string, Promise<PriceHistoryShard | null | undefined>> = new Map();
+	priceHistoryShardFailedUntil: Map<string, number> = new Map();
+	// Where the shard files are RIGHT NOW (site.json next to them, see src/api/price-history.ts): the address and until when it
+	// stands before it is asked again. Null = not asked yet this session.
+	priceHistoryPointer: { base: string; until: number } | null = null;
+	priceHistoryPointerInFlight: Promise<string> | null = null;
 	// "Market Trends" results (GET /movers, Home dashboard block since
 	// 2026-09-22 — see home-render.ts, formerly its own modal) — key
 	// `${period}:${vendor ?? "all"}`, no deduplicated in-flight request
@@ -193,7 +208,11 @@ export default class MTGCollectionPlugin extends Plugin {
 	// competition from several rows of a same list like the other caches of
 	// this file — the risk of an in-flight duplicate is therefore negligible
 	// here.
-	cardbaseMoversCache: Map<string, CardbaseMoversResult | undefined> = new Map();
+	// `at` = when it was read: the lists change once a day, and a session left open for days must not keep the first one it read
+	// (plugin/cardbase-cache.ts getCardbaseMovers). `ownMoversFailedUntil` pauses our own files for a few seconds after a failure so that
+	// a host that is down is not asked again at every redraw of Home (same idea as priceHistoryShardFailedUntil).
+	cardbaseMoversCache: Map<string, { result: CardbaseMoversResult; at: number }> = new Map();
+	ownMoversFailedUntil: Map<string, number> = new Map();
 	// USD/EUR exchange rate (frankfurter.dev), to unify the Y axis of the
 	// "Price History" chart in a single currency (see card-detail-fx.ts) —
 	// same "a single fetch per session" shape as symbologyCache/allSetsCache
@@ -506,6 +525,12 @@ export default class MTGCollectionPlugin extends Plugin {
 	fetchCardmarketNativePricesWithRetry = cardbaseCache.fetchCardmarketNativePricesWithRetry;
 	getCardbasePriceHistoryWithNativeCardmarket = cardbaseCache.getCardbasePriceHistoryWithNativeCardmarket;
 	getCardbaseMovers = cardbaseCache.getCardbaseMovers;
+
+	// -- our own price history, tried before cardbase (src/plugin/price-history-cache.ts) --
+	ownPriceHistoryEnabled = priceHistoryCache.ownPriceHistoryEnabled;
+	getPriceHistoryBase = priceHistoryCache.getPriceHistoryBase;
+	getPriceHistoryShard = priceHistoryCache.getPriceHistoryShard;
+	getOwnPriceHistory = priceHistoryCache.getOwnPriceHistory;
 
 	// -- USD/EUR exchange rate (src/plugin/exchange-rate.ts) --
 	getUsdEurRate = exchangeRate.getUsdEurRate;

@@ -57,7 +57,8 @@ Cards that Scryfall cannot resolve are reported, not silently dropped.
 | Card value, TCGplayer column | Scryfall's own prices |
 | Card Kingdom column | Card Kingdom's public pricelist |
 | Mana Pool column | Mana Pool's public price list (computers only, see below) |
-| Cardmarket column, price history, market movers | [cardbase.dev](https://cardbase.dev) (an API key is optional and gives a longer history) |
+| Price history, Cardmarket column, day-change arrows | A daily price history built from [MTGJSON](https://mtgjson.com) (Cardmarket, TCGplayer and Card Kingdom prices) and published for this plugin on GitHub Pages ([mtg-price-history](https://github.com/Louis1190/mtg-price-history)); if it cannot be reached, nothing else is asked and the chart stays empty. Reading these files needs a device that can unpack gzip in its browser engine (every current computer and Android; iPhone and iPad from iOS/iPadOS 16.4): on an older one the price history is simply empty |
+| Market movers (Home) | The biggest rises and falls of the day, the week and the month, computed every day from the same [MTGJSON](https://mtgjson.com) price data (Cardmarket, TCGplayer and Card Kingdom) and published for this plugin on GitHub Pages; if they cannot be reached, nothing else is asked and the block says so |
 | Showing one currency everywhere | [frankfurter.dev](https://frankfurter.dev) USD/EUR rate |
 
 The price saved with each of your cards (it feeds the values you see) comes from Scryfall and refreshes on its own at the
@@ -94,7 +95,7 @@ and it never sends your collection anywhere except to the GitHub repository you 
 | `api.scryfall.com`, and the images served by `*.scryfall.io` | Card search, card data, prices, format legalities, set and mana symbols, card images | When you search, open or import cards; in the background to keep the prices and legalities of your cards up to date |
 | `api.cardkingdom.com` | Card Kingdom prices | The first time a card is opened in a session (read as a stream on a phone or tablet, to spare its memory) |
 | `manapool.com` | Mana Pool prices | The first time a card is opened in a session, **computers only** |
-| `api.cardbase.dev` | Price history, Cardmarket prices, market movers | When a card is opened or Home is shown |
+| `louis1190.github.io` | Price history and the Cardmarket price: one small file per card, named after the first three characters of its Scryfall id (1 of 4,096 files, ~10-40 KB, shared by about 27 cards). Nothing about you or your collection is in the request. A tiny file next to them, `site.json`, is read first (about once per session) and says where the price files are: normally right there, but it can name another `https` address if the files ever have to move, and the plugin then asks that address instead. The last address that worked is kept on your device. The same site also serves the market movers of Home: twelve small lists (about 8 KB each; one per period and vendor choice), the same for everyone | When a card is opened, and when Home shows its market trends |
 | `api.frankfurter.dev` | USD/EUR exchange rate | Once per session, when a price needs converting |
 | `api.github.com` | Syncing your data with **your own** private repository | **Only if you turn GitHub storage on** |
 
@@ -107,7 +108,8 @@ itself sends nothing to these sites, and nothing is opened in the background.
 
 | Where | Opens |
 | --- | --- |
-| *Source: cardbase.dev* footer (card details, Home) | `cardbase.dev` |
+| *Source:* line under the price history (card details) | `mtgjson.com` |
+| *Source:* footer under the market trends (Home) | `mtgjson.com` |
 | Cardmarket column of *Store prices* | A search on `www.cardmarket.com` for the card's name (the name is part of the link) |
 | TCGplayer, Card Kingdom and Mana Pool columns of *Store prices* | The product page link that Scryfall, Card Kingdom and Mana Pool give for that printing (`https://` only) |
 
@@ -130,8 +132,8 @@ started by an action of yours:
 
 - **Clipboard.** The plugin only ever *writes* to it, when you click *Copy to clipboard* (or *Copy list* after an import).
   It never reads what you copied elsewhere.
-- **Device storage.** A few per-device preferences (the view mode of each section, the last export folder…) are kept in the
-  device's local storage, never in `data.json`, so they are neither synced nor backed up. If you turn GitHub storage on, its
+- **Device storage.** A few per-device preferences (the view mode of each section, the last export folder…) are kept in
+  Obsidian's per-device local storage (its own `saveLocalStorage`, never the browser's directly), never in `data.json`, so they are neither synced nor backed up. If you turn GitHub storage on, its
   access token goes to Obsidian's secret storage when your version has one, otherwise to the same device storage.
 
 ## Building from source
@@ -150,6 +152,8 @@ npm run build       # type check, then bundle to main.js
 - Magic: The Gathering is a trademark of Wizards of the Coast LLC. This plugin is unofficial Fan Content permitted under the
   [Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy). It is not approved or endorsed by Wizards.
   Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
+- The price history is built from [MTGJSON](https://mtgjson.com) (MIT License, © Zach Halpern), which collects the prices of
+  Cardmarket, TCGplayer and Card Kingdom. This plugin is not affiliated with MTGJSON.
 - Card Kingdom, Mana Pool, TCGplayer, Cardmarket, PSA, BGS and CGC names and logos belong to their owners and are used only
   to say where a price or a grade comes from. This plugin is not affiliated with any of them.
 - The small language flags are flat icons from a royalty-free icon set.

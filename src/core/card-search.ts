@@ -30,7 +30,16 @@ export interface SearchableCard {
 	finish?: Finish;
 	keywords?: string[];
 	manaValue?: number;
+	// The fields the DISPLAYED price is derived from (finish + both currencies): the "price:"
+	// chip does not read them itself, the caller turns them into a number with a price function
+	// (see numericTokenMatches) — price.ts, which owns that rule, imports this file, so it
+	// cannot be called from here.
 	priceUsd?: string;
+	priceUsdFoil?: string;
+	priceEur?: string;
+	priceEurFoil?: string;
+	priceUsdEtched?: string;
+	priceEurEtched?: string;
 	count?: number;
 	dateAdded?: number;
 	// Border/frame ("border" category, see BORDER_SEARCH_OPTIONS and
@@ -381,7 +390,16 @@ export function parseNumericToken(token: string): ParsedNumericToken | null {
 	return { field, operator, value: parseFloat(match[3]) };
 }
 
-export function numericTokenMatches(card: SearchableCard, token: string): boolean {
+// `priceOf` gives the unit price a card is DISPLAYED at (finish and display currency applied,
+// see displayedPriceOf in price.ts). It is injected, and a "price:" token with no function
+// matches nothing rather than falling back to the raw USD field: a filter must come from the
+// same function as the value on screen, or a list shown in EUR filters on dollars (2026-10-12,
+// same lesson as "Sort by price", card-sorting.ts).
+export function numericTokenMatches(
+	card: SearchableCard,
+	token: string,
+	priceOf?: (card: SearchableCard) => number
+): boolean {
 	const parsed = parseNumericToken(token);
 	if (!parsed) return false;
 
@@ -407,7 +425,7 @@ export function numericTokenMatches(card: SearchableCard, token: string): boolea
 
 	let cardValueNum: number | undefined;
 	if (parsed.field.key === "cmc") cardValueNum = card.manaValue;
-	else if (parsed.field.key === "price") cardValueNum = parseFloat(card.priceUsd || "0");
+	else if (parsed.field.key === "price") cardValueNum = priceOf?.(card);
 	else if (parsed.field.key === "qty") cardValueNum = card.count;
 	if (cardValueNum === undefined || isNaN(cardValueNum)) return false;
 
@@ -978,7 +996,10 @@ export function cardMatchesTokens(
 	tokens: string[],
 	draft: string,
 	recentlyAddedIds?: Set<string>,
-	legalitiesByScryfallId?: Map<string, Record<string, string>>
+	legalitiesByScryfallId?: Map<string, Record<string, string>>,
+	// What the "price:" chip compares (see numericTokenMatches): every caller that has a currency
+	// passes displayedPriceOf(currency), price.ts.
+	priceOf?: (card: SearchableCard) => number
 ): boolean {
 	const allTokens = draft.trim() ? [...tokens, draft] : tokens;
 	if (allTokens.length === 0) return true;
@@ -1049,6 +1070,12 @@ export function cardMatchesTokens(
 			if (legalityTokenMatches(card, negToken, legalitiesByScryfallId)) return false;
 			continue;
 		}
+		// The numeric matchers need the caller's price function, which TOKEN_MATCHERS'
+		// (card, token) signature cannot carry — same separate handling as the two above.
+		if (cat.startsWith("numeric_")) {
+			if (numericTokenMatches(card, negToken, priceOf)) return false;
+			continue;
+		}
 		const matcher =
 			cat === "text" ? textTokenMatches : cat === "oracle" ? oracleTokenMatches : TOKEN_MATCHERS[cat];
 		if (matcher(card, negToken)) return false;
@@ -1105,8 +1132,9 @@ export function cardMatchesTokens(
 	for (const cat of numericCategories) {
 		const catTokens = buckets[cat];
 		if (catTokens.length === 0) continue;
-		const matcher = TOKEN_MATCHERS[cat];
-		if (!catTokens.every((t) => matcher(card, t))) return false;
+		// All four categories share numericTokenMatches (see TOKEN_MATCHERS); called directly to
+		// hand it priceOf.
+		if (!catTokens.every((t) => numericTokenMatches(card, t, priceOf))) return false;
 	}
 
 	if (buckets.recentlyadded.length > 0 && !isRecentlyAdded()) return false;

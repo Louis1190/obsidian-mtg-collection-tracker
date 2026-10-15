@@ -9,12 +9,15 @@ import {
 	selectDisplayMovers,
 	getMoversAgeDays,
 	isMoversDataStale,
+	getStaleDataAgeDays,
+	formatAsOfShort,
 	moverFinishOf,
 	moverOwnershipKey,
 	moverNativeCurrency,
 	getMoverPriceDisplay,
 } from "./market-movers";
 import type { CardbaseMover } from "../api/cardbase";
+import { readFileSync } from "node:fs";
 
 let idCounter = 0;
 function makeMover(overrides: Partial<CardbaseMover> = {}): CardbaseMover {
@@ -165,6 +168,27 @@ describe("getMoversAgeDays / isMoversDataStale", () => {
 	});
 });
 
+describe("getStaleDataAgeDays", () => {
+	const now = Date.parse("2026-10-12T12:00:00Z");
+
+	it("gives the age of a date that is old enough to call out", () => {
+		expect(getStaleDataAgeDays("2026-09-09", now)).toBe(33);
+		expect(getStaleDataAgeDays("2026-10-09", now)).toBe(MOVERS_STALE_AFTER_DAYS);
+	});
+
+	it("says nothing for fresh data, including an ordinary one or two day lag", () => {
+		expect(getStaleDataAgeDays("2026-10-12", now)).toBeUndefined();
+		expect(getStaleDataAgeDays("2026-10-11", now)).toBeUndefined();
+		expect(getStaleDataAgeDays("2026-10-10", now)).toBeUndefined();
+	});
+
+	it("never warns on a date it does not have", () => {
+		expect(getStaleDataAgeDays(undefined, now)).toBeUndefined();
+		expect(getStaleDataAgeDays("", now)).toBeUndefined();
+		expect(getStaleDataAgeDays("not a date", now)).toBeUndefined();
+	});
+});
+
 describe("moverFinishOf / moverOwnershipKey", () => {
 	it("maps this plugin's finishes onto cardbase's", () => {
 		expect(moverFinishOf("regular")).toBe("normal");
@@ -227,5 +251,49 @@ describe("getMoverPriceDisplay", () => {
 
 	it("gives a negative delta for a fall", () => {
 		expect(getMoverPriceDisplay(eurRow, "usd", (a) => a * 1.1).delta).toBeCloseTo(-5.5);
+	});
+});
+
+describe("formatAsOfShort", () => {
+	const now = Date.parse("2026-10-12T12:00:00Z");
+
+	it("shortens a date of the current year to month and day", () => {
+		expect(formatAsOfShort("2026-09-09", now)).toBe("Sep 9");
+		expect(formatAsOfShort("2026-01-31", now)).toBe("Jan 31");
+		expect(formatAsOfShort("2026-12-05", now)).toBe("Dec 5");
+	});
+
+	it("keeps the year when it is not the current one", () => {
+		expect(formatAsOfShort("2025-09-09", now)).toBe("Sep 9, 2025");
+	});
+
+	it("does not shift with the time zone (it never goes through Date)", () => {
+		expect(formatAsOfShort("2026-10-12", Date.parse("2026-10-12T00:00:00Z"))).toBe("Oct 12");
+		expect(formatAsOfShort("2026-12-31", Date.parse("2026-12-31T23:59:59Z"))).toBe("Dec 31");
+		expect(formatAsOfShort("2026-01-01", Date.parse("2026-01-01T00:00:00Z"))).toBe("Jan 1");
+	});
+
+	it("gives back what it does not recognise", () => {
+		expect(formatAsOfShort("not a date", now)).toBe("not a date");
+		expect(formatAsOfShort("2026-13-01", now)).toBe("2026-13-01");
+		expect(formatAsOfShort("2026-09-09T06:38:45Z", now)).toBe("2026-09-09T06:38:45Z");
+		expect(formatAsOfShort("", now)).toBe("");
+	});
+});
+
+
+// The filter exists twice: here, applied to what cardbase returns, and in the data job (tools/price-history/lib/movers.mjs isImplausible), applied to
+// every series before ranking. tools/price-history/golden.mjs writes the answer of the job's function for pairs of prices around every threshold;
+// this plugin must agree on all of them, or a list from our files and one from cardbase would be filtered by two different rules.
+describe("shouldHideMover agrees with the data job's filter", () => {
+	const golden = JSON.parse(readFileSync(new URL("./market-movers.golden.json", import.meta.url), "utf8")) as [number, number, boolean][];
+	it("has the cases (pairs around 2, 5x, 250 and twice 250)", () => {
+		expect(golden.length).toBeGreaterThanOrEqual(200);
+		expect(golden.some(([, , hidden]) => hidden)).toBe(true);
+		expect(golden.some(([, , hidden]) => !hidden)).toBe(true);
+	});
+	it("answers the same on every one of them", () => {
+		const wrong = golden.filter(([from, to, hidden]) => shouldHideMover({ priceFrom: from, priceTo: to }) !== hidden);
+		expect(wrong).toEqual([]);
 	});
 });

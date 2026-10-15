@@ -1,6 +1,6 @@
 import { setIcon, Notice } from "obsidian";
 import type { MTGCollectionView } from "../view";
-import { cardValue, formatCardPrice, formatMoney, formatSignedMoney, toDeckPricedCard } from "../core/price";
+import { cardValue, effectiveFinish, formatCardPrice, formatMoney, formatSignedMoney, toDeckPricedCard } from "../core/price";
 import { finishHasFoilLook } from "../core/card-model";
 import { openPickerMenu } from "../ui/picker-menu";
 import type { CollectionCard, WantlistCard } from "../core/card-model";
@@ -20,6 +20,7 @@ import {
 import type { MoverConvert } from "../core/market-movers";
 import { computeColorBreakdown, computeRarityBreakdown, getDeckSizeStatus } from "../core/deck-stats";
 import { renderColorPieChart } from "../ui/deck-stats-fx";
+import { PRICE_HISTORY_SOURCES } from "../ui/card-detail-fx";
 import { NewDeckModal, NewWantlistModal } from "../modals/new-entity-modals";
 import { CardPreviewModal } from "../modals/card-preview-modal";
 
@@ -30,6 +31,10 @@ const HOME_RECENT_CARDS_LIMIT = 10;
 // for which the Scryfall snapshots are fetched right away (see loadAndDraw).
 const HOME_MOVERS_COLLAPSED_LIMIT = 5;
 const HOME_MOVERS_EXPANDED_LIMIT = 20;
+
+// The vendors the picker offers. cardbase also documents Cardsphere, which never returned a single row (checked live, 2026-09-23) and which our
+// own files do not carry: it is not offered (a value saved in settings that is not in this list simply falls back to "All vendors").
+const HOME_MOVER_VENDORS: CardbaseVendor[] = ["cardkingdom", "tcgplayer", "cardmarket"];
 
 const HOME_MOVER_PERIOD_LABELS: Record<CardbaseMoverPeriod, string> = {
 	"1d": "24h",
@@ -327,6 +332,8 @@ interface MoversDrawData {
 	// getMoverPriceDisplay).
 	convert: MoverConvert | undefined;
 	asOf: string | undefined;
+	// Where the lists came from (CardbaseMoversResult.source): absent = cardbase.dev.
+	source: "price-history" | undefined;
 }
 
 export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLElement) {
@@ -348,7 +355,8 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 	const ownedEntryByPrinting = new Map<string, CollectionCard>();
 	for (const c of settings.collection) {
 		if (!ownedEntryByPrinting.has(c.scryfallId)) ownedEntryByPrinting.set(c.scryfallId, c);
-		const finish = moverFinishOf(c.finish);
+		// The effective finish (core/price.ts): a foil-only printing followed as "regular" is matched by the foil movers it is.
+		const finish = moverFinishOf(effectiveFinish(c));
 		if (!finish) continue;
 		const key = moverOwnershipKey(c.scryfallId, finish);
 		ownedCountByKey.set(key, (ownedCountByKey.get(key) ?? 0) + c.count);
@@ -356,7 +364,7 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 	}
 	const wantedKeys = new Set<string>();
 	for (const w of settings.wantlist) {
-		const finish = moverFinishOf(w.finish);
+		const finish = moverFinishOf(effectiveFinish(w));
 		if (finish) wantedKeys.add(moverOwnershipKey(w.scryfallId, finish));
 	}
 
@@ -369,7 +377,7 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 		? settings.homeMoversPeriod
 		: "1d";
 	let vendor: CardbaseVendor | undefined =
-		storedVendor !== "" && isKnownKey(CARDBASE_VENDOR_LABELS, storedVendor) ? storedVendor : undefined;
+		storedVendor !== "" && (HOME_MOVER_VENDORS as string[]).includes(storedVendor) ? storedVendor : undefined;
 	let requestToken = 0;
 	let lastData: MoversDrawData | undefined;
 
@@ -403,7 +411,7 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 				render: (el: HTMLElement) => el.createSpan({ text: "All vendors" }),
 				onSelect: () => setVendor(undefined),
 			},
-			...(Object.keys(CARDBASE_VENDOR_LABELS) as CardbaseVendor[]).map((v) => ({
+			...HOME_MOVER_VENDORS.map((v) => ({
 				render: (el: HTMLElement) => el.createSpan({ text: CARDBASE_VENDOR_LABELS[v] }),
 				onSelect: () => setVendor(v),
 			})),
@@ -563,11 +571,13 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 		// CardbaseMoversResult.asOf (api/cardbase.ts) for why it requires no
 		// separate GET /status call.
 		if (data.asOf) {
+			// MTGJSON when the lists are our own files (built from its price data), cardbase.dev when they came from there.
+			const source = PRICE_HISTORY_SOURCES[data.source ?? "cardbase"];
 			const footer = resultsEl.createDiv({
 				cls: "mtg-price-history-source",
-				text: `Source: cardbase.dev · Data as of ${data.asOf}`,
+				text: `Source: ${source.label} · Data as of ${data.asOf}`,
 			});
-			footer.addEventListener("click", () => window.open("https://cardbase.dev", "_blank"));
+			footer.addEventListener("click", () => window.open(source.url, "_blank"));
 		}
 	};
 
@@ -624,6 +634,7 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 				snapshots,
 				convert: rate ? (amount, from, to) => convertUsdEur(amount, from, to, rate) : undefined,
 				asOf: result.asOf,
+				source: result.source,
 			};
 			drawResults();
 		});

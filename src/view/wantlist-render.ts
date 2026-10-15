@@ -24,6 +24,7 @@ import {
 import {
 	formatCardPrice,
 	getCardPriceNumber,
+	displayedPriceOf,
 	cardValue,
 	formatMoney,
 	pickCoverImage,
@@ -638,7 +639,7 @@ export function renderWantlistGrid(this: MTGCollectionView) {
 			cards: allCards,
 			totalQty: allCards.reduce((s, c) => s + c.count, 0),
 			totalValue: allCards.reduce((s, c) => s + cardValue(c, this.plugin.settings.priceCurrency), 0),
-			coverImage: pickCoverImage(allCards),
+			coverImage: pickCoverImage(allCards, this.plugin.settings.priceCurrency),
 		});
 	}
 
@@ -919,7 +920,7 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 					(s, c) => s + cardValue(c, this.plugin.settings.priceCurrency),
 					0
 				),
-				coverImage: pickCoverImage(this.plugin.settings.wantlist),
+				coverImage: pickCoverImage(this.plugin.settings.wantlist, this.plugin.settings.priceCurrency),
 		  }
 		: groupByWantlist(
 				this.plugin.settings.wantlists,
@@ -1031,8 +1032,9 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 		menuBtn.setAttribute("title", "Wantlist settings");
 		menuBtn.addEventListener("click", openWantlistSettings);
 	}
+	const priceOf = displayedPriceOf(this.plugin.settings.priceCurrency);
 	const filteredCards = group.cards.filter((c) =>
-		cardMatchesTokens(c, this.wantlistCardFilterTokens, this.wantlistCardFilterDraft)
+		cardMatchesTokens(c, this.wantlistCardFilterTokens, this.wantlistCardFilterDraft, undefined, undefined, priceOf)
 	);
 	this.renderChipFilter(
 		filterRow,

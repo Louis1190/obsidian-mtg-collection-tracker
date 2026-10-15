@@ -43,6 +43,12 @@ const MAX_PASSES = 4;
 // was paid for in syncs that no longer went out although the network had been back for a long time.
 const BACKOFF_BASE_MS = 5 * 1000;
 const BACKOFF_MAX_MS = 60 * 1000;
+// A GitHub rate limit follows GitHub's own rules (docs.github.com, "Rate limits for the REST API"): the wait it announces
+// (`Retry-After`, or until `x-ratelimit-reset`, see rateLimitWaitS in api/github.ts); when it announces none, "at least one
+// minute" and growing (1, 2, 4, 8 min); and after RATE_LIMIT_MAX_ATTEMPTS refusals in a row we STOP asking (the docs warn
+// that insisting "may result in the banning of your integration") until the user presses "Sync now".
+export const RATE_LIMIT_BASE_S = 60;
+export const RATE_LIMIT_MAX_ATTEMPTS = 5;
 const NETWORK_BACKOFF_BASE_MS = 3 * 1000;
 const NETWORK_BACKOFF_MAX_MS = 15 * 1000;
 const TOKEN_SECRET_ID = "mtg-collection-github-token";
@@ -81,6 +87,8 @@ export interface GithubSyncState {
 	retryAt: number;
 	/** The wait in progress comes from a GitHub rate limit: to be respected even when the user comes back to the app. */
 	rateLimited: boolean;
+	/** Rate-limit refusals in a row (reset by any successful cycle); at RATE_LIMIT_MAX_ATTEMPTS the sync stops trying. */
+	rateLimitHits: number;
 	/** Last successful exchange (to say since when it hasn't been working). */
 	lastOkAt: number;
 	/** Maximum duration of a request (ms); the API's default one. Tests shorten it. */
@@ -111,6 +119,7 @@ export function createGithubState(): GithubSyncState {
 		failures: 0,
 		retryAt: 0,
 		rateLimited: false,
+		rateLimitHits: 0,
 		lastOkAt: 0,
 		fatal: false,
 		status: { state: "off", message: "", at: 0 },
@@ -225,19 +234,34 @@ export function githubStatusLine(plugin: MTGCollectionPlugin): string {
 	return at ? `✓ In sync — last check ${time}${message ? `. ${message}` : ""}` : "Waiting for the first sync…";
 }
 
-function fail(plugin: MTGCollectionPlugin, f: GithubFailure) {
+function fail(plugin: MTGCollectionPlugin, failure: GithubFailure) {
 	const st = plugin.github;
+	let f = failure;
 	st.failures++;
+	st.rateLimited = !!f.rateLimited;
+	if (f.rateLimited) {
+		st.rateLimitHits++;
+		// What GitHub announced, else 1, 2, 4, 8 min — never less than the minute GitHub asks for.
+		const waitS = f.retryAfterS ?? RATE_LIMIT_BASE_S * 2 ** (st.rateLimitHits - 1);
+		st.retryAt = Date.now() + waitS * 1000;
+		const resume = new Date(st.retryAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+		f =
+			st.rateLimitHits >= RATE_LIMIT_MAX_ATTEMPTS
+				? {
+						...f,
+						fatal: true,
+						message: `GitHub kept rate-limiting this token, so the plugin stopped asking. Your changes are kept on this device; "Sync now" in the settings tries again (not before ${resume}).`,
+					}
+				: { ...f, message: `GitHub is rate-limiting this token. Sync resumes at ${resume}.` };
+	}
 	if (f.fatal) {
 		const first = !st.fatal;
 		st.fatal = true;
 		if (first) new Notice(`MTG Collection Tracker: GitHub sync stopped. ${f.message}`, 15000);
-	} else {
-		st.rateLimited = f.retryAfterS !== undefined;
+	} else if (!f.rateLimited) {
 		const n = st.failures - 1;
-		const wait = f.retryAfterS
-			? f.retryAfterS * 1000
-			: f.status === 0
+		const wait =
+			f.status === 0
 				? Math.min(NETWORK_BACKOFF_MAX_MS, NETWORK_BACKOFF_BASE_MS * 2 ** n)
 				: Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** n);
 		st.retryAt = Date.now() + wait;
@@ -436,9 +460,10 @@ async function cycle(plugin: MTGCollectionPlugin, reason: GithubSyncReason): Pro
 	}
 	if (st.fatal && reason !== "manual") return;
 	// A user coming back to the app ("focus", "flush") or touching the button ("manual") doesn't wait for the end
-	// of a wait after a network outage; a GitHub rate limit, however, is still respected.
+	// of a wait after a network outage; a GitHub rate limit, however, is respected whoever asks, the button
+	// included: GitHub says not to retry before the announced time.
 	const userDriven = reason === "manual" || reason === "focus" || reason === "flush";
-	if (Date.now() < st.retryAt && reason !== "manual" && !(userDriven && !st.rateLimited)) return;
+	if (Date.now() < st.retryAt && !(userDriven && !st.rateLimited)) return;
 	if (reason === "manual" || reason === "startup") setStatus(plugin, "syncing", "");
 
 	let note = "";
@@ -470,6 +495,7 @@ async function cycle(plugin: MTGCollectionPlugin, reason: GithubSyncReason): Pro
 		st.failures = 0;
 		st.retryAt = 0;
 		st.rateLimited = false;
+		st.rateLimitHits = 0;
 		st.lastOkAt = Date.now();
 		st.fatal = false;
 		setStatus(plugin, "idle", note);

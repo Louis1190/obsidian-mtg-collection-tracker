@@ -242,13 +242,10 @@ export function markSettingsLoaded(this: MTGCollectionPlugin) {
 
 /* ------------------------ device-specific settings ---------------------- */
 
-// Reading of the local storage; fallback to localStorage if Obsidian's API (≥ 1.8.7) is missing.
+// Reading of the device's local storage (Obsidian's app.loadLocalStorage, there since 1.8.7 = minAppVersion): never shared between devices.
 function readLocalStore(plugin: MTGCollectionPlugin): unknown {
 	try {
-		const app = plugin.app as unknown as { loadLocalStorage?: (k: string) => unknown };
-		if (typeof app.loadLocalStorage === "function") return app.loadLocalStorage(DEVICE_SETTINGS_STORAGE_KEY);
-		const raw = window.localStorage.getItem(DEVICE_SETTINGS_STORAGE_KEY);
-		return raw ? JSON.parse(raw) : null;
+		return plugin.app.loadLocalStorage(DEVICE_SETTINGS_STORAGE_KEY);
 	} catch {
 		return null;
 	}
@@ -256,9 +253,7 @@ function readLocalStore(plugin: MTGCollectionPlugin): unknown {
 
 function writeLocalStore(plugin: MTGCollectionPlugin, value: Obj): void {
 	try {
-		const app = plugin.app as unknown as { saveLocalStorage?: (k: string, v: unknown) => void };
-		if (typeof app.saveLocalStorage === "function") app.saveLocalStorage(DEVICE_SETTINGS_STORAGE_KEY, value);
-		else window.localStorage.setItem(DEVICE_SETTINGS_STORAGE_KEY, JSON.stringify(value));
+		plugin.app.saveLocalStorage(DEVICE_SETTINGS_STORAGE_KEY, value);
 	} catch (e) {
 		console.warn("MTG Collection Tracker: could not save this device's display settings.", e);
 	}

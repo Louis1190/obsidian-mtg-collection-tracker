@@ -44,17 +44,25 @@ function isPricedInFoilOnly(card: PricedCard): boolean {
 	return !card.priceUsd && !card.priceEur && Boolean(card.priceUsdFoil || card.priceEurFoil);
 }
 
+/**
+ * The finish a card is TREATED as wherever something is looked up for it (its price, a store's price, its price history, the Home movers it
+ * matches): "foiled" for a copy left on "regular" of a printing that exists only in foil (isPricedInFoilOnly above), its own finish otherwise.
+ * ONE rule, written once: the displayed price followed it from 1.0.546 while the store columns, the history and the Home matching each
+ * reinvented their own, so a foil-only printing followed as "regular" showed a price in one place and "—" or cardbase in the others.
+ */
+export function effectiveFinish(card: PricedCard): Finish {
+	return card.finish === "regular" && isPricedInFoilOnly(card) ? "foiled" : card.finish;
+}
+
 export function getRawCardPrice(card: PricedCard, currency: PriceCurrency): string {
-	if (card.finish === "proxy") return "";
-	if (card.finish === "etched") {
+	const finish = effectiveFinish(card);
+	if (finish === "proxy") return "";
+	if (finish === "etched") {
 		const etched = currency === "eur" ? card.priceEurEtched : card.priceUsdEtched;
 		if (etched) return etched;
 		return (currency === "eur" ? card.priceEur : card.priceUsd) || "";
 	}
-	const usesFoilPrice =
-		card.finish === "foiled" ||
-		card.finish === "surged" ||
-		(card.finish === "regular" && isPricedInFoilOnly(card));
+	const usesFoilPrice = finish === "foiled" || finish === "surged";
 	if (currency === "eur") return (usesFoilPrice ? card.priceEurFoil : card.priceEur) || "";
 	return (usesFoilPrice ? card.priceUsdFoil : card.priceUsd) || card.priceUsd || "";
 }
@@ -105,6 +113,31 @@ export function toDeckPricedCard(card: {
 	};
 }
 
+// The price fields of a card of ANY section, every one optional (a deck card not caught up yet,
+// a SearchableCard): what displayedPriceOf reads, count left out since a unit price has none.
+export type UnitPriceFields = Partial<Omit<PricedCard, "count">>;
+
+// The unit price a card is DISPLAYED at, as a number, for code that only holds a card of
+// unknown section (the filter chips, see SearchableCard) — the same figure as the row shows,
+// since it goes through getCardPriceNumber (finish, foil-only printings, proxy, currency).
+// Returned as a function because the callers hand it over to cardMatchesTokens.
+export function displayedPriceOf(currency: PriceCurrency): (card: UnitPriceFields) => number {
+	return (card) =>
+		getCardPriceNumber(
+			toDeckPricedCard({
+				finish: card.finish,
+				priceUsd: card.priceUsd,
+				priceUsdFoil: card.priceUsdFoil,
+				priceEur: card.priceEur,
+				priceEurFoil: card.priceEurFoil,
+				priceUsdEtched: card.priceUsdEtched,
+				priceEurEtched: card.priceEurEtched,
+				count: 1,
+			}),
+			currency
+		);
+}
+
 export const LEGALITY_FORMATS: { key: string; label: string }[] = LEGALITY_SEARCH_FORMATS;
 
 // Formats an already computed amount (e.g. a total sum), unlike
@@ -134,13 +167,28 @@ export function formatScryfallPrice(card: ScryfallCard, currency: PriceCurrency)
 // Cover rule of a list: empty -> no image, 1 card -> its artwork, 2 or more
 // cards -> the artwork of the most expensive card (unit price). The artwork
 // alone (art_crop) is used rather than the whole card scan, much better
-// suited to a tile background.
-export function pickCoverImage(cards: { artCropUrl: string; imageUrl: string; priceUsd: string }[]): string {
+// suited to a tile background. "Most expensive" is judged on the price the
+// card is DISPLAYED at (finish and display currency, getCardPriceNumber), never
+// on priceUsd alone: a list shown in EUR got the cover of its priciest card in
+// dollars (found 2026-10-12, same bug as the price sort fixed in 1.0.544).
+// One pass instead of a sort: same result (the first of several equally priced
+// cards wins, as the stable sort made it) without copying and re-pricing a
+// 10k-card collection at every render of the gallery.
+export function pickCoverImage(
+	cards: (PricedCard & { artCropUrl: string; imageUrl: string })[],
+	currency: PriceCurrency
+): string {
 	if (cards.length === 0) return "";
 	if (cards.length === 1) return cards[0].artCropUrl || cards[0].imageUrl;
-	const mostExpensive = [...cards].sort(
-		(a, b) => (parseFloat(b.priceUsd || "0") || 0) - (parseFloat(a.priceUsd || "0") || 0)
-	)[0];
+	let mostExpensive = cards[0];
+	let topPrice = getCardPriceNumber(mostExpensive, currency);
+	for (let i = 1; i < cards.length; i++) {
+		const price = getCardPriceNumber(cards[i], currency);
+		if (price > topPrice) {
+			mostExpensive = cards[i];
+			topPrice = price;
+		}
+	}
 	return mostExpensive.artCropUrl || mostExpensive.imageUrl || cards[0].artCropUrl || cards[0].imageUrl;
 }
 
@@ -150,14 +198,15 @@ export function pickCoverImage(cards: { artCropUrl: string; imageUrl: string; pr
 // otherwise (card moved/deleted since) silent fallback to the usual
 // auto-selection rather than a broken image or an exception.
 export function resolveCoverImage(
-	cards: { id: string; artCropUrl: string; imageUrl: string; priceUsd: string }[],
+	cards: (PricedCard & { id: string; artCropUrl: string; imageUrl: string })[],
+	currency: PriceCurrency,
 	coverCardId?: string
 ): string {
 	if (coverCardId) {
 		const chosen = cards.find((c) => c.id === coverCardId);
 		if (chosen) return chosen.artCropUrl || chosen.imageUrl;
 	}
-	return pickCoverImage(cards);
+	return pickCoverImage(cards, currency);
 }
 
 // Same principle as pickCoverImage above, but for a Deck: falls back to the
@@ -203,7 +252,7 @@ export function resolveDeckCoverImage(
 export function groupByList(
 	lists: CollectionList[],
 	collection: CollectionCard[],
-	currency: PriceCurrency = "usd"
+	currency: PriceCurrency
 ): ListGroup[] {
 	return lists
 		.map((list) => {
@@ -214,7 +263,7 @@ export function groupByList(
 				cards,
 				totalQty: cards.reduce((s, c) => s + c.count, 0),
 				totalValue: cards.reduce((s, c) => s + cardValue(c, currency), 0),
-				coverImage: resolveCoverImage(cards, list.coverCardId),
+				coverImage: resolveCoverImage(cards, currency, list.coverCardId),
 				icon: list.listIcon,
 			};
 		})
@@ -235,7 +284,7 @@ export interface WantlistGroup {
 export function groupByWantlist(
 	wantlists: Wantlist[],
 	wantlistCards: WantlistCard[],
-	currency: PriceCurrency = "usd"
+	currency: PriceCurrency
 ): WantlistGroup[] {
 	return wantlists
 		.map((wantlist) => {
@@ -246,7 +295,7 @@ export function groupByWantlist(
 				cards,
 				totalQty: cards.reduce((s, c) => s + c.count, 0),
 				totalValue: cards.reduce((s, c) => s + cardValue(c, currency), 0),
-				coverImage: resolveCoverImage(cards, wantlist.coverCardId),
+				coverImage: resolveCoverImage(cards, currency, wantlist.coverCardId),
 				icon: wantlist.listIcon,
 			};
 		})

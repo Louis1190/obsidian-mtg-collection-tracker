@@ -504,9 +504,39 @@ describe("numericTokenMatches", () => {
 		expect(numericTokenMatches(card, "cmc<=3")).toBe(false);
 	});
 
-	it("compares price and quantity fields", () => {
-		expect(numericTokenMatches(makeSearchableCard({ priceUsd: "2.50" }), "price>2")).toBe(true);
+	it("compares quantity fields", () => {
 		expect(numericTokenMatches(makeSearchableCard({ count: 3 }), "qty>=3")).toBe(true);
+	});
+
+	// "price:" compares the price a card is DISPLAYED at, handed in by the caller (which knows the
+	// currency and the finish): reading `priceUsd` here made a list shown in EUR filter on dollars
+	// (found 2026-10-12, same bug as the "Sort by price" fixed in 1.0.544).
+	describe("price", () => {
+		const usdOnly = makeSearchableCard({ priceUsd: "1.00" });
+
+		it("compares the price given by the caller, not the card's own priceUsd", () => {
+			expect(numericTokenMatches(usdOnly, "price>2", () => 3)).toBe(true);
+			expect(numericTokenMatches(usdOnly, "price<2", () => 3)).toBe(false);
+			expect(numericTokenMatches(usdOnly, "price=3", () => 3)).toBe(true);
+			expect(numericTokenMatches(usdOnly, "price>=3", () => 3)).toBe(true);
+			expect(numericTokenMatches(usdOnly, "price<=2", () => 3)).toBe(false);
+		});
+
+		it("hands the card to the price function", () => {
+			const seen: SearchableCard[] = [];
+			numericTokenMatches(usdOnly, "price>2", (c) => (seen.push(c), 3));
+			expect(seen).toEqual([usdOnly]);
+		});
+
+		it("never falls back to the raw USD field when no price function is given", () => {
+			expect(numericTokenMatches(makeSearchableCard({ priceUsd: "2.50" }), "price>2")).toBe(false);
+		});
+
+		it("does not use the price function for the other fields", () => {
+			const card = makeSearchableCard({ count: 3, manaValue: 4 });
+			expect(numericTokenMatches(card, "qty>=3", () => 0)).toBe(true);
+			expect(numericTokenMatches(card, "cmc>3", () => 0)).toBe(true);
+		});
 	});
 
 	it("compares the date field by whole day, not exact timestamp", () => {
@@ -757,6 +787,36 @@ describe("cardMatchesTokens", () => {
 	it("combines same-category chips with OR", () => {
 		const card = makeSearchableCard({ colors: ["U"] });
 		expect(cardMatchesTokens(card, ["white", "blue"], "")).toBe(true);
+	});
+
+	describe("price chips", () => {
+		const card = makeSearchableCard({ priceUsd: "1.00" });
+		const eurPrice = () => 30; // what the row shows, in the display currency
+
+		it("filter on the price function (the displayed price), not on priceUsd", () => {
+			expect(cardMatchesTokens(card, ["price>10"], "", undefined, undefined, eurPrice)).toBe(true);
+			expect(cardMatchesTokens(card, ["price<10"], "", undefined, undefined, eurPrice)).toBe(false);
+		});
+
+		it("combine as a range (AND), like the other numeric fields", () => {
+			expect(cardMatchesTokens(card, ["price>10", "price<50"], "", undefined, undefined, eurPrice)).toBe(true);
+			expect(cardMatchesTokens(card, ["price>10", "price<20"], "", undefined, undefined, eurPrice)).toBe(false);
+		});
+
+		it("can be negated", () => {
+			expect(cardMatchesTokens(card, ["-price>10"], "", undefined, undefined, eurPrice)).toBe(false);
+			expect(cardMatchesTokens(card, ["-price>100"], "", undefined, undefined, eurPrice)).toBe(true);
+		});
+
+		it("apply to a draft being typed too", () => {
+			expect(cardMatchesTokens(card, [], "price>10", undefined, undefined, eurPrice)).toBe(true);
+		});
+
+		it("leave the other chips untouched", () => {
+			const red = makeSearchableCard({ colors: ["R"] });
+			expect(cardMatchesTokens(red, ["red", "price>10"], "", undefined, undefined, eurPrice)).toBe(true);
+			expect(cardMatchesTokens(red, ["blue", "price>10"], "", undefined, undefined, eurPrice)).toBe(false);
+		});
 	});
 
 	it("combines different-category chips with AND", () => {

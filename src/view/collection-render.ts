@@ -32,6 +32,7 @@ import {
 	ListGroup,
 	formatCardPrice,
 	getCardPriceNumber,
+	displayedPriceOf,
 	cardValue,
 	formatMoney,
 	pickCoverImage,
@@ -307,7 +308,7 @@ export function renderListGrid(this: MTGCollectionView) {
 				cards: allCards,
 				totalQty: allCards.reduce((s, c) => s + c.count, 0),
 				totalValue: allCards.reduce((s, c) => s + cardValue(c, this.plugin.settings.priceCurrency), 0),
-				coverImage: pickCoverImage(allCards),
+				coverImage: pickCoverImage(allCards, this.plugin.settings.priceCurrency),
 			});
 		}
 	}
@@ -694,7 +695,7 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 					(s, c) => s + cardValue(c, this.plugin.settings.priceCurrency),
 					0
 				),
-				coverImage: pickCoverImage(this.plugin.settings.collection),
+				coverImage: pickCoverImage(this.plugin.settings.collection, this.plugin.settings.priceCurrency),
 		  }
 		: groupByList(
 				this.plugin.settings.lists,
@@ -820,13 +821,15 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 	// MTGCollectionPlugin.getLegalitiesCache) — My Collection only, see
 	// renderChipFilter for why Decks/Wantlists don't pass this argument.
 	const legalitiesByScryfallId = this.plugin.getLegalitiesCache();
+	const priceOf = displayedPriceOf(this.plugin.settings.priceCurrency);
 	const filteredCards = group.cards.filter((c) =>
 		cardMatchesTokens(
 			c,
 			this.listCardFilterTokens,
 			this.listCardFilterDraft,
 			this.plugin.recentlyAddedCollectionCardIds,
-			legalitiesByScryfallId
+			legalitiesByScryfallId,
+			priceOf
 		)
 	);
 	this.renderChipFilter(

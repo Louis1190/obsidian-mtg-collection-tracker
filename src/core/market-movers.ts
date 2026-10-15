@@ -63,6 +63,31 @@ export function isMoversDataStale(ageDays: number | undefined): boolean {
 	return ageDays !== undefined && ageDays >= MOVERS_STALE_AFTER_DAYS;
 }
 
+// The age in days of a cardbase `as_of` date, but ONLY when it is old enough to call out
+// (undefined = fresh, or unknown: never warn on a date we don't have). Not specific to the
+// movers: the price history, the Cardmarket column and the day-change badges of the card detail
+// read the same pipeline, which stopped on 2026-09-09 (still frozen on 2026-10-12) while those
+// boxes showed its last price as if it were today's.
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "2026-09-09" -> "Sep 9", short enough for a narrow price column (an ISO date is wider than the column
+// at a 1024px window, and breaks in the middle at its hyphens); the year is added when it is not the
+// current one, or "Sep 9" could be a year old. Works on the text, never through Date, so it cannot
+// shift by a time zone. An unrecognised text comes back unchanged.
+export function formatAsOfShort(asOf: string, now: number): string {
+	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(asOf);
+	if (!m) return asOf;
+	const month = SHORT_MONTHS[Number(m[2]) - 1];
+	if (!month) return asOf;
+	const label = `${month} ${Number(m[3])}`;
+	return Number(m[1]) === new Date(now).getUTCFullYear() ? label : `${label}, ${m[1]}`;
+}
+
+export function getStaleDataAgeDays(asOf: string | undefined, now: number): number | undefined {
+	const ageDays = getMoversAgeDays(asOf, now);
+	return isMoversDataStale(ageDays) ? ageDays : undefined;
+}
+
 /* --- Matching with the collection/wantlist ----------------------------
    A /movers row is specific to a printing AND a finish (a foil's price moves
    independently of the non-foil): "I own this card" therefore only means

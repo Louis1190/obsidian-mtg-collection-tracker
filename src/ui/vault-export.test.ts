@@ -50,6 +50,36 @@ function makeApp(opts: { withOpen?: boolean } = {}) {
 	return { app: app as unknown as App, adapter, existing, openWithDefaultApp };
 }
 
+// Obsidian's per-device local storage (app.loadLocalStorage / saveLocalStorage), which is what the remembered folders use: values are
+// stored as given, null removes the key. The vault name prefix Obsidian adds to the real keys is not this test's business.
+function makeStorageApp(store: Record<string, unknown>): App {
+	return {
+		loadLocalStorage: (k: string) => (k in store ? store[k] : null),
+		saveLocalStorage: (k: string, v: unknown) => {
+			if (v === null) delete store[k];
+			else store[k] = v;
+		},
+	} as unknown as App;
+}
+// The real window.localStorage must never be touched any more (the directory's scan lists it): a stub that records every access.
+function spyOnWindowLocalStorage() {
+	const access = vi.fn();
+	vi.stubGlobal("localStorage", {
+		getItem: (...a: unknown[]) => access("get", ...a),
+		setItem: (...a: unknown[]) => access("set", ...a),
+	});
+	return access;
+}
+const brokenStorageApp = (): App =>
+	({
+		loadLocalStorage: () => {
+			throw new Error("SecurityError");
+		},
+		saveLocalStorage: () => {
+			throw new Error("SecurityError");
+		},
+	}) as unknown as App;
+
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
@@ -248,47 +278,50 @@ describe("shareVaultFile", () => {
 	});
 });
 
-describe("last export folder (per device, localStorage)", () => {
-	let store: Record<string, string>;
+describe("last export folder (per device, Obsidian's local storage)", () => {
+	let store: Record<string, unknown>;
+	let app: App;
 	beforeEach(() => {
 		store = {};
-		vi.stubGlobal("localStorage", {
-			getItem: (k: string) => (k in store ? store[k] : null),
-			setItem: (k: string, v: string) => {
-				store[k] = v;
-			},
-		});
+		app = makeStorageApp(store);
 	});
 
 	it("defaults to the export folder until one has been remembered", () => {
-		expect(getLastExportFolder()).toBe(DEFAULT_EXPORT_FOLDER);
+		expect(getLastExportFolder(app)).toBe(DEFAULT_EXPORT_FOLDER);
 	});
 
 	it("remembers the last chosen folder, including the vault root", () => {
-		rememberExportFolder("Decks/Exports");
-		expect(getLastExportFolder()).toBe("Decks/Exports");
-		rememberExportFolder("/");
-		expect(getLastExportFolder()).toBe("/");
+		rememberExportFolder(app, "Decks/Exports");
+		expect(getLastExportFolder(app)).toBe("Decks/Exports");
+		rememberExportFolder(app, "/");
+		expect(getLastExportFolder(app)).toBe("/");
+		expect(store["mtg-collection-tracker:export-folder"]).toBe("/");
+	});
+
+	it("ignores a stored value that is not a text, or is empty", () => {
+		store["mtg-collection-tracker:export-folder"] = 42;
+		expect(getLastExportFolder(app)).toBe(DEFAULT_EXPORT_FOLDER);
+		store["mtg-collection-tracker:export-folder"] = "";
+		expect(getLastExportFolder(app)).toBe(DEFAULT_EXPORT_FOLDER);
 	});
 
 	it("falls back to the default when storage throws (blocked site data)", () => {
-		vi.stubGlobal("localStorage", {
-			getItem: () => {
-				throw new Error("SecurityError");
-			},
-			setItem: () => {
-				throw new Error("SecurityError");
-			},
-		});
-
-		expect(getLastExportFolder()).toBe(DEFAULT_EXPORT_FOLDER);
-		expect(() => rememberExportFolder("Decks")).not.toThrow();
+		const broken = brokenStorageApp();
+		expect(getLastExportFolder(broken)).toBe(DEFAULT_EXPORT_FOLDER);
+		expect(() => rememberExportFolder(broken, "Decks")).not.toThrow();
 	});
 
-	it("falls back to the default when localStorage does not exist at all", () => {
-		vi.stubGlobal("localStorage", undefined);
-		expect(getLastExportFolder()).toBe(DEFAULT_EXPORT_FOLDER);
-		expect(() => rememberExportFolder("Decks")).not.toThrow();
+	it("falls back to the default when the app has no local storage at all", () => {
+		const bare = {} as unknown as App;
+		expect(getLastExportFolder(bare)).toBe(DEFAULT_EXPORT_FOLDER);
+		expect(() => rememberExportFolder(bare, "Decks")).not.toThrow();
+	});
+
+	it("never touches window.localStorage", () => {
+		const access = spyOnWindowLocalStorage();
+		rememberExportFolder(app, "Decks");
+		expect(getLastExportFolder(app)).toBe("Decks");
+		expect(access).not.toHaveBeenCalled();
 	});
 });
 
@@ -465,66 +498,66 @@ describe("writeToDeviceFolder", () => {
 
 // --- Remembered device folder (Android) --------------------------------
 
-describe("last device folder (per device, localStorage)", () => {
-	let store: Record<string, string>;
+describe("last device folder (per device, Obsidian's local storage)", () => {
+	let store: Record<string, unknown>;
+	let app: App;
 	beforeEach(() => {
 		store = {};
-		vi.stubGlobal("localStorage", {
-			getItem: (k: string) => (k in store ? store[k] : null),
-			setItem: (k: string, v: string) => {
-				store[k] = v;
-			},
-		});
+		app = makeStorageApp(store);
 	});
 
 	it("is null until a device folder has been remembered", () => {
-		expect(getLastDeviceFolder()).toBeNull();
+		expect(getLastDeviceFolder(app)).toBeNull();
 	});
 
 	it("remembers the last folder exactly as the picker returned it", () => {
-		rememberDeviceFolder("/storage/emulated/0/Documents/Decks");
-		expect(getLastDeviceFolder()).toBe("/storage/emulated/0/Documents/Decks");
-		rememberDeviceFolder("Documents");
-		expect(getLastDeviceFolder()).toBe("Documents");
+		rememberDeviceFolder(app, "/storage/emulated/0/Documents/Decks");
+		expect(getLastDeviceFolder(app)).toBe("/storage/emulated/0/Documents/Decks");
+		rememberDeviceFolder(app, "Documents");
+		expect(getLastDeviceFolder(app)).toBe("Documents");
+		expect(store["mtg-collection-tracker:export-device-folder"]).toBe("Documents");
 	});
 
 	it("is independent of the remembered VAULT folder", () => {
-		rememberExportFolder("Decks");
-		expect(getLastDeviceFolder()).toBeNull();
-		rememberDeviceFolder("Documents");
-		expect(getLastExportFolder()).toBe("Decks");
+		rememberExportFolder(app, "Decks");
+		expect(getLastDeviceFolder(app)).toBeNull();
+		rememberDeviceFolder(app, "Documents");
+		expect(getLastExportFolder(app)).toBe("Decks");
 	});
 
 	it("never remembers an empty folder (it would read back as a root write)", () => {
-		rememberDeviceFolder("");
-		rememberDeviceFolder("   ");
+		rememberDeviceFolder(app, "");
+		rememberDeviceFolder(app, "   ");
 		// Checks what is WRITTEN, not only what getLastDeviceFolder() reads back:
 		// the read already refuses an empty value, it would mask a removed write
 		// safeguard.
 		expect(Object.keys(store)).toEqual([]);
-		expect(getLastDeviceFolder()).toBeNull();
+		expect(getLastDeviceFolder(app)).toBeNull();
 	});
 
 	it("still refuses an empty stored value when reading (a value written by another version)", () => {
 		store["mtg-collection-tracker:export-device-folder"] = "";
-		expect(getLastDeviceFolder()).toBeNull();
+		expect(getLastDeviceFolder(app)).toBeNull();
 		store["mtg-collection-tracker:export-device-folder"] = "   ";
-		expect(getLastDeviceFolder()).toBeNull();
+		expect(getLastDeviceFolder(app)).toBeNull();
+		store["mtg-collection-tracker:export-device-folder"] = 7;
+		expect(getLastDeviceFolder(app)).toBeNull();
 	});
 
 	it("degrades to 'nothing remembered' when storage throws or does not exist", () => {
-		vi.stubGlobal("localStorage", {
-			getItem: () => {
-				throw new Error("SecurityError");
-			},
-			setItem: () => {
-				throw new Error("SecurityError");
-			},
-		});
-		expect(getLastDeviceFolder()).toBeNull();
-		expect(() => rememberDeviceFolder("Documents")).not.toThrow();
-		vi.stubGlobal("localStorage", undefined);
-		expect(getLastDeviceFolder()).toBeNull();
+		const broken = brokenStorageApp();
+		expect(getLastDeviceFolder(broken)).toBeNull();
+		expect(() => rememberDeviceFolder(broken, "Documents")).not.toThrow();
+		const bare = {} as unknown as App;
+		expect(getLastDeviceFolder(bare)).toBeNull();
+		expect(() => rememberDeviceFolder(bare, "Documents")).not.toThrow();
+	});
+
+	it("never touches window.localStorage", () => {
+		const access = spyOnWindowLocalStorage();
+		rememberDeviceFolder(app, "Documents");
+		expect(getLastDeviceFolder(app)).toBe("Documents");
+		expect(access).not.toHaveBeenCalled();
 	});
 });
 

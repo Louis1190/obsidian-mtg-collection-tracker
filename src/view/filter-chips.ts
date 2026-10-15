@@ -10,6 +10,7 @@ import { setupChipRowScroll } from "../ui/chip-row-scroll";
 import { SearchSyntaxModal } from "../modals/search-syntax-modals";
 import { SearchableCard, isNegatedToken, isExactToken, stripNegation, stripExact, recognizeKeywordToken, stripQuotesFromCommittedToken, hasUnclosedQuote, matchNumericField, CATEGORY_LABELS, NumericFieldDef, NUMERIC_OPERATORS, OPERATOR_SYMBOLS, SuggestKeyword, SUGGESTABLE_KEYWORDS, cardMatchesTokens } from "../core/card-search";
 import { applySvgColor } from "../api/scryfall";
+import { displayedPriceOf } from "../core/price";
 import { setIcon } from "obsidian";
 import type { MTGCollectionView } from "../view";
 import { setSvgMarkup } from "../ui/svg-markup";
@@ -555,11 +556,13 @@ export function getKeywordSuggestions(this: MTGCollectionView,
 	}
 
 	// For each suggestion: how many cards would match if it were added to the
-	// already validated tokens (without the current draft).
+	// already validated tokens (without the current draft). A "price:" chip among those tokens
+	// compares the displayed price, like the filtered list itself does.
+	const priceOf = displayedPriceOf(this.plugin.settings.priceCurrency);
 	return combined.map((s) => ({
 		...s,
 		count: baseCards.filter((c) =>
-			cardMatchesTokens(c, [...tokens, s.value], "", recentlyAddedIds, legalitiesByScryfallId)
+			cardMatchesTokens(c, [...tokens, s.value], "", recentlyAddedIds, legalitiesByScryfallId, priceOf)
 		).length,
 	}));
 }

@@ -35,6 +35,7 @@ import {
 import {
 	formatCardPrice,
 	getCardPriceNumber,
+	displayedPriceOf,
 	cardValue,
 	formatMoney,
 	resolveDeckCoverImage,
@@ -1201,8 +1202,9 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 	// — the usual text filter/Group by/Sort by apply AFTERWARDS, only inside
 	// this subset.
 	const boardCards = deck.cards.filter((c) => deckBoardTabMatches(c, this.deckActiveBoard));
+	const priceOf = displayedPriceOf(this.plugin.settings.priceCurrency);
 	const filteredCards = boardCards.filter((c) =>
-		cardMatchesTokens(c, this.deckCardFilterTokens, this.deckCardFilterDraft)
+		cardMatchesTokens(c, this.deckCardFilterTokens, this.deckCardFilterDraft, undefined, undefined, priceOf)
 	);
 	this.renderChipFilter(
 		filterRow,

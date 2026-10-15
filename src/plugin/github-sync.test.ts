@@ -880,7 +880,7 @@ describe("flaky networks", () => {
 		expect(dev.github.status.state).toBe("idle");
 	});
 
-	it("but a rate limit from GitHub is respected even when the user comes back", async () => {
+	it("but a rate limit from GitHub is respected even when the user comes back, the button included", async () => {
 		const dev = await ghDevice([card("a")]);
 		dev.resetGithubSync();
 		await dev.github.chain;
@@ -891,9 +891,88 @@ describe("flaky networks", () => {
 		gh.request = real;
 		gh.calls.length = 0;
 		await sync(dev, "focus");
+		await sync(dev, "manual"); // GitHub says not to retry before the announced time: the tap waits too
+		await sync(dev, "flush");
 		expect(gh.calls).toEqual([]);
-		await sync(dev, "manual"); // an explicit tap is the user's call
+		dev.github.retryAt = 0; // the announced time has passed
+		await sync(dev, "manual");
 		expect(gh.calls.length).toBeGreaterThan(0);
+		expect(dev.github.status.state).toBe("idle");
+	});
+
+	describe("GitHub's rules after a rate limit", () => {
+		const limited = (headers: Record<string, string>, status = 429) => {
+			const real = gh.request;
+			gh.request = async (p: Parameters<typeof real>[0]) => ({ ...(await real(p)), status, headers, json: {} });
+			return () => {
+				gh.request = real;
+			};
+		};
+		const waitS = (dev: Obj) => Math.round((dev.github.retryAt - Date.now()) / 1000);
+
+		it("waits until x-ratelimit-reset when the primary quota is exhausted", async () => {
+			const dev = await ghDevice([card("a")]);
+			dev.resetGithubSync();
+			await dev.github.chain;
+			const restore = limited({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 1500) }, 403);
+			await sync(dev, "poll");
+			expect(waitS(dev)).toBeGreaterThanOrEqual(1500);
+			expect(waitS(dev)).toBeLessThanOrEqual(1503);
+			expect(dev.github.status.message).toMatch(/Sync resumes at/);
+			restore();
+			gh.calls.length = 0;
+			await sync(dev, "poll");
+			await sync(dev, "poll");
+			expect(gh.calls).toEqual([]); // nothing is asked of GitHub meanwhile (it was 60 s before)
+		});
+
+		it("when GitHub says nothing: at least a minute, then 2, 4, 8, and then it stops asking", async () => {
+			const dev = await ghDevice([card("a")]);
+			dev.resetGithubSync();
+			await dev.github.chain;
+			const restore = limited({});
+			const waits: number[] = [];
+			for (let i = 0; i < 4; i++) {
+				dev.github.retryAt = 0; // time passes
+				await sync(dev, "poll");
+				waits.push(waitS(dev));
+				expect(dev.github.fatal).toBe(false);
+			}
+			expect(waits).toEqual([60, 120, 240, 480]);
+			dev.github.retryAt = 0;
+			await sync(dev, "poll"); // the fifth refusal in a row
+			expect(dev.github.fatal).toBe(true);
+			expect(dev.github.status.message).toMatch(/stopped asking/);
+			restore();
+			gh.calls.length = 0;
+			await sync(dev, "poll");
+			await sync(dev, "focus");
+			await sync(dev, "flush");
+			await sync(dev, "manual"); // not before the time announced for the next attempt either
+			expect(gh.calls).toEqual([]);
+			dev.github.retryAt = 0;
+			await sync(dev, "manual"); // the user decides, GitHub being willing again
+			expect(gh.calls.length).toBeGreaterThan(0);
+			expect(dev.github.fatal).toBe(false);
+			expect(dev.github.rateLimitHits).toBe(0);
+			expect(dev.github.status.state).toBe("idle");
+		});
+
+		it("a success starts the count again", async () => {
+			const dev = await ghDevice([card("a")]);
+			dev.resetGithubSync();
+			await dev.github.chain;
+			for (let round = 0; round < 3; round++) {
+				const restore = limited({});
+				dev.github.retryAt = 0;
+				await sync(dev, "poll");
+				expect(waitS(dev)).toBe(60); // never 120: the previous round ended with a success
+				restore();
+				dev.github.retryAt = 0;
+				await sync(dev, "poll");
+				expect(dev.github.status.state).toBe("idle");
+			}
+		});
 	});
 
 	it("says when the last success was, in the error status", async () => {

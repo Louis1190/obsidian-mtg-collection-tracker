@@ -58,7 +58,7 @@ export class ExportDestinationModal extends Modal {
 		super(app);
 		this.exportContent = content;
 		this.fileName = sanitizeFileName(filename);
-		this.folder = getLastExportFolder();
+		this.folder = getLastExportFolder(app);
 	}
 
 	onOpen() {
@@ -110,7 +110,7 @@ export class ExportDestinationModal extends Modal {
 		// Android: with a device folder already used, "Save to <folder>" writes it
 		// right away (no picker) and "Other…" chooses another; with no remembered
 		// folder, a single "Device folder…" button opens the picker.
-		const rememberedDevice = Platform.isAndroidApp ? getLastDeviceFolder() : null;
+		const rememberedDevice = Platform.isAndroidApp ? getLastDeviceFolder(this.app) : null;
 		let deviceQuickBtn: HTMLButtonElement | null = null;
 		let deviceBtn: HTMLButtonElement | null = null;
 		if (Platform.isAndroidApp) {
@@ -172,7 +172,7 @@ export class ExportDestinationModal extends Modal {
 			saveBtn.setText("Saving…");
 			try {
 				const path = await writeExportFile(this.app, this.folder, name, this.exportContent);
-				rememberExportFolder(this.folder);
+				rememberExportFolder(this.app, this.folder);
 				new Notice(`Saved ${name} to ${folderSentenceName(this.folder)}.`);
 				this.close();
 				// After the closing: the native sheet presents itself over the app, not
@@ -218,7 +218,7 @@ export class ExportDestinationModal extends Modal {
 					}
 				}
 				const written = await writeToDeviceFolder(this.app, folder, name, this.exportContent);
-				rememberDeviceFolder(folder);
+				rememberDeviceFolder(this.app, folder);
 				new Notice(`Saved ${written.name} to ${deviceFolderDisplayPath(folder)}.`);
 				this.close();
 			} catch (e) {

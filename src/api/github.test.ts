@@ -7,6 +7,8 @@ import {
 	githubListFolder,
 	githubPutFile,
 	githubTestConnection,
+	gunzipBytes,
+	gzipBytes,
 	GithubTarget,
 } from "./github";
 import { FakeGithub } from "../plugin/__tests__/sync-test-harness";
@@ -99,6 +101,40 @@ describe("githubGetFile", () => {
 		expect(await githubGetFile(target(), NAME)).toMatchObject({ kind: "error", status: 403, fatal: false, retryAfterS: 90 });
 		gh.request = async (p) => ({ ...(await real(p)), status: 403, headers: {}, json: { message: "Resource not accessible" } });
 		expect(await githubGetFile(target(), NAME)).toMatchObject({ kind: "error", status: 403, fatal: true });
+	});
+
+	it("follows GitHub's rules for how long to wait when rate-limited", async () => {
+		const real = gh.request;
+		const answer = (status: number, headers: Record<string, string>) => {
+			gh.request = async (p) => ({ ...(await real(p)), status, headers, json: {} });
+		};
+		const nowS = () => Math.floor(Date.now() / 1000);
+		// primary limit: not before x-ratelimit-reset (+1 s margin, "after" it)
+		answer(403, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(nowS() + 300) });
+		const primary = await githubGetFile(target(), NAME);
+		expect(primary).toMatchObject({ kind: "error", status: 403, fatal: false, rateLimited: true });
+		expect((primary as { retryAfterS: number }).retryAfterS).toBeGreaterThanOrEqual(300);
+		expect((primary as { retryAfterS: number }).retryAfterS).toBeLessThanOrEqual(303);
+		// Retry-After wins when it is the only thing known, and the later of the two when both are
+		answer(429, { "retry-after": "90" });
+		expect(await githubGetFile(target(), NAME)).toMatchObject({ rateLimited: true, retryAfterS: 90 });
+		answer(403, { "x-ratelimit-remaining": "0", "retry-after": "500", "x-ratelimit-reset": String(nowS() + 30) });
+		expect(await githubGetFile(target(), NAME)).toMatchObject({ retryAfterS: 500 });
+		// said nothing usable: the engine's minute-and-growing rule applies, so no announced wait here
+		answer(429, {});
+		const silent = await githubGetFile(target(), NAME);
+		expect(silent).toMatchObject({ kind: "error", status: 429, fatal: false, rateLimited: true });
+		expect((silent as { retryAfterS?: number }).retryAfterS).toBeUndefined();
+		answer(403, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(nowS() - 50) }); // reset already past (clock ahead)
+		expect((await githubGetFile(target(), NAME) as { retryAfterS?: number }).retryAfterS).toBeUndefined();
+		// a header can't freeze the sync for more than the hour GitHub's windows last
+		answer(403, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(nowS() + 999999) });
+		expect(await githubGetFile(target(), NAME)).toMatchObject({ retryAfterS: 3600 });
+		// a refusal that is NOT a rate limit stays a lasting fault, never "rate limited"
+		answer(403, { "x-ratelimit-remaining": "4000" });
+		const refused = await githubGetFile(target(), NAME);
+		expect(refused).toMatchObject({ fatal: true });
+		expect((refused as { rateLimited?: boolean }).rateLimited).toBeUndefined();
 	});
 
 	it("treats a server error and a network failure as temporary", async () => {
@@ -206,6 +242,62 @@ describe("a request that never answers", () => {
 		const got = await githubGetFile(target(), NAME);
 		expect(got).toMatchObject({ kind: "error", message: expect.stringMatching(/ERR_CERT_DATE_INVALID/) });
 		expect(JSON.stringify(got)).not.toContain("SECRETSECRET");
+	});
+});
+
+describe("a read whose connection is reset", () => {
+	// Fails the first `n` calls of the given method like Chromium does (`net::ERR_CONNECTION_RESET`), then lets
+	// the fake server answer; `calls` counts every attempt that reached the transport.
+	const resetFirst = (n: number, method: string) => {
+		const real = gh.request.bind(gh);
+		const state = { calls: 0 };
+		gh.request = async (p) => {
+			if (p.method === method) {
+				state.calls++;
+				if (state.calls <= n) throw new Error("net::ERR_CONNECTION_RESET");
+			}
+			return real(p);
+		};
+		return state;
+	};
+
+	it("is tried once more right away, so a single reset costs nothing", async () => {
+		gh.setFile(FILE, "x");
+		const listCalls = resetFirst(1, "GET");
+		const listing = await githubListFolder(target(), null);
+		expect(listing.kind).toBe("ok");
+		expect(listCalls.calls).toBe(2);
+		const fileCalls = resetFirst(1, "GET");
+		expect(await githubGetFile(target(), NAME)).toMatchObject({ kind: "ok" });
+		expect(fileCalls.calls).toBe(2);
+	});
+
+	it("still fails, with the cause, when the second try is reset too (and stops there)", async () => {
+		gh.setFile(FILE, "x");
+		const calls = resetFirst(2, "GET");
+		expect(await githubListFolder(target(), null)).toMatchObject({
+			kind: "error",
+			status: 0,
+			fatal: false,
+			message: expect.stringMatching(/listing the data folder: net::ERR_CONNECTION_RESET/),
+		});
+		expect(calls.calls).toBe(2);
+	});
+
+	it("is not repeated after a timeout: the 20 s are already lost and the engine retries by itself", async () => {
+		let calls = 0;
+		gh.request = () => {
+			calls++;
+			return new Promise(() => {});
+		};
+		expect(await githubListFolder(target({ timeoutMs: 40 }), null)).toMatchObject({ kind: "error", message: expect.stringMatching(/no answer after/) });
+		expect(calls).toBe(1);
+	});
+
+	it("is never repeated for an upload", async () => {
+		const calls = resetFirst(1, "PUT");
+		expect(await githubPutFile(target(), NAME, "x", null, "m")).toMatchObject({ kind: "error", status: 0, fatal: false });
+		expect(calls.calls).toBe(1);
 	});
 });
 
@@ -334,3 +426,22 @@ describe("githubTestConnection", () => {
 		expect(r.lines.join(" ")).toMatch(/PUBLIC/);
 	});
 });
+
+describe("gunzipBytes with a limit on the decompressed size", () => {
+	const text = (b: Uint8Array) => new TextDecoder().decode(b);
+	it("gives the same bytes with or without a limit that is not reached", async () => {
+		const gz = await gzipBytes(new TextEncoder().encode("hello ".repeat(1000)));
+		expect(text(await gunzipBytes(gz))).toBe("hello ".repeat(1000));
+		expect(text(await gunzipBytes(gz, 6000))).toBe("hello ".repeat(1000)); // exactly at the limit: allowed
+	});
+	it("rejects as soon as the output would cross the limit: a small file can stand for a huge one", async () => {
+		const bomb = await gzipBytes(new Uint8Array(50 * 1024 * 1024)); // 50 MB of zeros, a few dozen KB once gzipped
+		expect(bomb.length).toBeLessThan(100 * 1024);
+		await expect(gunzipBytes(bomb, 1024 * 1024)).rejects.toThrow(/more than 1048576 bytes/);
+		await expect(gunzipBytes(await gzipBytes(new TextEncoder().encode("hello ".repeat(1000))), 5999)).rejects.toThrow(); // one byte over
+	});
+	it("still refuses damaged input", async () => {
+		await expect(gunzipBytes(new Uint8Array([0x1f, 0x8b, 1, 2, 3]), 1000)).rejects.toThrow();
+	});
+});
+

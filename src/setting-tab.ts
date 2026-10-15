@@ -2,7 +2,7 @@ import { AbstractInputSuggest, App, Notice, PluginSettingTab, Setting, TFolder }
 import type { SettingDefinition, SettingDefinitionItem } from "obsidian";
 import type MTGCollectionPlugin from "./plugin";
 import { CURRENCY_LABELS, PriceCurrency } from "./core/price";
-import { testCardbaseConnection } from "./api/cardbase";
+import { CARDBASE_SOURCE, testCardbaseConnection } from "./api/cardbase";
 import { githubStatusLine } from "./plugin/github-sync";
 import { saveExportedFile } from "./ui/file-export";
 import { RestoreBackupConfirmModal, ClearAllDataConfirmModal } from "./modals/confirm-modals";
@@ -447,7 +447,9 @@ export class MTGCollectionSettingTab extends PluginSettingTab {
 				rows: [
 					{
 						name: "",
-						desc: "This plugin talks to a few free, public data sources to fetch card data and prices — none require an account, except cardbase.dev's optional key below (unlocks a longer price history).",
+						desc: CARDBASE_SOURCE.enabled
+							? "This plugin talks to a few free, public data sources to fetch card data and prices — none require an account, except cardbase.dev's optional key below (unlocks a longer history for its fallback)."
+							: "This plugin talks to a few free, public data sources to fetch card data and prices — none of them needs an account or a key.",
 						searchable: false,
 						render: () => {},
 					},
@@ -467,8 +469,17 @@ export class MTGCollectionSettingTab extends PluginSettingTab {
 						aliases: ["data", "network", "privacy", "store"],
 					},
 					{
+						name: "Price history",
+						desc: 'The "Price history" chart and the Cardmarket price in card detail come from a daily history built from MTGJSON (Cardmarket, TCGplayer and Card Kingdom prices) and published on GitHub Pages: the plugin downloads one small file per card. Free, no account needed.',
+						aliases: ["data", "network", "privacy", "history", "chart", "mtgjson"],
+					},
+					{
 						name: "Cardbase.dev API key",
-						desc: 'Optional. Powers the "Price history" chart in card detail (Card Kingdom + TCGplayer, sourced from cardbase.dev — Mana Pool isn\'t covered there). Without a key you still get 30 days of history; a free key from cardbase.dev\'s dashboard unlocks 365 days.',
+						// Only while the cardbase.dev source is on (api/cardbase.ts CARDBASE_SOURCE): off, nothing in this plugin uses the key.
+						visible: () => CARDBASE_SOURCE.enabled,
+						// "visible" alone leaves the row in the settings search index (docs/history/settings-tab-declarative.md): off, it must not be found either.
+						searchable: () => CARDBASE_SOURCE.enabled,
+						desc: 'Optional. Used by the Home "Market trends" block, and as a fallback for the "Price history" chart when the plugin\'s own price history can\'t be reached. Without a key the fallback gives 30 days of history; a free key from cardbase.dev\'s dashboard unlocks 365 days.',
 						aliases: ["cardbase", "token", "history", "chart", "network", "privacy"],
 						render: (setting) => this.renderCardbaseKey(setting),
 					},
@@ -490,7 +501,9 @@ export class MTGCollectionSettingTab extends PluginSettingTab {
 					// the vault and shared natively (see saveExportedFile).
 					{
 						name: "Export backup",
-						desc: "Download a JSON file with your entire collection, decks, wantlists, and settings. Your cardbase.dev API key (above) is deliberately left out of this file — re-enter it after a restore if needed.",
+						desc:
+							"Download a JSON file with your entire collection, decks, wantlists, and settings." +
+							(CARDBASE_SOURCE.enabled ? " Your cardbase.dev API key (above) is deliberately left out of this file — re-enter it after a restore if needed." : ""),
 						aliases: ["save", "json", "download"],
 						render: (setting) => {
 							setting.addButton((btn) =>

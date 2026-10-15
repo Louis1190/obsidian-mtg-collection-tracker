@@ -7262,6 +7262,43 @@ body.is-phone {
 	text-overflow: clip;
 }
 
+/* Cardmarket's price comes from cardbase.dev, whose data froze on 2026-09-09: when it is 3+ days old the muted
+   "Market price" label becomes the date ("As of Sep 9", see renderStorePricesBox). Text colour = the warning
+   colour mixed with the normal text colour (the Home banner's rule: plain warning-coloured small text reads as an
+   error and fails contrast on a light theme). It also carries `is-note` (wraps instead of being cut off): a column
+   is 52px wide on a phone. */
+.mtg-store-price-col-detail.is-stale {
+	color: color-mix(in srgb, var(--text-warning, var(--color-orange)) 45%, var(--text-normal));
+}
+
+/* Line under the Price history chart when cardbase's last data point is 3+ days old, same warning-tinted look as
+   Home's Market trends banner (.mtg-home-trends-stale), see renderStaleDataNotice (shared-detail-boxes.ts). */
+.mtg-stale-data-notice {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.55em;
+	margin: 0.6em 0 0.4em;
+	padding: 0.5em 0.75em;
+	border-radius: 8px;
+	font-size: 0.78em;
+	line-height: 1.35;
+	color: var(--text-normal);
+	background: color-mix(in srgb, var(--text-warning, var(--color-orange)) 14%, transparent);
+	border: 1px solid color-mix(in srgb, var(--text-warning, var(--color-orange)) 35%, transparent);
+}
+
+.mtg-stale-data-notice-icon {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-warning, var(--color-orange));
+}
+
+.mtg-stale-data-notice-icon svg {
+	width: 1.2em;
+	height: 1.2em;
+}
+
 /* Change from the previous day → today ("▲ +2.1%"/"▼ -1.3%"), see
    renderDayChangeBadge (card-detail-fx.ts) — empty (no min-height) when the
    day is flat or when the cardbase history hasn't resolved yet, so it

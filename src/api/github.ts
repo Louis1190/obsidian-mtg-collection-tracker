@@ -49,7 +49,10 @@ export const REQUEST_TIMEOUT_MS = 20 * 1000;
 
 function withTimeout<T>(request: Promise<T>, ms: number): Promise<T> {
 	return new Promise<T>((resolve, reject) => {
-		const timer = window.setTimeout(() => reject(new Error(`no answer after ${Math.round(ms / 1000)} s`)), ms);
+		const timer = window.setTimeout(
+			() => reject(Object.assign(new Error(`no answer after ${Math.round(ms / 1000)} s`), { timedOut: true })),
+			ms
+		);
 		request.then(
 			(v) => {
 				window.clearTimeout(timer);
@@ -61,6 +64,23 @@ function withTimeout<T>(request: Promise<T>, ms: number): Promise<T> {
 			}
 		);
 	});
+}
+
+// A read is harmless to repeat, so a connection that fails FAST (reset, closed, aborted: seen 2026-10-10 as
+// `net::ERR_CONNECTION_RESET` while polling on the Mac, then fine 3 s later) gets one more try right away
+// instead of costing a failure — status line turning orange, warning in the console, a backoff wait.
+// Chromium already repeats a request whose REUSED connection was reset before any answer, but not one that hits
+// a fresh connection or fails later. NOT for a timeout (20 s are already lost; the engine's own retry follows)
+// and NOT for an upload (the engine's compare-and-swap + re-listing decides what to do after a failed PUT).
+// `send` builds the request anew, so the second try carries a fresh `_=` parameter.
+async function getWithOneRetry(send: () => Promise<RequestUrlResponse>, ms: number): Promise<RequestUrlResponse> {
+	try {
+		return await withTimeout(send(), ms);
+	} catch (e) {
+		if ((e as { timedOut?: boolean } | null)?.timedOut === true) throw e;
+		console.debug("MTG Collection Tracker: GitHub read failed, trying once more.", e);
+		return await withTimeout(send(), ms);
+	}
 }
 
 export type GithubGetResult =
@@ -95,6 +115,9 @@ export interface GithubFailure {
 	message: string;
 	/** Lasting fault (token, permissions, repository): no point retrying as is. */
 	fatal: boolean;
+	/** GitHub is refusing because of a rate limit (primary or secondary): the engine must wait, never insist. */
+	rateLimited?: boolean;
+	/** How long GitHub itself told us to wait (`Retry-After`, or until `x-ratelimit-reset`). Absent = it said nothing. */
 	retryAfterS?: number;
 }
 
@@ -107,17 +130,39 @@ export function compressionSupported(): boolean {
 	return typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined";
 }
 
-async function pipeThrough(bytes: Uint8Array, transform: { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> }) {
+async function pipeThrough(bytes: Uint8Array, transform: { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> }, maxBytes = Number.POSITIVE_INFINITY) {
 	const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(transform);
-	return new Uint8Array(await new Response(stream).arrayBuffer());
+	if (maxBytes === Number.POSITIVE_INFINITY) return new Uint8Array(await new Response(stream).arrayBuffer());
+	// Bounded: stops reading (and so decompressing) the moment the output exceeds the limit, instead of materialising it first.
+	const reader = stream.getReader();
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		total += value.length;
+		if (total > maxBytes) {
+			await reader.cancel();
+			throw new Error(`more than ${maxBytes} bytes once decompressed`);
+		}
+		chunks.push(value);
+	}
+	const out = new Uint8Array(total);
+	let at = 0;
+	for (const chunk of chunks) {
+		out.set(chunk, at);
+		at += chunk.length;
+	}
+	return out;
 }
 
 export function gzipBytes(bytes: Uint8Array): Promise<Uint8Array> {
 	return pipeThrough(bytes, new CompressionStream("gzip") as never);
 }
 
-export function gunzipBytes(bytes: Uint8Array): Promise<Uint8Array> {
-	return pipeThrough(bytes, new DecompressionStream("gzip") as never);
+/** `maxBytes` bounds the DECOMPRESSED size (a few kilobytes of gzip can stand for gigabytes): it rejects as soon as it is crossed. */
+export function gunzipBytes(bytes: Uint8Array, maxBytes?: number): Promise<Uint8Array> {
+	return pipeThrough(bytes, new DecompressionStream("gzip") as never, maxBytes);
 }
 
 export function parseRepo(repo: string): { owner: string; name: string } | null {
@@ -192,6 +237,24 @@ function header(res: RequestUrlResponse, name: string): string | null {
 	return h[name] ?? h[name.toLowerCase()] ?? null;
 }
 
+// GitHub's own rules (docs.github.com, "Rate limits for the REST API", checked 2026-10-10): `Retry-After` when
+// present; otherwise, with `x-ratelimit-remaining: 0`, not before `x-ratelimit-reset` (UTC epoch seconds);
+// otherwise "at least one minute", growing — that last case is the engine's (`fail`), not ours: we answer
+// undefined. Both known: the later of the two (the safe one). A reset already past (a device whose clock is
+// ahead) says nothing usable. One hour at most: GitHub's windows last an hour, and a bogus header must not freeze the
+// sync until the app restarts. +1 s on the reset, since the docs say "after" it.
+export const RATE_LIMIT_MAX_WAIT_S = 3600;
+export function rateLimitWaitS(retryAfterS: number | null, resetEpochS: number, nowMs: number): number | undefined {
+	const waits: number[] = [];
+	if (retryAfterS !== null && retryAfterS > 0) waits.push(Math.ceil(retryAfterS));
+	if (Number.isFinite(resetEpochS) && resetEpochS > 0) {
+		const untilReset = Math.ceil(resetEpochS - nowMs / 1000) + 1;
+		if (untilReset > 0) waits.push(untilReset);
+	}
+	if (waits.length === 0) return undefined;
+	return Math.min(RATE_LIMIT_MAX_WAIT_S, Math.max(...waits));
+}
+
 function failure(res: RequestUrlResponse | null, fallback: string): GithubFailure {
 	if (!res) return { kind: "error", status: 0, message: fallback, fatal: false };
 	const status = res.status;
@@ -200,13 +263,19 @@ function failure(res: RequestUrlResponse | null, fallback: string): GithubFailur
 	}
 	const remaining = header(res, "x-ratelimit-remaining");
 	const retryAfter = Number(header(res, "retry-after"));
-	if (status === 429 || (status === 403 && (remaining === "0" || Number.isFinite(retryAfter) && retryAfter > 0))) {
+	const hasRetryAfter = Number.isFinite(retryAfter) && retryAfter > 0;
+	if (status === 429 || (status === 403 && (remaining === "0" || hasRetryAfter))) {
 		return {
 			kind: "error",
 			status,
 			fatal: false,
-			message: "GitHub is rate-limiting this token; sync will retry shortly.",
-			retryAfterS: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 60,
+			rateLimited: true,
+			message: "GitHub is rate-limiting this token and asks us to wait before trying again.",
+			retryAfterS: rateLimitWaitS(
+				hasRetryAfter ? retryAfter : null,
+				remaining === "0" ? Number(header(res, "x-ratelimit-reset")) : NaN,
+				Date.now()
+			),
 		};
 	}
 	if (status === 403) {
@@ -253,8 +322,8 @@ export async function githubGetFile(target: GithubTarget, name: string): Promise
 	if (!url) return { kind: "error", status: 0, fatal: true, message: 'The repository must look like "owner/name".' };
 	let res: RequestUrlResponse;
 	try {
-		res = await withTimeout(
-			requestUrl({ url: freshUrl(url), method: "GET", headers: authHeaders(target, "application/vnd.github.raw+json"), throw: false }),
+		res = await getWithOneRetry(
+			() => requestUrl({ url: freshUrl(url), method: "GET", headers: authHeaders(target, "application/vnd.github.raw+json"), throw: false }),
 			target.timeoutMs ?? REQUEST_TIMEOUT_MS
 		);
 	} catch (e) {
@@ -308,8 +377,8 @@ export async function githubListFolder(target: GithubTarget, etag: string | null
 	if (etag) headers["If-None-Match"] = etag;
 	let res: RequestUrlResponse;
 	try {
-		res = await withTimeout(
-			requestUrl({ url: freshUrl(url), method: "GET", headers, throw: false }),
+		res = await getWithOneRetry(
+			() => requestUrl({ url: freshUrl(url), method: "GET", headers, throw: false }),
 			target.timeoutMs ?? REQUEST_TIMEOUT_MS
 		);
 	} catch (e) {

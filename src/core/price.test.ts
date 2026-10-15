@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
 	getRawCardPrice,
+	effectiveFinish,
 	getCardPriceNumber,
 	formatCardPrice,
 	cardValue,
@@ -12,6 +13,7 @@ import {
 	pickDeckCoverImage,
 	resolveDeckCoverImage,
 	toDeckPricedCard,
+	displayedPriceOf,
 	groupByList,
 	groupByWantlist,
 	PricedCard,
@@ -155,6 +157,32 @@ describe("getRawCardPrice", () => {
 	});
 });
 
+describe("effectiveFinish: the finish a card is looked up as (price, stores, history, Home), one rule for all", () => {
+	it("a copy left on regular of a printing that exists only in foil is a foil", () => {
+		expect(effectiveFinish(makePricedCard({ priceUsdFoil: "5.00" }))).toBe("foiled");
+		expect(effectiveFinish(makePricedCard({ priceEurFoil: "4.50" }))).toBe("foiled");
+		expect(effectiveFinish(makePricedCard({ priceUsdFoil: "5.00", priceEurFoil: "4.50" }))).toBe("foiled");
+	});
+	it("not when a plain price exists in EITHER currency (a printing that merely lacks one price is still a non-foil: the 21 Tales of Middle-earth Commander cards)", () => {
+		expect(effectiveFinish(makePricedCard({ priceEur: "1.00", priceEurFoil: "9.00" }))).toBe("regular");
+		expect(effectiveFinish(makePricedCard({ priceUsd: "2.00", priceEurFoil: "900.00" }))).toBe("regular");
+	});
+	it("not when there is no foil price either: nothing is known, nothing is guessed", () => {
+		expect(effectiveFinish(makePricedCard({}))).toBe("regular");
+	});
+	it("every other finish is its own: a foil stays a foil, an etched stays etched, surged and proxy too, whatever the prices", () => {
+		for (const finish of ["foiled", "etched", "surged", "proxy"] as const) {
+			expect(effectiveFinish(makePricedCard({ finish, priceUsdFoil: "5.00" }))).toBe(finish);
+			expect(effectiveFinish(makePricedCard({ finish, priceUsd: "1.00", priceUsdFoil: "5.00" }))).toBe(finish);
+		}
+	});
+	it("the displayed price follows it: the same answer by either road", () => {
+		const card = makePricedCard({ priceUsdFoil: "5.00", priceEurFoil: "4.50" });
+		expect(getRawCardPrice(card, "usd")).toBe(getRawCardPrice({ ...card, finish: effectiveFinish(card) }, "usd"));
+		expect(getRawCardPrice(card, "eur")).toBe("4.50");
+	});
+});
+
 describe("getCardPriceNumber", () => {
 	it("parses the raw price as a float, defaulting to 0", () => {
 		expect(getCardPriceNumber(makePricedCard({ priceUsd: "3.25" }), "usd")).toBe(3.25);
@@ -224,40 +252,133 @@ describe("formatScryfallPrice", () => {
 
 describe("pickCoverImage", () => {
 	it("returns an empty string for an empty list", () => {
-		expect(pickCoverImage([])).toBe("");
+		expect(pickCoverImage([], "usd")).toBe("");
 	});
 
 	it("returns the single card's art crop for a one-card list", () => {
-		expect(
-			pickCoverImage([{ artCropUrl: "art.png", imageUrl: "img.png", priceUsd: "1" }])
-		).toBe("art.png");
+		expect(pickCoverImage([makeCardEntry({ artCropUrl: "art.png" })], "usd")).toBe("art.png");
 	});
 
 	it("picks the most expensive card's art for 2+ cards", () => {
 		const cards = [
-			{ artCropUrl: "cheap.png", imageUrl: "cheap-full.png", priceUsd: "1.00" },
-			{ artCropUrl: "expensive.png", imageUrl: "expensive-full.png", priceUsd: "50.00" },
+			makeCardEntry({ artCropUrl: "cheap.png", priceUsd: "1.00" }),
+			makeCardEntry({ artCropUrl: "expensive.png", priceUsd: "50.00" }),
 		];
-		expect(pickCoverImage(cards)).toBe("expensive.png");
+		expect(pickCoverImage(cards, "usd")).toBe("expensive.png");
+	});
+
+	// The cover is "the most expensive card" AS THE USER SEES IT: same function as the
+	// price shown on the row (found 2026-10-12: it read priceUsd alone, so a list shown
+	// in EUR could get the cover of a card that is not its most expensive one).
+	it("follows the display currency", () => {
+		const cards = [
+			makeCardEntry({ artCropUrl: "usd-star.png", priceUsd: "50.00", priceEur: "1.00" }),
+			makeCardEntry({ artCropUrl: "eur-star.png", priceUsd: "2.00", priceEur: "30.00" }),
+		];
+		expect(pickCoverImage(cards, "usd")).toBe("usd-star.png");
+		expect(pickCoverImage(cards, "eur")).toBe("eur-star.png");
+	});
+
+	it("ranks a foiled copy by its foil price", () => {
+		const cards = [
+			makeCardEntry({ artCropUrl: "plain.png", priceUsd: "10.00" }),
+			makeCardEntry({ artCropUrl: "foil.png", finish: "foiled", priceUsd: "5.00", priceUsdFoil: "40.00" }),
+		];
+		expect(pickCoverImage(cards, "usd")).toBe("foil.png");
+	});
+
+	it("ranks a foil-only printing by its foil price, like the row displays it", () => {
+		const cards = [
+			makeCardEntry({ artCropUrl: "plain.png", priceUsd: "", priceEur: "20.00" }),
+			makeCardEntry({
+				artCropUrl: "foil-only.png",
+				priceUsd: "",
+				priceEur: "",
+				priceUsdFoil: "4000.00",
+				priceEurFoil: "3000.00",
+			}),
+		];
+		expect(pickCoverImage(cards, "eur")).toBe("foil-only.png");
+	});
+
+	it("never picks a proxy, which has no value", () => {
+		const cards = [
+			makeCardEntry({ artCropUrl: "real.png", priceUsd: "5.00" }),
+			makeCardEntry({ artCropUrl: "proxy.png", finish: "proxy", priceUsd: "100.00" }),
+		];
+		expect(pickCoverImage(cards, "usd")).toBe("real.png");
+	});
+
+	it("keeps the first card when several share the top price (or none has one)", () => {
+		const tied = [
+			makeCardEntry({ artCropUrl: "first.png", priceUsd: "7.00" }),
+			makeCardEntry({ artCropUrl: "second.png", priceUsd: "7.00" }),
+		];
+		expect(pickCoverImage(tied, "usd")).toBe("first.png");
+		const unpriced = [
+			makeCardEntry({ artCropUrl: "first.png", priceUsd: "" }),
+			makeCardEntry({ artCropUrl: "second.png", priceUsd: "" }),
+		];
+		expect(pickCoverImage(unpriced, "usd")).toBe("first.png");
+	});
+
+	it("falls back to the full card image when the best card has no art crop", () => {
+		const cards = [
+			makeCardEntry({ artCropUrl: "cheap.png", priceUsd: "1.00" }),
+			makeCardEntry({ artCropUrl: "", imageUrl: "pricey-full.png", priceUsd: "9.00" }),
+		];
+		expect(pickCoverImage(cards, "usd")).toBe("pricey-full.png");
 	});
 });
 
 describe("resolveCoverImage", () => {
 	const cards = [
-		{ id: "a", artCropUrl: "cheap.png", imageUrl: "cheap-full.png", priceUsd: "1.00" },
-		{ id: "b", artCropUrl: "expensive.png", imageUrl: "expensive-full.png", priceUsd: "50.00" },
+		makeCardEntry({ id: "a", artCropUrl: "cheap.png", priceUsd: "1.00" }),
+		makeCardEntry({ id: "b", artCropUrl: "expensive.png", priceUsd: "50.00" }),
 	];
 
 	it("falls back to pickCoverImage when no coverCardId is given", () => {
-		expect(resolveCoverImage(cards)).toBe("expensive.png");
+		expect(resolveCoverImage(cards, "usd")).toBe("expensive.png");
 	});
 
 	it("uses the manually chosen card's art when its id is found", () => {
-		expect(resolveCoverImage(cards, "a")).toBe("cheap.png");
+		expect(resolveCoverImage(cards, "usd", "a")).toBe("cheap.png");
 	});
 
 	it("falls back to the automatic pick when coverCardId no longer matches any card", () => {
-		expect(resolveCoverImage(cards, "gone")).toBe("expensive.png");
+		expect(resolveCoverImage(cards, "usd", "gone")).toBe("expensive.png");
+	});
+});
+
+describe("displayedPriceOf", () => {
+	it("reads the price in the display currency", () => {
+		const card = { priceUsd: "10.00", priceEur: "2.00" };
+		expect(displayedPriceOf("usd")(card)).toBe(10);
+		expect(displayedPriceOf("eur")(card)).toBe(2);
+	});
+
+	it("follows the finish like the row's displayed price", () => {
+		const foiled = { finish: "foiled" as const, priceUsd: "1.00", priceUsdFoil: "3.00", priceEur: "0.80", priceEurFoil: "2.50" };
+		expect(displayedPriceOf("usd")(foiled)).toBe(3);
+		expect(displayedPriceOf("eur")(foiled)).toBe(2.5);
+		const etched = { finish: "etched" as const, priceUsd: "1.00", priceUsdEtched: "4.00" };
+		expect(displayedPriceOf("usd")(etched)).toBe(4);
+	});
+
+	it("shows a foil-only printing at its foil price, and a proxy at nothing", () => {
+		expect(displayedPriceOf("eur")({ priceEurFoil: "4.50" })).toBe(4.5);
+		expect(displayedPriceOf("usd")({ finish: "proxy", priceUsd: "100.00" })).toBe(0);
+	});
+
+	it("treats absent price fields (a deck card not caught up yet) as no price", () => {
+		expect(displayedPriceOf("usd")({})).toBe(0);
+		expect(displayedPriceOf("eur")({ priceUsd: "9.00" })).toBe(0);
+	});
+
+	it("agrees with getCardPriceNumber on a real collection card", () => {
+		const card = makeCardEntry({ finish: "foiled", priceUsd: "1.00", priceUsdFoil: "6.00", priceEur: "0.90", priceEurFoil: "5.00" });
+		expect(displayedPriceOf("usd")(card)).toBe(getCardPriceNumber(card, "usd"));
+		expect(displayedPriceOf("eur")(card)).toBe(getCardPriceNumber(card, "eur"));
 	});
 });
 
@@ -400,6 +521,16 @@ describe("groupByList", () => {
 		expect(groups[0].coverImage).toBe("chosen.png");
 	});
 
+	it("picks the cover from the price shown in the display currency", () => {
+		const lists: CollectionList[] = [{ id: "list1", name: "Zeta" }];
+		const collection: CollectionCard[] = [
+			makeCardEntry({ listId: "list1", artCropUrl: "usd-star.png", priceUsd: "50.00", priceEur: "1.00" }),
+			makeCardEntry({ listId: "list1", artCropUrl: "eur-star.png", priceUsd: "2.00", priceEur: "30.00" }),
+		];
+		expect(groupByList(lists, collection, "usd")[0].coverImage).toBe("usd-star.png");
+		expect(groupByList(lists, collection, "eur")[0].coverImage).toBe("eur-star.png");
+	});
+
 	it("passes the list's manually chosen icon through untouched", () => {
 		const lists: CollectionList[] = [
 			{ id: "list1", name: "Mono Red", listIcon: { kind: "mana", value: "R" } },
@@ -454,5 +585,15 @@ describe("groupByWantlist", () => {
 		const groups = groupByWantlist(wantlists, wantlistCards, "usd");
 		expect(groups[0].totalQty).toBe(2);
 		expect(groups[0].totalValue).toBe(20);
+	});
+
+	it("picks the cover from the price shown in the display currency", () => {
+		const wantlists: Wantlist[] = [{ id: "w1", name: "Wants" }];
+		const wantlistCards: WantlistCard[] = [
+			makeWantlistCardEntry({ listId: "w1", artCropUrl: "usd-star.png", priceUsd: "50.00", priceEur: "1.00" }),
+			makeWantlistCardEntry({ listId: "w1", artCropUrl: "eur-star.png", priceUsd: "2.00", priceEur: "30.00" }),
+		];
+		expect(groupByWantlist(wantlists, wantlistCards, "usd")[0].coverImage).toBe("usd-star.png");
+		expect(groupByWantlist(wantlists, wantlistCards, "eur")[0].coverImage).toBe("eur-star.png");
 	});
 });
