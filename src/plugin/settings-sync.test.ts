@@ -8,6 +8,7 @@ import {
 	BIG_REMOVAL_THRESHOLD,
 	BIG_ADDITION_THRESHOLD,
 	SYNC_BACKUP_KEEP,
+	mergeForeignText,
 } from "./settings-sync";
 
 // settings-sync.ts imports Notice/normalizePath from "obsidian" at module
@@ -237,6 +238,87 @@ describe("two devices", () => {
 			await new Promise((r) => setTimeout(r, 0));
 		}
 		expect(ipad.fs.backups("remote").length).toBeLessThanOrEqual(SYNC_BACKUP_KEEP);
+	});
+});
+
+describe("two Inboxes after a merge (the collection Inbox has a random id)", () => {
+	const inboxIds = (dev: Obj) => dev.settings.lists.filter((l: Obj) => l.isInbox).map((l: Obj) => l.id);
+	const listOf = (dev: Obj) => Object.fromEntries(dev.settings.collection.map((c: Obj) => [c.id, c.listId]));
+	const withInbox = async (id: string, created: number, cards: Obj[], t: number) => {
+		const dev = await seededDevice(cards, t);
+		dev.settings.lists = [{ id, name: "Inbox", dateCreated: created, isInbox: true }];
+		await dev.persistSettings();
+		return dev;
+	};
+
+	it("Syncthing: the file of a device with another Inbox leaves ONE Inbox on both, with every card", async () => {
+		const mac = await withInbox("macinbox", 900, [card("m", { listId: "macinbox" })], 1000);
+		const ipad = await withInbox("ipadinbox", 1100, [card("i", { listId: "ipadinbox" })], 1100);
+		setNow(2000);
+		expect(deliver(ipad.fs, mac.fs)).toBe(true);
+		await mac.checkForExternalChange();
+		expect(inboxIds(mac)).toEqual(["macinbox"]);
+		expect(listOf(mac)).toEqual({ m: "macinbox", i: "macinbox" });
+		expect(mac.refreshOpenViews).toHaveBeenCalled();
+		// the healed state is written back, then the iPad adopts it
+		setNow(3000);
+		expect(deliver(mac.fs, ipad.fs)).toBe(true);
+		await ipad.checkForExternalChange();
+		expect(inboxIds(ipad)).toEqual(["macinbox"]);
+		expect(listOf(ipad)).toEqual({ m: "macinbox", i: "macinbox" });
+		expect(settingsEqual(mac.settings, ipad.settings)).toBe(true);
+		// stable: no more writes, in either direction
+		const writes = [mac, ipad].map((d) => d.fs.dataWrites);
+		for (const [a, b] of [[mac, ipad], [ipad, mac], [mac, ipad]] as const) {
+			setNow(4000);
+			deliver(a.fs, b.fs);
+			await b.checkForExternalChange();
+		}
+		expect([mac, ipad].map((d) => d.fs.dataWrites)).toEqual(writes);
+	});
+
+	it("the iPad receiving the healed file first and the Mac the iPad's own: still one Inbox, same cards", async () => {
+		// (the Mac's file is the more recent one here, so Syncthing delivers it to the iPad)
+		const mac = await withInbox("macinbox", 900, [card("m", { listId: "macinbox" })], 1100);
+		const ipad = await withInbox("ipadinbox", 1100, [card("i", { listId: "ipadinbox" })], 1000);
+		setNow(2000);
+		expect(deliver(mac.fs, ipad.fs)).toBe(true);
+		await ipad.checkForExternalChange();
+		expect(inboxIds(ipad)).toEqual(["macinbox"]);
+		setNow(3000);
+		expect(deliver(ipad.fs, mac.fs)).toBe(true);
+		await mac.checkForExternalChange();
+		expect(inboxIds(mac)).toEqual(["macinbox"]);
+		expect(listOf(mac)).toEqual({ m: "macinbox", i: "macinbox" });
+		expect(settingsEqual(mac.settings, ipad.settings)).toBe(true);
+	});
+
+	it("a merge that brings nothing new still reports the heal (changedLocal and needsWrite) when two Inboxes are already there", async () => {
+		const dev = await withInbox("a-inbox", 900, [card("c1", { listId: "b-inbox" })], 1000);
+		dev.settings.lists.push({ id: "b-inbox", name: "Inbox", dateCreated: 1100, isInbox: true });
+		const same = JSON.stringify(dev.settings);
+		const outcome = mergeForeignText(dev as never, same, null);
+		expect(outcome).toEqual({ changedLocal: true, needsWrite: true });
+		expect(inboxIds(dev)).toEqual(["a-inbox"]);
+		expect(listOf(dev)).toEqual({ c1: "a-inbox" });
+		expect(dev.settings.syncTombstones.lists).toHaveProperty("b-inbox");
+		// healed once: the same text again is a plain no-op
+		expect(mergeForeignText(dev as never, JSON.stringify(dev.settings), null)).toEqual({ changedLocal: false, needsWrite: false });
+	});
+
+	it("the dropped Inbox's deletion record keeps it from coming back from a stale file", async () => {
+		const mac = await withInbox("macinbox", 900, [card("m", { listId: "macinbox" })], 1000);
+		const stale = await withInbox("ipadinbox", 1100, [card("i", { listId: "ipadinbox" })], 1100);
+		const staleFile = stale.fs.data()!;
+		setNow(2000);
+		deliver(stale.fs, mac.fs);
+		await mac.checkForExternalChange(); // healed: ipadinbox dropped
+		setNow(3000);
+		mac.fs.files.set(DATA, { text: staleFile.text, mtime: 3000 }); // the old file comes back (late Syncthing delivery)
+		await mac.checkForExternalChange();
+		expect(inboxIds(mac)).toEqual(["macinbox"]);
+		expect(mac.settings.lists.map((l: Obj) => l.id)).toEqual(["macinbox"]);
+		expect(listOf(mac)).toEqual({ m: "macinbox", i: "macinbox" });
 	});
 });
 
@@ -779,6 +861,8 @@ describe("random multi-device sessions", () => {
 	const MARGIN_MS = 10_000;
 	const SEEDS = Number(process.env.SYNC_STRESS_SEEDS ?? 25);
 	const STEPS = Number(process.env.SYNC_STRESS_STEPS ?? 120);
+	// Share of the steps that are about the Inbox (SYNC_INBOX_OPS=0 gives the sessions as they were before the Inbox heal).
+	const INBOX_OPS = Number(process.env.SYNC_INBOX_OPS ?? 0.1);
 	for (let seed = 1; seed <= SEEDS; seed++) {
 		it(`seed ${seed}`, async () => {
 			const rnd = mulberry32(seed);
@@ -804,9 +888,36 @@ describe("random multi-device sessions", () => {
 
 			const touch = (k: string) => lastTouched.set(k, t);
 
+			// Devices that invent an Inbox of their own before they have seen another one (what ensureInboxList does at a
+			// first start) and add cards to it. Drawn from a SECOND generator so the sessions above stay exactly as they were.
+			const rndI = mulberry32(seed * 7919 + 13);
+			const inboxIds = new Set<string>();
+			const inboxCards = new Set<string>();
+			let inboxSeq = 0;
+
 			for (let step = 0; step < STEPS; step++) {
 				t += 1000;
 				setNow(t);
+				if (rndI() < INBOX_OPS) {
+					const idev = devices[Math.floor(rndI() * devices.length)];
+					const mine = idev.settings.lists.find((l: Obj) => l.isInbox);
+					if (!mine) {
+						const id = `inbox${inboxSeq++}`;
+						idev.settings.lists.unshift({ id, name: "Inbox", dateCreated: t, isInbox: true });
+						inboxIds.add(id);
+					} else if (rndI() < 0.7) {
+						const id = `ic${nextId++}`;
+						idev.settings.collection.push(card(id, { listId: mine.id, dateAdded: t, dateModified: t }));
+						touch(id);
+						keys.push(id);
+						inboxCards.add(id);
+					}
+					await idev.persistSettings();
+					// Two devices must never write at the very same millisecond: Syncthing's "newest file wins" has nothing to
+					// pick between equal dates, and neither file would ever be delivered.
+					t += 7;
+					setNow(t);
+				}
 				const dev = pick(devices);
 				const op = rnd();
 				const list: Obj[] = dev.settings.collection;
@@ -852,12 +963,13 @@ describe("random multi-device sessions", () => {
 					dev.settings.lists.push({ id, name: `List ${id}`, dateCreated: t });
 					listKeys.push(id);
 					listTouched.set(id, t);
-				} else if (op < 0.97 && dev.settings.lists.length) {
-					const l = pick(dev.settings.lists as Obj[]);
+				} else if (op < 0.97 && dev.settings.lists.some((x: Obj) => !x.isInbox)) {
+					// (the Inbox cannot be renamed or deleted in the plugin)
+					const l = pick(dev.settings.lists.filter((x: Obj) => !x.isInbox) as Obj[]);
 					l.name = `Renamed ${t}`;
 					listTouched.set(l.id, t);
-				} else if (op < 0.99 && dev.settings.lists.length) {
-					const l = pick(dev.settings.lists as Obj[]);
+				} else if (op < 0.99 && dev.settings.lists.some((x: Obj) => !x.isInbox)) {
+					const l = pick(dev.settings.lists.filter((x: Obj) => !x.isInbox) as Obj[]);
 					dev.settings.lists = dev.settings.lists.filter((x: Obj) => x !== l);
 					deletedLists.add(l.id);
 					listDeleted.set(l.id, t);
@@ -905,6 +1017,15 @@ describe("random multi-device sessions", () => {
 			expect(settingsEqual(a.settings, b.settings), "a vs b\n" + describeDiff(a.settings, b.settings)).toBe(true);
 			expect(settingsEqual(a.settings, c.settings), "a vs c\n" + describeDiff(a.settings, c.settings)).toBe(true);
 
+			// However many Inboxes the devices invented, one is left, and no card points at a dropped one.
+			for (const d of devices) {
+				const found = d.settings.lists.filter((l: Obj) => l.isInbox);
+				expect(found.length, "Inbox count").toBe(inboxIds.size > 0 ? 1 : 0);
+				for (const c of d.settings.collection as Obj[]) {
+					if (c.listId !== undefined && /^inbox/.test(c.listId)) expect(c.listId, `card ${c.id} left in a dropped Inbox`).toBe(found[0].id);
+				}
+			}
+
 			const present = new Set<string>([
 				...a.settings.collection.map((x: Obj) => x.id),
 				...a.settings.decks[0].cards.map((x: Obj) => `deck:${x.scryfallId}`),
@@ -940,7 +1061,8 @@ describe("random multi-device sessions", () => {
 					const touched = lastTouched.get(k) ?? 0;
 					const deleted = lastDeleted.get(k) ?? 0;
 					const alive = touched > deleted;
-					if (!alive && deleted - touched > MARGIN_MS) {
+					// (a card of an Inbox may have been moved by the heal: that move counts as a touch the test cannot date)
+					if (!alive && deleted - touched > MARGIN_MS && !inboxCards.has(k)) {
 						expect(present.has(k), `${k} was deleted and never touched again but is back`).toBe(false);
 					}
 					if (alive && touched - deleted > MARGIN_MS) {

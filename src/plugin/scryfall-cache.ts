@@ -509,6 +509,28 @@ export async function fetchCardLegalities(this: MTGCollectionPlugin, scryfallId:
 	return null;
 }
 
+// The fields of a Scryfall card that never change for a printing (see ScryfallImmutableSnapshot, scryfall.ts, for what
+// is kept and what is left out on purpose). One place for the three fetchers below.
+function immutableSnapshotOf(card: ScryfallCard): ScryfallImmutableSnapshot {
+	return {
+		oracle_text: card.oracle_text,
+		power: card.power,
+		toughness: card.toughness,
+		loyalty: card.loyalty,
+		card_faces: card.card_faces,
+		purchase_uris: card.purchase_uris,
+		image_uris: card.image_uris,
+		layout: card.layout,
+		keywords: card.keywords,
+		set: card.set,
+		set_name: card.set_name,
+		collector_number: card.collector_number,
+		rarity: card.rarity,
+		mana_cost: card.mana_cost,
+		type_line: card.type_line,
+	};
+}
+
 // Entry point shared by the 4 derivations below
 // (getTcgplayerUrl/getCardTextInfo/getCardFaceImages/getSplitCardInfo) —
 // cache + shared in-flight request + retry, same idiom as getCardLegalities
@@ -529,7 +551,13 @@ export async function getScryfallImmutableSnapshot(this: MTGCollectionPlugin,
 	if (cached !== undefined) return cached;
 
 	const inFlight = this.scryfallImmutableInFlight.get(scryfallId);
-	if (inFlight) return inFlight;
+	if (inFlight) {
+		const shared = await inFlight;
+		// A neighbour prefetch that came back empty (a network blip) is not an answer about the card: ask again the normal
+		// way, with its retry. The prefetch's own entry is gone by now (its `finally` ran first), so this cannot loop.
+		if (shared === null && this.scryfallPrefetchPromises.has(inFlight)) return this.getScryfallImmutableSnapshot(scryfallId);
+		return shared;
+	}
 
 	const promise = this.fetchScryfallImmutableSnapshot(scryfallId);
 	this.scryfallImmutableInFlight.set(scryfallId, promise);
@@ -546,23 +574,7 @@ export async function fetchScryfallImmutableSnapshot(this: MTGCollectionPlugin,
 		const map = await fetchCollectionOrPartial([scryfallId]);
 		const card = map.get(scryfallId);
 		if (card) {
-			const snapshot: ScryfallImmutableSnapshot = {
-				oracle_text: card.oracle_text,
-				power: card.power,
-				toughness: card.toughness,
-				loyalty: card.loyalty,
-				card_faces: card.card_faces,
-				purchase_uris: card.purchase_uris,
-				image_uris: card.image_uris,
-				layout: card.layout,
-				keywords: card.keywords,
-				set: card.set,
-				set_name: card.set_name,
-				collector_number: card.collector_number,
-				rarity: card.rarity,
-				mana_cost: card.mana_cost,
-				type_line: card.type_line,
-			};
+			const snapshot = immutableSnapshotOf(card);
 			this.scryfallImmutableCache.set(scryfallId, snapshot);
 			this.scheduleMapCachePersist(
 				SCRYFALL_IMMUTABLE_CACHE_FILENAME,
@@ -609,28 +621,76 @@ export async function getScryfallImmutableSnapshots(this: MTGCollectionPlugin,
 	for (const id of missing) {
 		const card = fetched.get(id);
 		if (!card) continue;
-		const snapshot: ScryfallImmutableSnapshot = {
-			oracle_text: card.oracle_text,
-			power: card.power,
-			toughness: card.toughness,
-			loyalty: card.loyalty,
-			card_faces: card.card_faces,
-			purchase_uris: card.purchase_uris,
-			image_uris: card.image_uris,
-			layout: card.layout,
-			keywords: card.keywords,
-			set: card.set,
-			set_name: card.set_name,
-			collector_number: card.collector_number,
-			rarity: card.rarity,
-			mana_cost: card.mana_cost,
-			type_line: card.type_line,
-		};
+		const snapshot = immutableSnapshotOf(card);
 		this.scryfallImmutableCache.set(id, snapshot);
 		result.set(id, snapshot);
 	}
 	this.scheduleMapCachePersist(SCRYFALL_IMMUTABLE_CACHE_FILENAME, this.scryfallImmutableCache);
 	return result;
+}
+
+export const CARD_TEXT_PREFETCH_WINDOW = 5;
+// After a prefetch that brought back NOTHING (offline, Scryfall refusing or answering 429/5xx), no new one for this long: a user
+// tapping through cards must not keep sending requests at a service that is not answering. The card on screen is unaffected.
+export const CARD_TEXT_PREFETCH_PAUSE_MS = 30 * 1000;
+
+// Fetches the immutable snapshots (rules text, faces, TCGplayer link...) of several cards in ONE grouped request, in the
+// background. Scryfall's rules, kept: the grouped `/cards/collection` endpoint takes up to 75 identifiers per request (we ask for
+// at most 10 here), every request goes through `requestScryfall`, which spaces ALL the plugin's calls at least 110 ms apart
+// (Scryfall asks for 50-100 ms and allows 10 per second) and honours 429/Retry-After, and the callers wait for the user to stop
+// on a card before asking. Ids already known, or already being fetched, cost nothing. Each id is registered in
+// `scryfallImmutableInFlight` while the request runs, so a card the user reaches meanwhile waits for this answer instead of sending
+// its own request (`getScryfallImmutableSnapshot`); an id the request did not bring back is answered `null` there and asked again
+// normally. Never throws, never shows anything.
+export async function prefetchScryfallImmutableSnapshots(this: MTGCollectionPlugin, scryfallIds: string[]): Promise<void> {
+	if (performance.now() < this.scryfallPrefetchPausedUntil) return;
+	const missing = Array.from(new Set(scryfallIds)).filter(
+		(id) => id && !this.scryfallImmutableCache.has(id) && !this.scryfallImmutableInFlight.has(id)
+	);
+	if (missing.length === 0) return;
+
+	const resolvers = new Map<string, (snapshot: ScryfallImmutableSnapshot | null) => void>();
+	missing.forEach((id) => {
+		const perId = new Promise<ScryfallImmutableSnapshot | null>((resolve) => resolvers.set(id, resolve));
+		this.scryfallPrefetchPromises.add(perId);
+		this.scryfallImmutableInFlight.set(id, perId);
+		void perId.finally(() => this.scryfallImmutableInFlight.delete(id));
+	});
+
+	const fetched = await fetchCollectionOrPartial(missing);
+	if (fetched.size === 0) this.scryfallPrefetchPausedUntil = performance.now() + CARD_TEXT_PREFETCH_PAUSE_MS;
+	let cachedSomething = false;
+	let cachedLegalities = false;
+	for (const id of missing) {
+		const card = fetched.get(id);
+		if (card) {
+			const snapshot = immutableSnapshotOf(card);
+			this.scryfallImmutableCache.set(id, snapshot);
+			cachedSomething = true;
+			// The same answer carries the card's legalities: keep them too (what the Legal formats box would otherwise fetch on its own).
+			if (card.legalities) {
+				this.legalitiesCache.set(id, card.legalities);
+				this.legalitiesFetchedAt.set(id, Date.now());
+				cachedLegalities = true;
+			}
+			resolvers.get(id)?.(snapshot);
+		} else {
+			resolvers.get(id)?.(null);
+		}
+	}
+	if (cachedSomething) this.scheduleMapCachePersist(SCRYFALL_IMMUTABLE_CACHE_FILENAME, this.scryfallImmutableCache);
+	if (cachedLegalities) this.scheduleLegalitiesPersist();
+}
+
+// The cards on each side of `centerIndex` in a navigation list (nearest first), as ids for the prefetch above. `scryfallIds`
+// has the caller's navigation order; the displayed card itself is not asked for (its own draw already did).
+export async function prefetchCardTextNeighbors(this: MTGCollectionPlugin, scryfallIds: string[], centerIndex: number): Promise<void> {
+	const ids: string[] = [];
+	for (let d = 1; d <= CARD_TEXT_PREFETCH_WINDOW; d++) {
+		if (centerIndex + d < scryfallIds.length) ids.push(scryfallIds[centerIndex + d]);
+		if (centerIndex - d >= 0) ids.push(scryfallIds[centerIndex - d]);
+	}
+	await this.prefetchScryfallImmutableSnapshots(ids);
 }
 
 // TCGplayer product link ("TCGplayer" row of the Store Prices box). `null`

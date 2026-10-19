@@ -49,6 +49,7 @@ import {
 } from "../ui/card-detail-fx";
 import { renderCardsCountTitle } from "./shared-render-helpers";
 import { createBulkActionsBar, replaceInBulkBar } from "./bulk-actions-bar";
+import { setupPinnedCarousel } from "./pinned-carousel";
 import {
 	ListSettingsModal,
 } from "../modals/list-settings-modal";
@@ -281,7 +282,7 @@ export function renderListGrid(this: MTGCollectionView) {
 	// (see styles.css). Inbox before "All Cards" — explicitly requested ("Put
 	// 'Inbox' in first position").
 	//
-	// Built in this.collectionPinnedEl (persistent element of the skeleton, see
+	// Built in this.galleryPinnedEl (persistent element of the skeleton, see
 	// onOpen) and not in this.bodyEl: the row is ABOVE the filter bar, which is
 	// itself persistent and therefore outside this.bodyEl — explicitly
 	// requested (search and sort come after these two tiles). Intended
@@ -291,7 +292,7 @@ export function renderListGrid(this: MTGCollectionView) {
 	// while you write in it; the sort, for its part, never concerned them.
 	const hasAllCardsTile = this.plugin.settings.lists.length > 0;
 	if (inboxGroup || hasAllCardsTile) {
-		const pinnedWrap = this.collectionPinnedEl.createDiv({ cls: "mtg-set-grid-wrap" });
+		const pinnedWrap = this.galleryPinnedEl.createDiv({ cls: "mtg-set-grid-wrap" });
 		const pinnedGrid = pinnedWrap.createDiv({
 			cls: `mtg-set-grid mtg-pinned-tiles-grid${
 				this.listGallerySelectMode ? " mtg-gallery-selecting" : ""
@@ -311,6 +312,9 @@ export function renderListGrid(this: MTGCollectionView) {
 				coverImage: pickCoverImage(allCards, this.plugin.settings.priceCurrency),
 			});
 		}
+		// On a phone in portrait the two tiles become a one-line snapping carousel (CSS) with
+		// page dots under it; see view/pinned-carousel.ts.
+		setupPinnedCarousel(this, "collection", pinnedWrap, pinnedGrid);
 	}
 
 	// The search only applies to the real lists (the pinned row above stays

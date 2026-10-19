@@ -484,19 +484,29 @@ export class CopyCardModal extends Modal {
 			this.plugin.settings.wantlist,
 			this.plugin.settings.priceCurrency
 		);
-		groups
+		// The wantlist Inbox is pinned as the first tile, with the same treatment as
+		// the list Inbox in renderCollectionTab (see its comment): removed from the
+		// array, re-injected at the head, solid accent + "inbox" pictogram + 3 lines.
+		const inboxWantlistId = this.plugin.settings.wantlists.find((w) => w.isInbox)?.id;
+		const inboxGroup = groups.find((g) => g.id === inboxWantlistId);
+		const otherGroups = groups.filter((g) => g.id !== inboxWantlistId);
+		const renderGroupTile = (g: (typeof groups)[number], isInbox: boolean) => {
+			this.renderTile(
+				g.coverImage,
+				g.name,
+				isInbox ? `${g.cards.length} unique · ${g.totalQty} cards` : `${g.totalQty} cards`,
+				() => this.copyToWantlist(g.id, g.name),
+				isInbox ? "inbox" : undefined,
+				isInbox ? formatMoney(g.totalValue, this.plugin.settings.priceCurrency) : undefined,
+				isInbox ? undefined : g.icon
+			);
+		};
+		if (inboxGroup && this.matchesSearch(inboxGroup.name)) {
+			renderGroupTile(inboxGroup, true);
+		}
+		otherGroups
 			.filter((g) => this.matchesSearch(g.name))
-			.forEach((g) => {
-				this.renderTile(
-					g.coverImage,
-					g.name,
-					`${g.totalQty} cards`,
-					() => this.copyToWantlist(g.id, g.name),
-					undefined,
-					undefined,
-					g.icon
-				);
-			});
+			.forEach((g) => renderGroupTile(g, false));
 	}
 
 	private copyToWantlist(wantlistId: string, name: string) {

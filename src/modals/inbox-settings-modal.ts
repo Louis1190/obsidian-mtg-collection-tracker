@@ -1,4 +1,5 @@
 import { Modal, App, Notice } from "obsidian";
+import type { CollectionCard, WantlistCard } from "../core/card-model";
 import type MTGCollectionPlugin from "../plugin";
 import { applyModalOpenAnimation, addModalCloseButton, closeModalAnimated } from "../ui/modal-animation";
 import type { MTGCollectionView } from "../view";
@@ -37,18 +38,86 @@ import {
 // cross (addModalCloseButton) is enough, each action here applies immediately
 // on click, exactly as Copy/Move/Clear/Merge duplicates/Export/Import already
 // do in ListSettingsModal itself.
+//
+// ONE modal for both sections: the wantlist Inbox (Wantlist.isInbox, added
+// after the list one) behaves exactly like it, and the two only differ by
+// names — the noun, which array holds the entity and its cards, and which
+// plugin/view methods act on them — so `kind` picks a small descriptor
+// (inboxOps) instead of a second copy of this file. "list" stays the default:
+// the My Collection call sites did not change.
+
+export type InboxKind = "list" | "wantlist";
+
+// What differs between the two Inboxes. Every function re-reads the settings
+// when called (restoreBackup replaces the settings object, never cache it).
+interface InboxOps {
+	noun: InboxKind;
+	sourceKind: "collection" | "wantlist";
+	find: (id: string) => { id: string; name: string } | undefined;
+	cards: (id: string) => (CollectionCard | WantlistCard)[];
+	clear: (id: string) => void;
+	remove: (id: string) => void;
+	mergeDuplicates: (id: string) => { merged: number; removed: number };
+	closeIfOpen: (id: string) => void;
+	io: (id: string, close: () => void) => Parameters<typeof addIoButtons>[1];
+}
+
+function inboxOps(kind: InboxKind, plugin: MTGCollectionPlugin, view: MTGCollectionView): InboxOps {
+	if (kind === "wantlist") {
+		return {
+			noun: "wantlist",
+			sourceKind: "wantlist",
+			find: (id) => plugin.settings.wantlists.find((w) => w.id === id),
+			cards: (id) => plugin.settings.wantlist.filter((c) => c.listId === id),
+			clear: (id) => plugin.clearWantlist(id),
+			remove: (id) => plugin.deleteWantlist(id),
+			mergeDuplicates: (id) => plugin.mergeWantlistDuplicates(id),
+			closeIfOpen: (id) => view.closeWantlistIfOpen(id),
+			io: (id, close) => ({
+				close,
+				exportCsv: () => view.exportWantlistCsv(id),
+				exportTxt: () => view.exportWantlistTxt(id),
+				copyTxt: () => view.copyWantlistTxt(id),
+				importCsv: () => view.triggerImportIntoWantlist(id),
+				importTxt: () => view.triggerImportTxtIntoWantlist(id),
+			}),
+		};
+	}
+	return {
+		noun: "list",
+		sourceKind: "collection",
+		find: (id) => plugin.settings.lists.find((l) => l.id === id),
+		cards: (id) => plugin.settings.collection.filter((c) => c.listId === id),
+		clear: (id) => plugin.clearList(id),
+		remove: (id) => plugin.deleteList(id),
+		mergeDuplicates: (id) => plugin.mergeListDuplicates(id),
+		closeIfOpen: (id) => view.closeListIfOpen(id),
+		io: (id, close) => ({
+			close,
+			exportCsv: () => view.exportListCsv(id),
+			exportTxt: () => view.exportListTxt(id),
+			copyTxt: () => view.copyListTxt(id),
+			importCsv: () => view.triggerImportIntoList(id),
+			importTxt: () => view.triggerImportTxtIntoList(id),
+		}),
+	};
+}
 
 export class InboxSettingsModal extends Modal {
 	private plugin: MTGCollectionPlugin;
 	private view: MTGCollectionView;
 	private listId: string;
+	private ops: InboxOps;
 	private confirmingClear = false;
 
-	constructor(app: App, plugin: MTGCollectionPlugin, view: MTGCollectionView, listId: string) {
+	// `listId` is the id of the Inbox entity, whichever kind (a wantlist's for
+	// "wantlist"): the name is kept from before the wantlist Inbox existed.
+	constructor(app: App, plugin: MTGCollectionPlugin, view: MTGCollectionView, listId: string, kind: InboxKind = "list") {
 		super(app);
 		this.plugin = plugin;
 		this.view = view;
 		this.listId = listId;
+		this.ops = inboxOps(kind, plugin, view);
 	}
 
 	onOpen() {
@@ -70,7 +139,8 @@ export class InboxSettingsModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass("mtg-list-actions-modal");
 
-		const list = this.plugin.settings.lists.find((l) => l.id === this.listId);
+		const ops = this.ops;
+		const list = ops.find(this.listId);
 		if (!list) {
 			this.close();
 			return;
@@ -79,15 +149,13 @@ export class InboxSettingsModal extends Modal {
 		// Same full-format confirmation screen as ListSettingsModal (renderConfirmScreen) — Inbox can never be deleted,
 		// but emptying it remains a valid action (clearList only touches settings.collection, never the list itself).
 		if (this.confirmingClear) {
-			const cardCount = this.plugin.settings.collection.filter(
-				(c) => c.listId === list.id
-			).length;
+			const cardCount = ops.cards(list.id).length;
 			renderConfirmScreen(contentEl, {
-				title: "Clear list?",
-				message: `Are you sure you want to remove all ${cardCount} card(s) from "${list.name}"? The list itself will be kept. This cannot be undone.`,
+				title: `Clear ${ops.noun}?`,
+				message: `Are you sure you want to remove all ${cardCount} card(s) from "${list.name}"? The ${ops.noun} itself will be kept. This cannot be undone.`,
 				confirmLabel: "Yes, clear",
 				onConfirm: () => {
-					this.plugin.clearList(list.id);
+					ops.clear(list.id);
 					new Notice(`Cleared "${list.name}".`);
 					this.confirmingClear = false;
 					this.view.render();
@@ -114,26 +182,26 @@ export class InboxSettingsModal extends Modal {
 		addCopyMoveButtons(actionsRow, {
 			app: this.app,
 			plugin: this.plugin,
-			noun: "list",
-			sourceKind: "collection",
-			cards: () => this.plugin.settings.collection.filter((c) => c.listId === list.id),
+			noun: ops.noun,
+			sourceKind: ops.sourceKind,
+			cards: () => ops.cards(list.id),
 			afterCopy: () => {
 				this.view.render();
 				this.draw();
 			},
 			afterMove: () => {
-				// deleteList no-ops on Inbox (see its own safeguard, plugin.ts) — Inbox therefore stays in place
+				// deleteList/deleteWantlist no-op on Inbox (see their own safeguard) — Inbox therefore stays in place
 				// once emptied, exactly the behavior wanted here.
-				if (this.plugin.settings.collection.every((c) => c.listId !== list.id)) {
-					this.plugin.deleteList(list.id);
+				if (ops.cards(list.id).length === 0) {
+					ops.remove(list.id);
 				}
-				this.view.closeListIfOpen(list.id);
+				ops.closeIfOpen(list.id);
 				this.close();
 			},
 		});
 		addActionButton(actionsRow, {
 			icon: "eraser",
-			label: "Clear list",
+			label: `Clear ${ops.noun}`,
 			danger: true,
 			onClick: () => {
 				this.confirmingClear = true;
@@ -141,18 +209,11 @@ export class InboxSettingsModal extends Modal {
 			},
 		});
 		addMergeDuplicatesButton(actionsRow, {
-			noun: "list",
-			merge: () => this.plugin.mergeListDuplicates(list.id),
+			noun: ops.noun,
+			merge: () => ops.mergeDuplicates(list.id),
 			onMerged: () => this.view.render(),
 		});
-		addIoButtons(actionsRow, {
-			close: () => this.close(),
-			exportCsv: () => this.view.exportListCsv(list.id),
-			exportTxt: () => this.view.exportListTxt(list.id),
-			copyTxt: () => this.view.copyListTxt(list.id),
-			importCsv: () => this.view.triggerImportIntoList(list.id),
-			importTxt: () => this.view.triggerImportTxtIntoList(list.id),
-		});
+		addIoButtons(actionsRow, ops.io(list.id, () => this.close()));
 	}
 
 	onClose() {

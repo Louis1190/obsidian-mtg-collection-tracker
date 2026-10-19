@@ -1,6 +1,6 @@
 import { Platform } from "obsidian";
 import { CardKingdomPriceEntry, fetchCardKingdomPricelist, cardKingdomKey } from "../api/card-kingdom";
-import { ManaPoolCardPrices, fetchManaPoolPricelist, ManaPoolPriceResult, pickManaPoolPrice } from "../api/manapool";
+import { ManaPoolCardPrices, fetchManaPoolPricelist, manaPoolCardUrl, manaPoolPricesSupported, ManaPoolPriceResult, pickManaPoolPrice, toManaPoolSeriesFinish } from "../api/manapool";
 import { Finish } from "../core/card-model";
 import type MTGCollectionPlugin from "../plugin";
 
@@ -62,8 +62,29 @@ export async function loadManaPoolPrices(this: MTGCollectionPlugin): Promise<Map
 // pickManaPoolPrice for the NM/etched/foil selection and the "lowest
 // available price" fallback. undefined if Mana Pool has no copy of this
 // printing in stock.
+//
+// On a phone or tablet the price list is not loaded at all (too big, see manaPoolPricesSupported): the price is read from our own Mana Pool files
+// instead (getOwnManaPoolPrice), which hold MTGJSON's Mana Pool price — the lowest across all conditions, about a day old. The result then says so
+// (`source`, `asOf`, `isNearMint: false`) so that the column never passes it off as Near Mint or as live, and its link is built from the printing
+// (`printing`), since our files carry no address.
 
-export async function getManaPoolPrice(this: MTGCollectionPlugin, scryfallId: string, finish: Finish): Promise<ManaPoolPriceResult | undefined> {
+export async function getManaPoolPrice(
+	this: MTGCollectionPlugin,
+	scryfallId: string,
+	finish: Finish,
+	printing?: { setCode: string; collectorNumber: string }
+): Promise<ManaPoolPriceResult | undefined> {
+	if (!manaPoolPricesSupported()) {
+		const own = await this.getOwnManaPoolPrice(scryfallId, toManaPoolSeriesFinish(finish));
+		if (!own) return undefined;
+		return {
+			priceCents: own.priceCents,
+			isNearMint: false,
+			url: printing ? manaPoolCardUrl(printing.setCode, printing.collectorNumber) : "",
+			source: "price-history",
+			asOf: own.date,
+		};
+	}
 	const map = await this.loadManaPoolPrices();
 	const entry = map.get(scryfallId);
 	return entry ? pickManaPoolPrice(entry, finish) : undefined;

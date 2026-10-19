@@ -1,6 +1,7 @@
 import { Platform } from "obsidian";
 import { requestUrlOrNull } from "./safe-request";
 import { Finish } from "../core/card-model";
+import type { CardbaseFinish } from "./cardbase";
 
 /* -------------------------------------------------------------------------- */
 /* Mana Pool pricelist — 3rd source for the "Store Prices" box */
@@ -50,6 +51,10 @@ export interface ManaPoolPriceResult {
 	// caller show a warning rather than pass a "Played" price off as NM.
 	isNearMint: boolean;
 	url: string;
+	// Set only when the price comes from our own Mana Pool files (phones and tablets, see getOwnManaPoolPrice) instead of Mana Pool's price list: the
+	// price is then the lowest across all conditions (never Near Mint), about a day old, and `asOf` is the day it is from ("YYYY-MM-DD").
+	source?: "price-history";
+	asOf?: string;
 }
 
 interface ManaPoolRawEntry {
@@ -74,9 +79,25 @@ function normalizeCents(value: number | null | undefined): number | null {
 // Kingdom, see card-kingdom.ts), and reading it as a stream with fetch() is impossible — Mana Pool does not
 // answer with access-control-allow-origin (checked in the real Android app: "Failed to fetch"). There is no
 // per-card endpoint (the url's filters are ignored, the complete file comes back). The Mana Pool column of
-// "Store Prices" therefore stays greyed out there, with the mention "Not on mobile" (renderStorePricesBox).
+// "Store Prices" therefore reads our own Mana Pool files there instead (getManaPoolPrice, plugin/store-prices.ts): the lowest price across all
+// conditions, a day old, shown as "Lowest" over its day (renderStorePricesBox). Before 1.0.562 it said "Not on mobile".
 export function manaPoolPricesSupported(): boolean {
 	return !Platform.isMobileApp;
+}
+
+// The page of a printing at Mana Pool, built from what the plugin already knows: the price list gives `https://manapool.com/card/<set>/<number>/<name>`
+// with the set and number Scryfall uses (checked 2026-10-16 on 4 029 printings of a real collection: all equal), and the address WITHOUT the name
+// answers with a 301 to the full one (checked on a card). Used where the price list is not loaded (phones and tablets).
+export function manaPoolCardUrl(setCode: string, collectorNumber: string): string {
+	return `https://manapool.com/card/${encodeURIComponent(setCode.toLowerCase())}/${encodeURIComponent(collectorNumber.toLowerCase())}`;
+}
+
+// Which Mana Pool series of our own files a card is looked up as: the same split as pickManaPoolPrice ("etched" has its own price, "surged" is a
+// foil as everywhere else in this plugin).
+export function toManaPoolSeriesFinish(finish: Finish): CardbaseFinish {
+	if (finish === "etched") return "etched";
+	if (finish === "foiled" || finish === "surged") return "foil";
+	return "normal";
 }
 
 export async function fetchManaPoolPricelist(): Promise<Map<string, ManaPoolCardPrices>> {

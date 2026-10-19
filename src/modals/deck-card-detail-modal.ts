@@ -30,6 +30,12 @@ import {
 	cardbaseFinishOf,
 	setupDoubleFacedFlip,
 	setupSplitCardRotation,
+	usesArtHeader,
+	moveNavHeaderBelowArt,
+	ensureCloseButton,
+	holdPreviousBanner,
+	arrangePanelForArt,
+	renderArtCredit,
 } from "../ui/card-detail-fx";
 import {
 	isAlphaSet,
@@ -86,6 +92,9 @@ export class DeckCardDetailModal extends Modal {
 	private copiesActiveTileMetaEl: HTMLElement | null = null;
 	// See CardDetailModal.prefetchTimeout — same debounce, same reason.
 	private prefetchTimeout: number | null = null;
+	// Same idea for the rules text of the neighbouring cards (scheduleTextPrefetch): its own timer, since it must not wait
+	// for the price history box (a proxy card has none) and starts from draw().
+	private textPrefetchTimeout: number | null = null;
 	// See CardDetailModal.flipped — same reasoning (3D "flip" button), reset
 	// at the 2 places where this.card is reassigned further down.
 	private flipped = false;
@@ -177,11 +186,11 @@ export class DeckCardDetailModal extends Modal {
 		this.bg.clearSiblingsIn(contentEl);
 		contentEl.addClass("mtg-card-detail-modal");
 		contentEl.addClass("mtg-card-detail-modal-fixed-height");
+		// Phone: full-screen window, artwork alone as a banner — see CardDetailModal.
+		const artMode = usesArtHeader(this.card);
+		contentEl.toggleClass("mtg-card-detail-art-mode", artMode);
 
-		const closeBtn = contentEl.createDiv({ cls: "mtg-card-detail-close-btn" });
-		setIcon(closeBtn, "x");
-		closeBtn.setAttribute("title", "Close");
-		closeBtn.addEventListener("click", () => this.close());
+		ensureCloseButton(contentEl, () => this.close());
 
 		// Blurred background: the artwork alone (art crop), not the whole card.
 		if (this.card.artCropUrl) {
@@ -343,10 +352,11 @@ export class DeckCardDetailModal extends Modal {
 		if (this.card.imageUrl) {
 			const finish = getDeckCardFinish(this.card);
 			const tilt = imageWrap.createDiv({ cls: "mtg-card-detail-tilt" });
-			tilt.createEl("img", {
+			const bannerImg = tilt.createEl("img", {
 				cls: "mtg-card-detail-image",
-				attr: { src: this.card.imageUrl },
+				attr: { src: artMode ? this.card.artCropUrl : this.card.imageUrl },
 			});
+			if (artMode) holdPreviousBanner(contentEl, tilt, bannerImg, this.card.artCropUrl);
 			// Foil/holo color layers — see CardDetailModal for the full reasoning,
 			// identical here since DeckCard carries a finish (harmonization
 			// 2026-08-25).
@@ -374,8 +384,14 @@ export class DeckCardDetailModal extends Modal {
 			const flipRequestedId = this.card.scryfallId;
 			void this.plugin.getCardFaceImages(flipRequestedId).then((images) => {
 				if (!images || this.card.scryfallId !== flipRequestedId) return;
-				setupDoubleFacedFlip(imageColumn, tilt, images.back, this.flipped, (flipped) => {
+				// Art mode flips to the back face's artwork; no art for it = no button.
+				const backUrl = artMode ? images.backArt : images.back;
+				if (!backUrl) return;
+				artCredit?.setBackArtist(images.backArtist);
+				artCredit?.showFace(this.flipped);
+				setupDoubleFacedFlip(imageColumn, tilt, backUrl, this.flipped, (flipped) => {
 					this.flipped = flipped;
+					artCredit?.showFace(flipped);
 				});
 			});
 
@@ -384,7 +400,8 @@ export class DeckCardDetailModal extends Modal {
 			// flip above.
 			const splitRequestedId = this.card.scryfallId;
 			void this.plugin.getSplitCardInfo(splitRequestedId).then((info) => {
-				if (!info || this.card.scryfallId !== splitRequestedId) return;
+				// No text to turn 90° to read on the artwork: no rotation button in art mode.
+				if (!info || artMode || this.card.scryfallId !== splitRequestedId) return;
 				// Always portrait by default — see CardDetailModal.
 				if (this.splitRotated === null) this.splitRotated = false;
 				setupSplitCardRotation(imageColumn, tilt, this.splitRotated, (rotated) => {
@@ -399,6 +416,9 @@ export class DeckCardDetailModal extends Modal {
 		}
 
 		const panel = layout.createDiv({ cls: "mtg-card-detail-panel" });
+		if (artMode) moveNavHeaderBelowArt(contentEl, panel);
+		// Last child of the layout, so it ends the scroll (Scryfall: artist + copyright next to an artwork shown alone).
+		const artCredit = artMode ? renderArtCredit(layout, this.card.artist) : null;
 
 		const headerRow = panel.createDiv({ cls: "mtg-card-detail-header-row" });
 		// Same clickable box → ChangePrintingModal as
@@ -825,6 +845,8 @@ export class DeckCardDetailModal extends Modal {
 		this.renderStorePricesBox(panel);
 		this.renderPriceHistoryBox(panel);
 		this.renderCardDescriptionBox(panel);
+		if (artMode) arrangePanelForArt(panel, deckBoxRow, [copyBox, gradingToggleBox], gradingWrapperEl);
+		this.scheduleTextPrefetch();
 
 		setupPanelScrollFade(panel);
 	}
@@ -930,6 +952,8 @@ export class DeckCardDetailModal extends Modal {
 			name: this.card.name,
 			finish: getDeckCardFinish(this.card),
 			pricedCard: toDeckPricedCard(this.card),
+			setCode: this.card.setCode,
+			collectorNumber: this.card.collectorNumber,
 		});
 	}
 
@@ -963,7 +987,28 @@ export class DeckCardDetailModal extends Modal {
 		}, 500);
 	}
 
+	// Fetches ahead what the cards on each side will need (prefetchCardTextNeighbors: ONE grouped Scryfall request for at most 10 ids,
+	// paced by the gate; prefetchNeighborImages: their pictures) so the window is already answered when previous/next is tapped. Waits 400 ms on a
+	// card before asking: tapping through a row of cards restarts the timer and only the card the user stops on triggers a request.
+	private scheduleTextPrefetch() {
+		if (this.textPrefetchTimeout != null) window.clearTimeout(this.textPrefetchTimeout);
+		const centerIndex = this.navCards.findIndex((c) => c.scryfallId === this.card.scryfallId);
+		if (centerIndex === -1 || this.navCards.length < 2) return;
+		this.textPrefetchTimeout = window.setTimeout(() => {
+			void this.plugin.prefetchCardTextNeighbors(
+				this.navCards.map((c) => c.scryfallId),
+				centerIndex
+			);
+			// The pictures too (artwork, the card's own image and a couple of its copies): see prefetchNeighborImages.
+			this.plugin.prefetchNeighborImages(
+				this.navCards.map((c) => ({ name: c.name, artCropUrl: c.artCropUrl, imageUrl: c.imageUrl })),
+				centerIndex
+			);
+		}, 400);
+	}
+
 	onClose() {
+		if (this.textPrefetchTimeout != null) window.clearTimeout(this.textPrefetchTimeout);
 		this.contentEl.empty();
 	}
 }

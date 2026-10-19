@@ -107,14 +107,13 @@ export interface AddCardsModalOptions {
 		// its label ("+ New list" vs "+ New wantlist") and to know which creation
 		// modal to open.
 		kind: "list" | "wantlist";
-		// Id of the "Inbox" list (see CollectionList.isInbox) when supplied by the
-		// caller (today: only openAddCardsModalWithListPicker, My Collection —
-		// never the Wantlist flow, which has no equivalent). When defined,
-		// "Add"/"Add all" add directly to that list instead of opening
+		// Id of the "Inbox" list (see CollectionList.isInbox) or wantlist (see
+		// Wantlist.isInbox) when supplied by the caller (openAddCollectionCardsModalWithListPicker
+		// and openAddWantlistCardsModalWithListPicker, the two gallery-level flows).
+		// When defined, "Add"/"Add all" add directly to that entity instead of opening
 		// SelectListModal — see buildAddButton/performAddAll, add-cards-modal.ts.
 		// SelectListModal remains usable as is when this field is absent
-		// (defensive fallback if Inbox doesn't exist, and unchanged behavior on
-		// the Wantlist side).
+		// (defensive fallback if Inbox doesn't exist).
 		defaultListId?: string;
 	};
 }

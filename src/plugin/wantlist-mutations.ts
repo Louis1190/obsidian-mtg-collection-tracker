@@ -191,7 +191,13 @@ export function createWantlistSilent(this: MTGCollectionPlugin, name: string): W
 }
 
 
+// isInbox: never deletable, even by this direct call — same defense in depth as
+// deleteList (collection-mutations.ts): the settings modal shows no "Delete" for
+// the Inbox, this guards any future caller.
+
 export function deleteWantlist(this: MTGCollectionPlugin, wantlistId: string) {
+	const wantlist = this.settings.wantlists.find((w) => w.id === wantlistId);
+	if (wantlist?.isInbox) return;
 	this.settings.wantlists = this.settings.wantlists.filter((w) => w.id !== wantlistId);
 	this.settings.wantlist = this.settings.wantlist.filter((c) => c.listId !== wantlistId);
 	void this.saveSettings();
@@ -226,10 +232,12 @@ export function setWantlistIcon(this: MTGCollectionPlugin, wantlistId: string, i
 	void this.saveSettings();
 }
 
-// Grouped version of deleteWantlist above — see bulkDeleteLists.
+// Grouped version of deleteWantlist above — see bulkDeleteLists. The Inbox is
+// never selectable in the gallery (renderWantlistTile) and is removed here too.
 
 export function bulkDeleteWantlists(this: MTGCollectionPlugin, wantlistIds: string[]) {
-	const idSet = new Set(wantlistIds);
+	const inboxId = this.settings.wantlists.find((w) => w.isInbox)?.id;
+	const idSet = new Set(wantlistIds.filter((id) => id !== inboxId));
 	this.settings.wantlists = this.settings.wantlists.filter((w) => !idSet.has(w.id));
 	this.settings.wantlist = this.settings.wantlist.filter((c) => !idSet.has(c.listId));
 	void this.saveSettings();
@@ -293,7 +301,12 @@ export function mergeWantlistDuplicates(this: MTGCollectionPlugin, wantlistId: s
 
 export function mergeWantlists(this: MTGCollectionPlugin, wantlistIds: string[], name: string): Wantlist {
 	const newWantlist = this.createWantlistSilent(name);
-	const idSet = new Set(wantlistIds);
+	// The Inbox is never selectable in the gallery, so never in wantlistIds in
+	// practice — removed anyway: mergeWantlists DELETES each original wantlist once
+	// its cards are reassigned, which would break the protection of the Inbox
+	// (see mergeLists, collection-mutations.ts).
+	const inboxId = this.settings.wantlists.find((w) => w.isInbox)?.id;
+	const idSet = new Set(wantlistIds.filter((id) => id !== inboxId));
 	this.settings.wantlist.forEach((c) => {
 		if (idSet.has(c.listId)) c.listId = newWantlist.id;
 	});
@@ -306,9 +319,11 @@ export function mergeWantlists(this: MTGCollectionPlugin, wantlistIds: string[],
 }
 
 
+// isInbox: never renamable — same safeguard as renameList.
+
 export function renameWantlist(this: MTGCollectionPlugin, wantlistId: string, name: string) {
 	const wantlist = this.settings.wantlists.find((w) => w.id === wantlistId);
-	if (!wantlist) return;
+	if (!wantlist || wantlist.isInbox) return;
 	wantlist.name = name;
 	void this.saveSettings();
 }

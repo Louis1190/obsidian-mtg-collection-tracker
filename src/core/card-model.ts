@@ -302,3 +302,20 @@ export function getCondition(value: string): ConditionOption {
 export function isAlphaSet(setCode: string): boolean {
 	return setCode.toLowerCase() === "lea";
 }
+
+// True when the card carries the artwork ALONE: `artCropUrl` is filled and is not the
+// whole-card scan (data from before `migrateArtCropUrls` copies `imageUrl` into it, and a
+// printing Scryfall has no art crop for falls back to the scan). The phone detail window
+// only switches to its artwork header when this holds; otherwise it keeps the classic
+// full-card layout rather than cropping a scan blindly.
+export function hasDistinctArtCrop(card: { artCropUrl?: string; imageUrl?: string }): boolean {
+	return !!card.artCropUrl && card.artCropUrl !== card.imageUrl;
+}
+
+export const CARD_COPYRIGHT_LINE = "™ & © Wizards of the Coast";
+
+// "" when the artist is unknown (a card saved before the artist was stored and not enriched yet): the copyright line alone is shown.
+export function formatArtistCredit(artist: string | undefined): string {
+	const name = (artist ?? "").trim();
+	return name ? `Illustrated by ${name}` : "";
+}

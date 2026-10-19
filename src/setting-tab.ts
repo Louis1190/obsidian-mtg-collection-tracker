@@ -700,6 +700,10 @@ export class MTGCollectionSettingTab extends PluginSettingTab {
 											plugin.settings.decks = [];
 											plugin.settings.wantlist = [];
 											plugin.settings.wantlists = [];
+											// Both Inboxes are guaranteed present once the plugin is loaded (the galleries
+											// no longer handle their absence): clearing everything must not break that.
+											plugin.ensureInboxList();
+											plugin.ensureInboxWantlist();
 											await plugin.saveSettings();
 											plugin.refreshOpenViews();
 											new Notice("All data cleared.");

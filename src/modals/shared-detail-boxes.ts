@@ -1,5 +1,4 @@
 import { setIcon } from "obsidian";
-import { manaPoolPricesSupported } from "../api/manapool";
 import type MTGCollectionPlugin from "../plugin";
 import { Finish, finishHasFoilLook } from "../core/card-model";
 import { effectiveFinish, formatCardPrice, formatMoney, LEGALITY_FORMATS, PricedCard } from "../core/price";
@@ -66,6 +65,9 @@ export interface StorePricesCard {
 	name: string;
 	finish: Finish;
 	pricedCard: PricedCard;
+	// The printing's set and number: where a phone cannot load Mana Pool's price list, the link to the card's Mana Pool page is built from them.
+	setCode: string;
+	collectorNumber: string;
 }
 
 // A tile of the "Copies in Lists" carousel.
@@ -90,6 +92,18 @@ export type CopyTile = {
 // scryfall.ts). No Proxy guard here unlike Store Prices/Price History just
 // above: a proxy always represents a real card, with a real text — only the
 // notion of price doesn't apply to it.
+// Height of the "Card text" box as the user last saw it, per detail window (keyed by the window's content element, which outlives
+// every draw() while the box itself is rebuilt each time): the next card's box starts from it and grows or shrinks to its own
+// height instead of snapping, which used to move everything under it at once.
+const lastTextBoxHeight = new WeakMap<HTMLElement, number>();
+// The card the box last showed, so a redraw of the SAME card (a finish changed, a grading saved...) is left alone: no hold, no fade.
+const lastTextBoxCard = new WeakMap<HTMLElement, string>();
+// Duration of the resize grows with the distance (a 40 px change takes 220 ms, a 320 px one the 420 ms cap): the same speed for a
+// short and a tall text would make the tall one rush by (measured in the Android app: 90 -> 414 px in 260 ms left 3 frames).
+function textBoxResizeMs(distancePx: number): number {
+	return Math.round(Math.min(420, Math.max(220, 180 + Math.abs(distancePx) * 0.75)));
+}
+
 export function renderCardDescriptionBox(
 	host: DetailBoxHost,
 	panel: HTMLElement,
@@ -98,6 +112,47 @@ export function renderCardDescriptionBox(
 	const row = panel.createDiv({ cls: "mtg-card-detail-box-row" });
 	const box = row.createDiv({ cls: "mtg-card-detail-box mtg-card-description-box" });
 	box.createDiv({ cls: "mtg-card-detail-finish-label", text: "Card text" });
+
+	const windowEl = panel.closest<HTMLElement>(".mtg-card-detail-modal");
+	const cardChanged = !windowEl || lastTextBoxCard.get(windowEl) !== card.scryfallId;
+	const previousHeight = windowEl && cardChanged ? lastTextBoxHeight.get(windowEl) : undefined;
+	if (windowEl) lastTextBoxCard.set(windowEl, card.scryfallId);
+	if (windowEl) {
+		new ResizeObserver(() => {
+			if (box.isConnected) lastTextBoxHeight.set(windowEl, box.getBoundingClientRect().height);
+		}).observe(box);
+	}
+	if (previousHeight !== undefined) {
+		box.addClass("is-resizing");
+		box.setCssProps({ "--mtg-text-box-h": `${previousHeight}px` });
+	}
+	const unlockHeight = () => {
+		box.removeClass("is-resizing");
+		box.removeClass("is-resizing-play");
+		box.style.removeProperty("--mtg-text-box-h");
+		box.style.removeProperty("--mtg-text-box-ms");
+		if (!box.getAttribute("style")) box.removeAttribute("style");
+	};
+	// Called once the box holds its final content, whichever branch built it. Measures the natural height with the lock lifted
+	// (same task: nothing is painted in between), puts the lock back at the previous height, then lets CSS carry it to the new one.
+	const settleHeight = () => {
+		// A box the window already replaced (a redraw of the same card while the text was on its way) measures 0: storing that would make
+		// the next card's box start from nothing.
+		if (previousHeight === undefined || !box.isConnected) return;
+		box.removeClass("is-resizing");
+		const target = box.getBoundingClientRect().height;
+		if (windowEl) lastTextBoxHeight.set(windowEl, target);
+		if (Math.abs(target - previousHeight) < 1) {
+			unlockHeight();
+			return;
+		}
+		const ms = textBoxResizeMs(target - previousHeight);
+		box.addClass("is-resizing");
+		void box.offsetHeight; // the locked height must be applied before the transition is switched on
+		box.addClass("is-resizing-play");
+		box.setCssProps({ "--mtg-text-box-h": `${target}px`, "--mtg-text-box-ms": `${ms}ms` });
+		window.setTimeout(unlockHeight, ms + 80);
+	};
 
 	const header = box.createDiv({ cls: "mtg-card-description-header" });
 	header.createDiv({ cls: "mtg-card-description-type", text: card.typeLine });
@@ -117,6 +172,7 @@ export function renderCardDescriptionBox(
 			// Confirmed failure after retry (see fetchCardTextInfo) — the cost/type
 			// above stay displayed, only the text and the stats are missing.
 			textEl.setText("—");
+			settleHeight();
 			return;
 		}
 		// Multi-faced card (split, double-faced...): replaces the merged
@@ -128,6 +184,7 @@ export function renderCardDescriptionBox(
 			header.remove();
 			textEl.remove();
 			renderCardDescriptionFaces(box, info.faces, (letter) => host.plugin.getManaSymbolSvg(letter));
+			settleHeight();
 			return;
 		}
 		// An empty oracle_text is a real response (vanilla creature with no
@@ -147,6 +204,11 @@ export function renderCardDescriptionBox(
 				text: `${info.power ?? "?"}/${info.toughness ?? "?"}`,
 			});
 		}
+		settleHeight();
+	}).finally(() => {
+		// Whatever happened (a stale answer, an error), a box still holding the previous height without a transition running must not stay
+		// clipped for good.
+		if (box.hasClass("is-resizing") && !box.hasClass("is-resizing-play")) unlockHeight();
 	});
 }
 
@@ -432,33 +494,45 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 		renderDayChangeBadge(ckChangeEl, dayChangeIfFresh(history, "cardkingdom"));
 	});
 
-	void host.plugin.getManaPoolPrice(requestedId, storeFinish).then((result) => {
+	void host.plugin.getManaPoolPrice(requestedId, storeFinish, { setCode: card.setCode, collectorNumber: card.collectorNumber }).then((result) => {
 		if (host.currentScryfallId() !== requestedId) return;
 		mpValueEl.removeClass("mtg-loading-dots");
 		if (!result) {
 			mpValueEl.setText("—");
-			// On phone / tablet the pricelist isn't loaded at all (too big for memory, see manaPoolPricesSupported): say so,
-			// rather than letting people think Mana Pool doesn't sell this card.
-			if (!manaPoolPricesSupported()) {
-				mpDetailEl.setText("Not on mobile");
-				mpDetailEl.addClass("is-note");
-			}
 			mpCol.addClass("is-unavailable");
 			return;
 		}
-		// Price fell back to "the lowest available" for lack of an NM copy in
-		// stock at Mana Pool — flagged in a tooltip rather than silently, so as
-		// not to pass a "Played" price off as Near Mint (same reasoning as the
-		// TCGplayer clarification above).
-		if (!result.isNearMint) {
+		if (result.source === "price-history") {
+			// Phone / tablet: the price comes from our own files (MTGJSON), not from Mana Pool's price list, which a phone cannot load. It is the lowest price
+			// across all conditions, a day old at best: said in a tooltip, like the other two cases, so that it is not mistaken for the live Near Mint price a
+			// computer shows. The short date is the one the "As of Sep 9" labels use.
+			mpCol.setAttribute(
+				"title",
+				`Lowest price across all conditions on Mana Pool, not necessarily Near Mint. From MTGJSON, as of ${formatAsOfShort(result.asOf ?? "", Date.now())} — not live.`
+			);
+		} else if (!result.isNearMint) {
+			// Price fell back to "the lowest available" for lack of an NM copy in
+			// stock at Mana Pool — flagged in a tooltip rather than silently, so as
+			// not to pass a "Played" price off as Near Mint (same reasoning as the
+			// TCGplayer clarification above).
 			mpCol.setAttribute(
 				"title",
 				"No Near Mint copy in stock on Mana Pool right now — showing the lowest available condition instead."
 			);
 		}
 		mpValueEl.setText(formatMoney(result.priceCents / 100, "usd"));
-		mpDetailEl.setText(result.isNearMint ? "Near Mint" : "Lowest available");
-		mpCol.addEventListener("click", () => openExternalUrl(result.url));
+		if (result.source === "price-history") {
+			// Two lines, "Lowest" then the day ("Oct 15"): a phone's column is ~58 px wide, "Lowest available" was cut into "Lowest a…" and the day only
+			// lived in the tooltip, which a touch screen cannot show. `is-note` lets a long date ("Oct 15, 2025") wrap instead of being cut off, like the
+			// "As of Sep 9" label of Cardmarket.
+			mpDetailEl.createSpan({ text: "Lowest" });
+			mpDetailEl.createEl("br");
+			mpDetailEl.createSpan({ text: formatAsOfShort(result.asOf ?? "", Date.now()) });
+			mpDetailEl.addClass("is-note");
+		} else {
+			mpDetailEl.setText(result.isNearMint ? "Near Mint" : "Lowest available");
+		}
+		if (result.url) mpCol.addEventListener("click", () => openExternalUrl(result.url));
 	});
 
 	void host.plugin.getCardbasePriceHistoryWithNativeCardmarket(requestedId, cardbaseFinish).then((history) => {

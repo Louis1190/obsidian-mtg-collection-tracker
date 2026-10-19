@@ -2,7 +2,10 @@ import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const net = vi.hoisted(() => ({ steps: [] as (() => unknown)[], urls: [] as string[] }));
+// `Platform.isMobileApp` is read by manaPoolPricesSupported (a phone reads Mana Pool's price from our files): a test sets it.
+const platform = vi.hoisted(() => ({ isMobileApp: false }));
 vi.mock("obsidian", () => ({
+	Platform: platform,
 	arrayBufferToBase64: () => "",
 	requestUrl: async (params: { url: string }) => {
 		net.urls.push(params.url);
@@ -13,7 +16,7 @@ vi.mock("obsidian", () => ({
 
 import { CARDBASE_SOURCE, type CardbaseFinish, type CardbasePriceHistory } from "../api/cardbase";
 import { getCardbaseCardmarketId, getCardbasePriceHistory, getCardbasePriceHistoryWithNativeCardmarket, getCardmarketNativePrices, prefetchCardbaseNeighbors } from "./cardbase-cache";
-import { getOwnPriceHistory, getPriceHistoryBase, getPriceHistoryShard, ownPriceHistoryEnabled } from "./price-history-cache";
+import { getOwnManaPoolPrice, getOwnPriceHistory, getPriceHistoryBase, getPriceHistoryShard, ownPriceHistoryEnabled } from "./price-history-cache";
 import type MTGCollectionPlugin from "../plugin";
 
 const buffer = (b: Uint8Array) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
@@ -42,6 +45,7 @@ function fakePlugin(baseUrl = "https://hist.test", extra: Record<string, unknown
 		getPriceHistoryBase,
 		getPriceHistoryShard,
 		getOwnPriceHistory,
+		getOwnManaPoolPrice,
 		...extra,
 	} as unknown as MTGCollectionPlugin;
 }
@@ -291,12 +295,12 @@ describe("the card detail's entry point, with and without our files (the cardbas
 		expect(calls).toEqual({ own: 0, cardbase: 1, cardmarketId: 1 });
 	});
 
-	it("neighbours: on, only the window around the card is preloaded, from our files; off, from cardbase as before", async () => {
+	it("neighbours: on, the 5 cards each side are preloaded from our files; off, only the 2 each side of cardbase's smaller allowance, as before", async () => {
 		const items = Array.from({ length: 20 }, (_, i) => ({ scryfallId: `id${i}`, finish: "normal" as CardbaseFinish }));
 		const asked: string[] = [];
 		const on = { ownPriceHistoryEnabled: () => true, getOwnPriceHistory: async (id: string) => { asked.push(`own:${id}`); }, getCardbasePriceHistory: async (id: string) => { asked.push(`cardbase:${id}`); }, cardbasePrefetchWindow: () => 2, cardbasePriceHistoryCache: new Map() } as unknown as MTGCollectionPlugin;
 		await prefetchCardbaseNeighbors.call(on, items, 10);
-		expect(asked.sort()).toEqual(["own:id11", "own:id12", "own:id8", "own:id9"]);
+		expect(asked.sort()).toEqual(["own:id11", "own:id12", "own:id13", "own:id14", "own:id15", "own:id5", "own:id6", "own:id7", "own:id8", "own:id9"]);
 		asked.length = 0;
 		const off = { ownPriceHistoryEnabled: () => false, getOwnPriceHistory: async (id: string) => { asked.push(`own:${id}`); }, getCardbasePriceHistory: async (id: string) => { asked.push(`cardbase:${id}`); }, cardbasePrefetchWindow: () => 2, cardbasePriceHistoryCache: new Map() } as unknown as MTGCollectionPlugin;
 		const run = prefetchCardbaseNeighbors.call(off, items, 10);
@@ -350,10 +354,34 @@ describe("the same entry points with the cardbase.dev source switched OFF (as sh
 		const asked: string[] = [];
 		const make = (enabled: boolean) => ({ ownPriceHistoryEnabled: () => enabled, getOwnPriceHistory: async (id: string) => { asked.push(`own:${id}`); }, getCardbasePriceHistory: async (id: string) => { asked.push(`cardbase:${id}`); }, cardbasePrefetchWindow: () => 2, cardbasePriceHistoryCache: new Map() }) as unknown as MTGCollectionPlugin;
 		await prefetchCardbaseNeighbors.call(make(true), items, 10);
-		expect(asked.sort()).toEqual(["own:id11", "own:id12", "own:id8", "own:id9"]);
+		expect(asked).toHaveLength(10);
+		expect(asked.every((a) => a.startsWith("own:"))).toBe(true);
 		asked.length = 0;
 		await prefetchCardbaseNeighbors.call(make(false), items, 10);
 		expect(asked).toEqual([]);
+	});
+
+	it("neighbours on a phone: the Mana Pool file of each card is warmed too (a computer reads Mana Pool's own list instead)", async () => {
+		const items = Array.from({ length: 20 }, (_, i) => ({ scryfallId: `id${i}`, finish: "normal" as CardbaseFinish }));
+		const asked: string[] = [];
+		const plugin = {
+			ownPriceHistoryEnabled: () => true,
+			getOwnPriceHistory: async (id: string) => { asked.push(`s:${id}`); },
+			getPriceHistoryShard: async (id: string, folder: string) => { asked.push(`${folder}:${id}`); },
+			cardbasePrefetchWindow: () => 2,
+		} as unknown as MTGCollectionPlugin;
+		platform.isMobileApp = true;
+		try {
+			await prefetchCardbaseNeighbors.call(plugin, items, 10);
+			expect(asked.filter((a) => a.startsWith("mp:")).sort()).toEqual(["mp:id11", "mp:id12", "mp:id13", "mp:id14", "mp:id15", "mp:id5", "mp:id6", "mp:id7", "mp:id8", "mp:id9"]);
+			expect(asked.filter((a) => a.startsWith("s:"))).toHaveLength(10);
+			asked.length = 0;
+			platform.isMobileApp = false;
+			await prefetchCardbaseNeighbors.call(plugin, items, 10);
+			expect(asked.some((a) => a.startsWith("mp:"))).toBe(false);
+		} finally {
+			platform.isMobileApp = false;
+		}
 	});
 
 	it("the three cardbase getters answer their \"nothing\" at once, without touching their caches or retrying", async () => {
@@ -371,5 +399,70 @@ describe("the same entry points with the cardbase.dev source switched OFF (as sh
 		await expect(getCardbasePriceHistory.call(plugin, "abc00001", "normal")).resolves.toBeUndefined();
 		await expect(getCardbaseCardmarketId.call(plugin, "abc00001")).resolves.toBeNull();
 		await expect(getCardmarketNativePrices.call(plugin, 123)).resolves.toBeUndefined();
+	});
+});
+
+// The Mana Pool set (mp/): read on phones and tablets only, through the same cache as the main set.
+describe("the Mana Pool set for phones", () => {
+	const mpShardOf = (...ids: string[]) => {
+		const body: Record<string, unknown> = { _: { v: 1, asOf: "2026-10-13" } };
+		for (const id of ids) body[id] = { "mp.n": [20737, 20739, [0, 200], [2, 250]], "mp.f": [20737, 20739, [0, 900]] };
+		return () => ({ status: 200, headers: {}, arrayBuffer: buffer(gzipSync(JSON.stringify(body))) });
+	};
+
+	it("is off with the rest of the feature: no service address, no request", async () => {
+		const plugin = fakePlugin("");
+		script(mpShardOf("abc00001"));
+		await expect(getOwnManaPoolPrice.call(plugin, "abc00001", "normal")).resolves.toBeUndefined();
+		expect(net.urls).toEqual([]);
+	});
+
+	it("reads the price from <address>/mp/<xyz>.json.gz, for the finish asked, and the day it is from", async () => {
+		const plugin = fakePlugin();
+		script(mpShardOf("abc00001"));
+		await expect(getOwnManaPoolPrice.call(plugin, "abc00001", "normal")).resolves.toEqual({ priceCents: 250, date: "2026-10-13" });
+		await expect(getOwnManaPoolPrice.call(plugin, "abc00001", "foil")).resolves.toEqual({ priceCents: 900, date: "2026-10-13" });
+		await expect(getOwnManaPoolPrice.call(plugin, "abc00001", "etched")).resolves.toBeUndefined();
+		expect(net.urls).toEqual(["https://hist.test/mp/abc.json.gz"]);
+	});
+
+	it("shares one download between the cards of a file and the simultaneous asks, and keeps its cache apart from the main set's", async () => {
+		const plugin = fakePlugin();
+		script(mpShardOf("abc00001", "abc00002"));
+		await Promise.all([
+			getOwnManaPoolPrice.call(plugin, "abc00001", "normal"),
+			getOwnManaPoolPrice.call(plugin, "abc00002", "normal"),
+			getOwnManaPoolPrice.call(plugin, "abc00001", "foil"),
+		]);
+		expect(net.urls).toEqual(["https://hist.test/mp/abc.json.gz"]);
+		// The history of the same card lives in the main set: its own file is downloaded, and the Mana Pool shard is not taken for it.
+		script(shardOf("abc00001"));
+		await expect(getOwnPriceHistory.call(plugin, "abc00001", "normal")).resolves.toMatchObject({ scryfallId: "abc00001" });
+		expect(net.urls).toEqual(["https://hist.test/mp/abc.json.gz", "https://hist.test/s/abc.json.gz"]);
+		expect(plugin.priceHistoryShardCache.has("abc")).toBe(true);
+		expect(plugin.priceHistoryShardCache.has("mp/abc")).toBe(true);
+	});
+
+	it("a card the files do not have (404) or an unreachable host is no price, never an error, and a failure is not asked again for 30 seconds", async () => {
+		const plugin = fakePlugin();
+		script(status(404));
+		await expect(getOwnManaPoolPrice.call(plugin, "abc00001", "normal")).resolves.toBeUndefined();
+		script(status(500));
+		const failing = getOwnManaPoolPrice.call(plugin, "def00001", "normal");
+		await vi.advanceTimersByTimeAsync(400);
+		await expect(failing).resolves.toBeUndefined();
+		const asked = net.urls.length;
+		await expect(getOwnManaPoolPrice.call(plugin, "def00002", "normal")).resolves.toBeUndefined();
+		expect(net.urls).toHaveLength(asked);
+	});
+
+	it("a Mana Pool shard and a main shard of the same name never pause or replace each other", async () => {
+		const plugin = fakePlugin();
+		script(status(500));
+		const failing = getOwnManaPoolPrice.call(plugin, "abc00001", "normal");
+		await vi.advanceTimersByTimeAsync(400);
+		await failing;
+		script(shardOf("abc00001"));
+		await expect(getOwnPriceHistory.call(plugin, "abc00001", "normal")).resolves.toMatchObject({ scryfallId: "abc00001" });
 	});
 });

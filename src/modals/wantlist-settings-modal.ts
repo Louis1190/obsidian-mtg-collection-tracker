@@ -37,9 +37,10 @@ import {
 // of full-width actions (Copy/Move/Delete, Clear/Merge duplicates/Merge wantlists,
 // Export/Copy to clipboard/Import), same "Save and close" at the very bottom. Unlike
 // InboxSettingsModal (a deliberately reduced variant of List settings, two actions
-// fewer): here NO exclusion, an ordinary wantlist has neither the "Inbox" concept
-// (hence no isInbox filter in the merge gallery) nor the deleteList/renameList
-// safeguard that justified those exclusions on the Inbox side.
+// fewer): here NO exclusion, an ordinary wantlist has no deleteWantlist/renameWantlist
+// safeguard to respect — only the merge gallery leaves the Inbox out (isInbox filter),
+// since the Inbox has its own modal (InboxSettingsModal, kind "wantlist") and can
+// never be merged away.
 
 export class WantlistSettingsModal extends Modal {
 	private plugin: MTGCollectionPlugin;
@@ -135,7 +136,9 @@ export class WantlistSettingsModal extends Modal {
 		// Screen for choosing the 2nd entity (renderMergeTargetScreen, entity-settings-screens.ts); the merge itself
 		// is delegated to MergeWantlistsModal (merge-modals.ts).
 		if (this.pickingMergeTarget) {
-			const otherWantlists = this.plugin.settings.wantlists.filter((w) => w.id !== wantlist.id);
+			// Inbox excluded, like the list side: mergeWantlists silently ignores it, so
+			// offering it would let a click appear to do something it would not.
+			const otherWantlists = this.plugin.settings.wantlists.filter((w) => w.id !== wantlist.id && !w.isInbox);
 			renderMergeTargetScreen(contentEl, {
 				noun: "wantlist",
 				currentName: wantlist.name,

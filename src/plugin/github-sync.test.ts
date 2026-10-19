@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { settingsEqual } from "../core/settings-merge";
+import { INBOX_WANTLIST_ID, ensureInboxWantlistIn } from "../core/data-model";
+import { healInboxesInPlace } from "./settings-sync";
 import {
 	githubStatusLine,
 	pushDelay,
@@ -265,6 +267,211 @@ describe("two devices through GitHub", () => {
 		expect(ids(ipad)).toEqual(["a", "x", "y"]);
 		expect(ids(mac)).toEqual(["a", "x", "y"]);
 		expect(settingsEqual(mac.settings, ipad.settings)).toBe(true);
+	});
+});
+
+describe("the wantlist Inbox, created by every device at startup", () => {
+	// ensureInboxWantlist runs from the migrations, BEFORE the first sync: each device invents its Inbox on its own.
+	// A random id would leave two of them (the merge never deduces a deletion from an absence): the id is fixed.
+	it("two devices that both created it, each with a card in it, end with ONE Inbox and both cards", async () => {
+		const mac = await ghDevice([card("a")], 1000);
+		const ipad = await seededDevice([card("a")], 1000);
+		enableGithub(ipad, gh);
+		setNow(1100);
+		ensureInboxWantlistIn(mac.settings.wantlists, 1100);
+		mac.settings.wantlist = [card("m", { listId: INBOX_WANTLIST_ID })];
+		await mac.persistSettings();
+		setNow(1200);
+		ensureInboxWantlistIn(ipad.settings.wantlists, 1200);
+		ipad.settings.wantlist = [card("i", { listId: INBOX_WANTLIST_ID })];
+		await ipad.persistSettings();
+		mac.resetGithubSync();
+		await mac.github.chain;
+		ipad.resetGithubSync();
+		await ipad.github.chain;
+		await sync(mac, "poll");
+		await sync(ipad, "poll");
+		await sync(mac, "poll");
+		for (const dev of [mac, ipad]) {
+			expect(dev.settings.wantlists.filter((w: Obj) => w.isInbox).map((w: Obj) => w.id)).toEqual([INBOX_WANTLIST_ID]);
+			expect(dev.settings.wantlist.map((c: Obj) => c.id).sort()).toEqual(["i", "m"]);
+		}
+		expect(remote().wantlists.filter((w: Obj) => w.isInbox)).toHaveLength(1);
+		// the Inbox's cards travel in a shard of their own, named after the fixed id
+		expect(ghShardNames(gh)).toContain("wantlist-inbox.json.gz");
+		expect(settingsEqual(mac.settings, ipad.settings)).toBe(true);
+	});
+});
+
+describe("the collection Inbox, created by every device at startup (random id)", () => {
+	const inboxIds = (dev: Obj) => dev.settings.lists.filter((l: Obj) => l.isInbox).map((l: Obj) => l.id);
+	const cardLists = (dev: Obj) => Object.fromEntries(dev.settings.collection.map((c: Obj) => [c.id, c.listId]));
+
+	async function macAndFresh() {
+		const mac = await ghDevice([card("m", { listId: "macinbox" }), card("a", { listId: "L1" })], 1000);
+		mac.settings.lists = [
+			{ id: "macinbox", name: "Inbox", dateCreated: 900, isInbox: true },
+			{ id: "L1", name: "Binder", dateCreated: 950 },
+		];
+		await mac.persistSettings();
+		// a brand-new installation: what ensureInboxList does at startup, then the user adds a card to it
+		const fresh = await seededDevice([card("f", { listId: "freshinbox", dateAdded: 1200, dateModified: 1200 })], 1200);
+		fresh.settings.lists = [{ id: "freshinbox", name: "Inbox", dateCreated: 1190, isInbox: true }];
+		await fresh.persistSettings();
+		enableGithub(fresh, gh);
+		for (const d of [mac, fresh]) {
+			d.resetGithubSync();
+			await d.github.chain;
+		}
+		return { mac, fresh };
+	}
+
+	it("a brand-new device joining ends with ONE Inbox (the older one), and its cards moved into it", async () => {
+		const { mac, fresh } = await macAndFresh();
+		setNow(2000);
+		await sync(mac, "poll");
+		await sync(fresh, "poll");
+		await sync(mac, "poll");
+		await sync(fresh, "poll");
+		for (const dev of [mac, fresh]) {
+			expect(inboxIds(dev)).toEqual(["macinbox"]);
+			expect(dev.settings.lists.map((l: Obj) => l.id).sort()).toEqual(["L1", "macinbox"]);
+			expect(cardLists(dev)).toEqual({ m: "macinbox", a: "L1", f: "macinbox" });
+		}
+		expect(remote().lists.filter((l: Obj) => l.isInbox).map((l: Obj) => l.id)).toEqual(["macinbox"]);
+		expect(remote().collection.find((c: Obj) => c.id === "f").listId).toBe("macinbox");
+		expect(settingsEqual(mac.settings, fresh.settings)).toBe(true);
+	});
+
+	it("the first device to see both can be either one: same result", async () => {
+		const { mac, fresh } = await macAndFresh();
+		setNow(2000);
+		await sync(fresh, "poll"); // fresh first this time
+		await sync(mac, "poll");
+		await sync(fresh, "poll");
+		await sync(mac, "poll");
+		for (const dev of [mac, fresh]) {
+			expect(inboxIds(dev)).toEqual(["macinbox"]);
+			expect(cardLists(dev)).toEqual({ m: "macinbox", a: "L1", f: "macinbox" });
+		}
+		expect(settingsEqual(mac.settings, fresh.settings)).toBe(true);
+	});
+
+	it("is quiet once healed: nothing more is sent or written", async () => {
+		const { mac, fresh } = await macAndFresh();
+		setNow(2000);
+		for (const d of [mac, fresh, mac, fresh]) await sync(d, "poll");
+		const puts = gh.count("PUT");
+		const writes = [mac, fresh].map((d) => d.fs.dataWrites);
+		for (let i = 0; i < 3; i++) {
+			setNow(3000 + i * 60_000);
+			for (const d of [mac, fresh]) await sync(d, "poll");
+		}
+		expect(gh.count("PUT")).toBe(puts);
+		expect([mac, fresh].map((d) => d.fs.dataWrites)).toEqual(writes);
+	});
+
+	it("the emptied Inbox's shard is rewritten empty, so the cards are not left in two places on GitHub", async () => {
+		const { mac, fresh } = await macAndFresh();
+		setNow(2000);
+		for (const d of [fresh, mac, fresh]) await sync(d, "poll");
+		const stale = ghState(gh).collection.filter((c: Obj) => c.listId === "freshinbox");
+		expect(stale).toEqual([]);
+		// a third device joining later sees the one Inbox and one copy of each card
+		const third = await deviceWith();
+		enableGithub(third, gh);
+		third.resetGithubSync();
+		await third.github.chain;
+		await third.persistChain;
+		expect(inboxIds(third)).toEqual(["macinbox"]);
+		expect(third.settings.collection.map((c: Obj) => c.id).sort()).toEqual(["a", "f", "m"]);
+	});
+
+	it("a device that added cards to the dropped Inbox meanwhile gets them adopted, not left pointing at nothing", async () => {
+		const { mac, fresh } = await macAndFresh();
+		// a device that has not synced since it created its own Inbox (or is still on a version without the heal)
+		const late = await seededDevice([card("late", { listId: "lateinbox", dateAdded: 1500, dateModified: 1500 })], 1500);
+		late.settings.lists = [{ id: "lateinbox", name: "Inbox", dateCreated: 1450, isInbox: true }];
+		await late.persistSettings();
+		enableGithub(late, gh);
+		// mac and fresh heal, and a SECOND Inbox is then dropped for good: freshinbox now has a tombstone
+		setNow(2000);
+		for (const d of [mac, fresh, mac, fresh]) await sync(d, "poll");
+		expect(ghState(gh).syncTombstones?.lists).toHaveProperty("freshinbox");
+		// the offline device had added a card to ITS Inbox, which the tombstone (as of a later heal) then removes
+		late.settings.collection.push(card("late2", { listId: "freshinbox", dateAdded: 1800, dateModified: 1800 }));
+		late.settings.lists.push({ id: "freshinbox", name: "Inbox", dateCreated: 1190, isInbox: true });
+		await late.persistSettings();
+		setNow(3000);
+		late.resetGithubSync();
+		await late.github.chain;
+		await late.persistChain;
+		for (const d of [mac, fresh, late, mac, fresh, late]) await sync(d, "poll");
+		for (const dev of [mac, fresh, late]) {
+			expect(inboxIds(dev)).toEqual(["macinbox"]);
+			for (const c of dev.settings.collection) {
+				expect(dev.settings.lists.some((l: Obj) => l.id === c.listId), `${c.id} points at a missing list (${c.listId})`).toBe(true);
+			}
+			expect(dev.settings.collection.map((c: Obj) => c.id).sort()).toEqual(["a", "f", "late", "late2", "m"]);
+		}
+		expect(settingsEqual(mac.settings, late.settings)).toBe(true);
+	});
+
+	it("a card added to the dropped Inbox after the tombstone is adopted by the device that receives it", async () => {
+		const { mac, fresh } = await macAndFresh();
+		setNow(2000);
+		for (const d of [mac, fresh, mac, fresh]) await sync(d, "poll");
+		// a device that still adds to the Inbox it knew (an old version, a stale copy) pushes a card pointing at it
+		setNow(4000);
+		fresh.settings.collection.push(card("g", { listId: "freshinbox", dateAdded: 4000, dateModified: 4000 }));
+		await fresh.persistSettings();
+		fresh.markGithubDirty();
+		await sync(fresh, "push");
+		expect(ghState(gh).collection.find((c: Obj) => c.id === "g").listId).toBe("freshinbox");
+		for (const d of [mac, fresh, mac]) await sync(d, "poll");
+		for (const dev of [mac, fresh]) {
+			expect(cardLists(dev).g).toBe("macinbox");
+			expect(inboxIds(dev)).toEqual(["macinbox"]);
+		}
+		expect(settingsEqual(mac.settings, fresh.settings)).toBe(true);
+	});
+
+	it("two devices that both already hold both Inboxes heal on their own, at different moments, and agree", async () => {
+		// one shared file, as a user who synced with an earlier version has: both Inboxes and their cards
+		const seed = {
+			text: JSON.stringify({
+				lists: [
+					{ id: "macinbox", name: "Inbox", dateCreated: 900, isInbox: true, dateModified: 900 },
+					{ id: "freshinbox", name: "Inbox", dateCreated: 1190, isInbox: true, dateModified: 1190 },
+				],
+				collection: [card("m", { listId: "macinbox" }), card("f", { listId: "freshinbox" })],
+			}),
+			mtime: 1500,
+		};
+		const a = await deviceWith(seed);
+		const b = await deviceWith(seed);
+		enableGithub(a, gh);
+		enableGithub(b, gh);
+		// what ensureInboxList does at load (migrations.ts), at two different moments
+		setNow(2000);
+		expect(healInboxesInPlace(a as never)).toBe(true);
+		await a.persistSettings();
+		setNow(2600);
+		expect(healInboxesInPlace(b as never)).toBe(true);
+		await b.persistSettings();
+		for (const d of [a, b]) {
+			d.resetGithubSync();
+			await d.github.chain;
+		}
+		for (const d of [a, b, a, b]) await sync(d, "poll");
+		for (const dev of [a, b]) {
+			expect(inboxIds(dev)).toEqual(["macinbox"]);
+			expect(cardLists(dev)).toEqual({ m: "macinbox", f: "macinbox" });
+		}
+		expect(settingsEqual(a.settings, b.settings)).toBe(true);
+		const puts = gh.count("PUT");
+		for (const d of [a, b, a, b]) await sync(d, "poll");
+		expect(gh.count("PUT")).toBe(puts);
 	});
 });
 
@@ -1286,6 +1493,8 @@ describe("random sessions through GitHub", () => {
 	const MARGIN_MS = 10_000;
 	const SEEDS = Number(process.env.SYNC_STRESS_SEEDS ?? 25);
 	const STEPS = Number(process.env.SYNC_STRESS_STEPS ?? 120);
+	// Share of the steps that are about the Inbox (SYNC_INBOX_OPS=0 gives the sessions as they were before the Inbox heal).
+	const INBOX_OPS = Number(process.env.SYNC_INBOX_OPS ?? 0.1);
 	for (let seed = 1; seed <= SEEDS; seed++) {
 		it(`seed ${seed}${seed % 2 === 0 ? " (+ Syncthing)" : ""}`, async () => {
 			const rnd = mulberry32(seed);
@@ -1308,10 +1517,38 @@ describe("random sessions through GitHub", () => {
 			const lastTouched = new Map<string, number>(keys.map((k) => [k, 100]));
 			const lastDeleted = new Map<string, number>();
 			const everDeleted = new Set<string>();
+			// Devices that invent an Inbox of their own before they have seen another one (what ensureInboxList does at a
+			// first start) and add cards to it. Drawn from a SECOND generator so the sessions above stay exactly as they were.
+			const rndI = mulberry32(seed * 7919 + 13);
+			const inboxIds = new Set<string>();
+			const inboxCards = new Set<string>();
+			let inboxSeq = 0;
 
 			for (let step = 0; step < STEPS; step++) {
 				t += 1000;
 				setNow(t);
+				if (rndI() < INBOX_OPS) {
+					const idev = devices[Math.floor(rndI() * devices.length)];
+					const mine = idev.settings.lists.find((l: Obj) => l.isInbox);
+					if (!mine) {
+						const id = `inbox${inboxSeq++}`;
+						idev.settings.lists.unshift({ id, name: "Inbox", dateCreated: t, isInbox: true });
+						inboxIds.add(id);
+					} else if (rndI() < 0.7) {
+						const id = `ic${nextId++}`;
+						idev.settings.collection.push(card(id, { listId: mine.id, dateAdded: t, dateModified: t }));
+						lastTouched.set(id, t);
+						keys.push(id);
+						inboxCards.add(id);
+					}
+					idev.dataVersion++;
+					idev.markGithubDirty();
+					await idev.persistSettings();
+					// Two devices must never write at the very same millisecond (hybrid sessions: Syncthing's "newest file wins"
+					// has nothing to pick between equal dates).
+					t += 7;
+					setNow(t);
+				}
 				const dev = pick(devices);
 				const op = rnd();
 				const list: Obj[] = dev.settings.collection;
@@ -1400,6 +1637,15 @@ describe("random sessions through GitHub", () => {
 			expect(devices.map((d) => d.fs.dataWrites), "data.json kept being rewritten after convergence").toEqual(writes);
 
 			expect(shardTexts().join("\n")).not.toContain("collectionViewMode");
+			// However many Inboxes the devices invented, one is left, and no card points at a dropped one.
+			for (const d of devices) {
+				const found = d.settings.lists.filter((l: Obj) => l.isInbox);
+				expect(found.length, "Inbox count").toBe(inboxIds.size > 0 ? 1 : 0);
+				for (const c of d.settings.collection as Obj[]) {
+					if (c.listId !== undefined && /^inbox/.test(c.listId)) expect(c.listId, `card ${c.id} left in a dropped Inbox`).toBe(found[0].id);
+				}
+			}
+			expect(remote().lists.filter((l: Obj) => l.isInbox).length).toBe(inboxIds.size > 0 ? 1 : 0);
 			const present = new Set<string>([
 				...devices[0].settings.collection.map((x: Obj) => x.id),
 				...devices[0].settings.decks[0].cards.map((x: Obj) => `deck:${x.scryfallId}`),
@@ -1408,7 +1654,8 @@ describe("random sessions through GitHub", () => {
 				const touched = lastTouched.get(k) ?? 0;
 				const deleted = lastDeleted.get(k) ?? 0;
 				if (!everDeleted.has(k)) expect(present.has(k), `${k} was never deleted but is gone`).toBe(true);
-				else if (deleted - touched > MARGIN_MS) expect(present.has(k), `${k} came back`).toBe(false);
+				// (a card of an Inbox may have been moved by the heal: that move counts as a touch the test cannot date)
+				else if (deleted - touched > MARGIN_MS && !inboxCards.has(k)) expect(present.has(k), `${k} came back`).toBe(false);
 				else if (touched - deleted > MARGIN_MS) expect(present.has(k), `${k} was edited after its deletion but is gone`).toBe(true);
 			}
 		});

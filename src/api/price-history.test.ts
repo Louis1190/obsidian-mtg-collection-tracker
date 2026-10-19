@@ -33,6 +33,10 @@ describe("the service address", () => {
 		expect(priceHistoryShardUrl("https://example.test/data/", "b0f")).toBe("https://example.test/data/s/b0f.json.gz");
 		expect(priceHistoryShardUrl("https://example.test/data", "b0f")).toBe("https://example.test/data/s/b0f.json.gz");
 	});
+	it("has a second set of files for Mana Pool (mp/), with the same names, and the main set is still the default", () => {
+		expect(priceHistoryShardUrl("https://example.test/data/", "b0f", "mp")).toBe("https://example.test/data/mp/b0f.json.gz");
+		expect(priceHistoryShardUrl("https://example.test/data", "b0f", "s")).toBe(priceHistoryShardUrl("https://example.test/data", "b0f"));
+	});
 	it("needs gunzip to read anything", () => {
 		expect(priceHistoryReadable()).toBe(true); // Node 24 has DecompressionStream, like Obsidian's Chromium
 	});
@@ -47,6 +51,16 @@ describe("fetchPriceHistoryShard", () => {
 		expect(net.calls).toHaveLength(1);
 		expect(net.calls[0].url).toBe("https://example.test/s/abc.json.gz");
 		expect(net.calls[0].headers?.["User-Agent"]).toMatch(/^ObsidianMTGCollectionTracker\//);
+	});
+
+	it("asks for the Mana Pool set (mp/) when told to, with the same limits and the same plugin identity", async () => {
+		script(ok(gzipSync(shardJson)));
+		const shard = await fetchPriceHistoryShard("https://example.test", "ABC12345-0000", "mp");
+		expect(shard?.asOf).toBe("2026-10-13");
+		expect(net.calls[0].url).toBe("https://example.test/mp/abc.json.gz");
+		expect(net.calls[0].headers?.["User-Agent"]).toMatch(/^ObsidianMTGCollectionTracker\//);
+		script(status(404));
+		await expect(fetchPriceHistoryShard("https://example.test", "abc", "mp")).resolves.toBeNull();
 	});
 
 	it("also reads a shard a CDN has already decompressed", async () => {

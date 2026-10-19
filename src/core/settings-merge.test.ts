@@ -12,6 +12,7 @@ import {
 	TOMBSTONE_TTL_MS,
 	Tombstones,
 } from "./settings-merge";
+import { healInboxes } from "./data-model";
 
 type Obj = Record<string, any>;
 
@@ -131,6 +132,74 @@ describe("mergeSettings — presence", () => {
 		const local = settings({ lists: [{ id: "L1", name: "Old" }] });
 		const remote = settings({ syncTombstones: { lists: { L1: 10 } } });
 		expect(run(null, local, remote).merged.lists).toEqual([]);
+	});
+});
+
+describe("mergeSettings — the wantlist Inbox created on every device", () => {
+	// Each device creates its Inbox at startup, before the first sync (ensureInboxWantlistIn).
+	const inbox = (dateCreated: number, id = "inbox"): Obj => ({ id, name: "Inbox", dateCreated, isInbox: true });
+
+	it("two devices that each created it end up with ONE Inbox (same fixed id)", () => {
+		const { merged } = run(null, settings({ wantlists: [inbox(100)] }), settings({ wantlists: [inbox(250)] }));
+		expect(ids(merged.wantlists)).toEqual(["inbox"]);
+		expect(merged.wantlists.filter((w: Obj) => w.isInbox)).toHaveLength(1);
+	});
+
+	it("keeps the Inbox's cards from both devices", () => {
+		const local = settings({ wantlists: [inbox(100)], wantlist: [card("a", { listId: "inbox" })] });
+		const remote = settings({ wantlists: [inbox(250)], wantlist: [card("b", { listId: "inbox" })] });
+		const { merged } = run(null, local, remote);
+		expect(ids(merged.wantlist).sort()).toEqual(["a", "b"]);
+		expect(ids(merged.wantlists)).toEqual(["inbox"]);
+	});
+
+	it("a device that has the Inbox already and one that just created it stay at one", () => {
+		const local = settings({ wantlists: [inbox(100), { id: "w1", name: "Trades", dateCreated: 5 }] });
+		const remote = settings({ wantlists: [inbox(900)] });
+		expect(ids(run(null, local, remote).merged.wantlists).sort()).toEqual(["inbox", "w1"]);
+	});
+
+	it("(why the id is fixed) two random ids would be kept as TWO Inboxes", () => {
+		const { merged } = run(null, settings({ wantlists: [inbox(100, "k1a")] }), settings({ wantlists: [inbox(250, "k2b")] }));
+		expect(merged.wantlists.filter((w: Obj) => w.isInbox)).toHaveLength(2);
+	});
+});
+
+describe("mergeSettings — the collection Inbox (random id), once healed", () => {
+	const inbox = (id: string, dateCreated: number): Obj => ({ id, name: "Inbox", dateCreated, isInbox: true });
+	const stale = () =>
+		settings({
+			// "zzz" sorts AFTER "aaa" in the canonical form the tie-break compares, so a card that kept its old date would
+			// lose to the stale copy of the other device (the order is part of the point)
+			lists: [inbox("aaa-inbox", 100), inbox("zzz-inbox", 200)],
+			collection: [card("c", { listId: "zzz-inbox", dateModified: 100 })],
+		});
+
+	it("a card moved by the heal beats the stale copy another device still holds (it is stamped forward)", () => {
+		const local = stale();
+		healInboxes(local as never, 5000);
+		const { merged } = run(null, local, stale());
+		expect(merged.collection.find((c: Obj) => c.id === "c").listId).toBe("aaa-inbox");
+	});
+
+	it("(why it is stamped) the same move without a newer date loses the tie to the stale copy", () => {
+		const local = stale();
+		healInboxes(local as never, 5000);
+		local.collection[0].dateModified = 100; // what a move that forgot to stamp would leave
+		const { merged } = run(null, local, stale());
+		expect(merged.collection.find((c: Obj) => c.id === "c").listId).toBe("zzz-inbox");
+	});
+
+	it("the dropped Inbox stays dropped with its tombstone, whichever order the devices merge in", () => {
+		const a = stale();
+		healInboxes(a as never, 5000);
+		a.syncTombstones = { lists: { "zzz-inbox": 5000 } };
+		const ab = run(null, a, stale()).merged;
+		const ba = run(null, stale(), a).merged;
+		for (const m of [ab, ba]) {
+			expect(ids(m.lists)).toEqual(["aaa-inbox"]);
+			expect(m.collection[0].listId).toBe("aaa-inbox");
+		}
 	});
 });
 

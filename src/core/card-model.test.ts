@@ -8,6 +8,9 @@ import {
 	getCondition,
 	CONDITIONS,
 	isAlphaSet,
+	hasDistinctArtCrop,
+	formatArtistCredit,
+	CARD_COPYRIGHT_LINE,
 } from "./card-model";
 
 describe("getFinishLabel", () => {
@@ -101,6 +104,18 @@ describe("getCondition", () => {
 	});
 });
 
+describe("hasDistinctArtCrop", () => {
+	it("is true when the art crop is its own picture", () => {
+		expect(hasDistinctArtCrop({ artCropUrl: "art.jpg", imageUrl: "card.jpg" })).toBe(true);
+	});
+
+	it("is false when there is no art crop, or it is just the whole-card scan", () => {
+		expect(hasDistinctArtCrop({ artCropUrl: "", imageUrl: "card.jpg" })).toBe(false);
+		expect(hasDistinctArtCrop({ imageUrl: "card.jpg" })).toBe(false);
+		expect(hasDistinctArtCrop({ artCropUrl: "card.jpg", imageUrl: "card.jpg" })).toBe(false);
+	});
+});
+
 describe("isAlphaSet", () => {
 	it("is true only for Limited Edition Alpha, case-insensitively", () => {
 		expect(isAlphaSet("lea")).toBe(true);
@@ -110,5 +125,25 @@ describe("isAlphaSet", () => {
 	it("is false for any other set code", () => {
 		expect(isAlphaSet("leb")).toBe(false);
 		expect(isAlphaSet("")).toBe(false);
+	});
+});
+
+describe("formatArtistCredit", () => {
+	it("names the illustrator", () => {
+		expect(formatArtistCredit("Seb McKinnon")).toBe("Illustrated by Seb McKinnon");
+	});
+
+	it("is empty when the artist is unknown, so only the copyright line remains", () => {
+		expect(formatArtistCredit("")).toBe("");
+		expect(formatArtistCredit("   ")).toBe("");
+		expect(formatArtistCredit(undefined)).toBe("");
+	});
+
+	it("trims stray spaces", () => {
+		expect(formatArtistCredit("  Rebecca Guay ")).toBe("Illustrated by Rebecca Guay");
+	});
+
+	it("keeps the copyright wording Scryfall asks to list next to an artwork", () => {
+		expect(CARD_COPYRIGHT_LINE).toContain("Wizards of the Coast");
 	});
 });

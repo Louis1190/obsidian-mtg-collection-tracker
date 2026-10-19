@@ -14,6 +14,8 @@ import {
 	parseCsv,
 	toCsvField,
 	requestScryfall,
+	isScryfallStrictEndpoint,
+	resetScryfallStrictGateForTests,
 	chunk,
 	applySvgColor,
 	dedupeSetsByIcon,
@@ -156,6 +158,46 @@ describe("sanitizeSvg", () => {
 			`<svg><animate attributeName="x" to="1" /><animateTransform attributeName="transform" values="javascript:alert(1)" />` +
 			`<animateMotion path="M0 0" /><set attributeName="x" to="1" /><circle /></svg>`;
 		expect(sanitizeSvg(svg)).toBe("<svg><circle /></svg>");
+	});
+
+	// Bypasses CodeQL reports (js/bad-tag-filter, js/incomplete-multi-character-sanitization): the browser's
+	// HTML parser accepts end tags the regexes did not know, and a single pass lets a removal assemble a new
+	// forbidden fragment out of the text on both sides of it.
+	it("strips a script whose end tag has a space or attributes (browsers accept both)", () => {
+		expect(sanitizeSvg(`<svg><script>alert(1)</script ><circle /></svg>`)).toBe("<svg><circle /></svg>");
+		expect(sanitizeSvg(`<svg><script>alert(1)</script foo="bar"><circle /></svg>`)).toBe("<svg><circle /></svg>");
+		expect(sanitizeSvg(`<svg><script>alert(1)</script/><circle /></svg>`)).toBe("<svg><circle /></svg>");
+	});
+
+	it("strips a foreignObject whose end tag has a space or attributes", () => {
+		expect(sanitizeSvg(`<svg><foreignObject><p>hi</p></foreignObject ><circle /></svg>`)).toBe("<svg><circle /></svg>");
+		expect(sanitizeSvg(`<svg><foreignObject><p>hi</p></foreignObject x="y"><circle /></svg>`)).toBe(
+			"<svg><circle /></svg>",
+		);
+	});
+
+	it("does not leave a script behind when removing one assembles another", () => {
+		expect(sanitizeSvg(`<svg><scr<script></script>ipt>alert(1)</script><circle /></svg>`)).toBe(
+			"<svg><circle /></svg>",
+		);
+	});
+
+	it("does not leave an event handler behind when removing one assembles another", () => {
+		expect(sanitizeSvg(`<svg o onclick="x"nload="y"><circle /></svg>`)).toBe("<svg><circle /></svg>");
+		expect(sanitizeSvg(`<svg o onclick='x'nload='y'><circle /></svg>`)).toBe("<svg><circle /></svg>");
+	});
+
+	it("does not leave a javascript: href behind when removing one assembles another", () => {
+		expect(sanitizeSvg(`<svg><a hr href="javascript:x"ef="javascript:alert(1)">x</a></svg>`)).toBe(
+			"<svg><a>x</a></svg>",
+		);
+		expect(sanitizeSvg(`<svg><a hr href='data:x'ef='javascript:alert(1)'>x</a></svg>`)).toBe("<svg><a>x</a></svg>");
+	});
+
+	it("does not leave an animation tag behind when removing one assembles another", () => {
+		expect(sanitizeSvg(`<svg><anim<set x="1"/>ate attributeName="x" to="1"/><circle /></svg>`)).toBe(
+			"<svg><circle /></svg>",
+		);
 	});
 });
 
@@ -449,6 +491,74 @@ describe("requestScryfall", () => {
 			expect(callTimes.length).toBe(3);
 			expect(callTimes[1] - callTimes[0]).toBeGreaterThanOrEqual(110);
 			expect(callTimes[2] - callTimes[1]).toBeGreaterThanOrEqual(110);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe("the 2-requests-per-second endpoints of Scryfall", () => {
+	it("recognises exactly the four hard-limited endpoints", () => {
+		for (const url of [
+			"https://api.scryfall.com/cards/collection",
+			"https://api.scryfall.com/cards/search?q=x&unique=prints",
+			"https://api.scryfall.com/cards/named?exact=Sol+Ring",
+			"https://api.scryfall.com/cards/random",
+		]) {
+			expect(isScryfallStrictEndpoint(url)).toBe(true);
+		}
+		for (const url of [
+			"https://api.scryfall.com/cards/lea/161", // by set and number: "all other methods"
+			"https://api.scryfall.com/sets/lea",
+			"https://api.scryfall.com/symbology",
+			"https://api.scryfall.com/cards/autocomplete?q=sol",
+		]) {
+			expect(isScryfallStrictEndpoint(url)).toBe(false);
+		}
+	});
+
+	it("keeps /cards/collection requests 550 ms apart, and lets a request that finds the line idle go out at once", async () => {
+		vi.useFakeTimers();
+		try {
+			resetScryfallStrictGateForTests();
+			const callTimes: number[] = [];
+			mockRequestUrl.mockImplementation((() => {
+				callTimes.push(Date.now());
+				return Promise.resolve({ status: 200, json: {} });
+			}) as any);
+			const url = "https://api.scryfall.com/cards/collection";
+			const batch = [requestScryfall({ url }), requestScryfall({ url }), requestScryfall({ url })];
+			await vi.advanceTimersByTimeAsync(3000);
+			await Promise.all(batch);
+			expect(callTimes.length).toBe(3);
+			expect(callTimes[1] - callTimes[0]).toBeGreaterThanOrEqual(550);
+			expect(callTimes[2] - callTimes[1]).toBeGreaterThanOrEqual(550);
+			// a lone request much later: only the 110 ms gate, not 550
+			await vi.advanceTimersByTimeAsync(10_000);
+			const before = Date.now();
+			const lone = requestScryfall({ url });
+			await vi.advanceTimersByTimeAsync(200);
+			await lone;
+			expect(callTimes[3] - before).toBeLessThan(200);
+		} finally {
+			vi.useRealTimers();
+			resetScryfallStrictGateForTests();
+		}
+	});
+
+	it("does not slow the other methods down (sets, symbology, a card by set and number)", async () => {
+		vi.useFakeTimers();
+		try {
+			resetScryfallStrictGateForTests();
+			const callTimes: number[] = [];
+			mockRequestUrl.mockImplementation((() => {
+				callTimes.push(Date.now());
+				return Promise.resolve({ status: 200, json: {} });
+			}) as any);
+			const calls = ["https://api.scryfall.com/sets/lea", "https://api.scryfall.com/symbology", "https://api.scryfall.com/cards/lea/161"].map((url) => requestScryfall({ url }));
+			await vi.advanceTimersByTimeAsync(600);
+			await Promise.all(calls);
+			expect(callTimes[2] - callTimes[0]).toBeLessThan(400);
 		} finally {
 			vi.useRealTimers();
 		}
@@ -816,6 +926,28 @@ describe("getDoubleFacedImages", () => {
 			],
 		});
 		expect(getDoubleFacedImages(card)).toEqual({ front: "front.png", back: "back.png" });
+	});
+
+	it("also returns the artwork alone of the back face when Scryfall has one", () => {
+		const card = makeScryfallCard({
+			image_uris: undefined,
+			card_faces: [
+				{ name: "Front", image_uris: { normal: "front.png", art_crop: "front-art.png" } },
+				{ name: "Back", image_uris: { normal: "back.png", art_crop: "back-art.png" } },
+			],
+		});
+		expect(getDoubleFacedImages(card)?.backArt).toBe("back-art.png");
+	});
+
+	it("also returns the illustrator of the back face, which can differ from the front's", () => {
+		const card = makeScryfallCard({
+			image_uris: undefined,
+			card_faces: [
+				{ name: "Front", artist: "Front Artist", image_uris: { normal: "front.png" } },
+				{ name: "Back", artist: "Back Artist", image_uris: { normal: "back.png" } },
+			],
+		});
+		expect(getDoubleFacedImages(card)?.backArtist).toBe("Back Artist");
 	});
 
 	it("returns null for a single-faced card with no card_faces at all", () => {

@@ -56,7 +56,7 @@ Cards that Scryfall cannot resolve are reported, not silently dropped.
 | --- | --- |
 | Card value, TCGplayer column | Scryfall's own prices |
 | Card Kingdom column | Card Kingdom's public pricelist |
-| Mana Pool column | Mana Pool's public price list (computers only, see below) |
+| Mana Pool column | Mana Pool's public price list on a computer; on a phone or tablet, the daily MTGJSON price for Mana Pool published for this plugin on GitHub Pages (see below) |
 | Price history, Cardmarket column, day-change arrows | A daily price history built from [MTGJSON](https://mtgjson.com) (Cardmarket, TCGplayer and Card Kingdom prices) and published for this plugin on GitHub Pages ([mtg-price-history](https://github.com/Louis1190/mtg-price-history)); if it cannot be reached, nothing else is asked and the chart stays empty. Reading these files needs a device that can unpack gzip in its browser engine (every current computer and Android; iPhone and iPad from iOS/iPadOS 16.4): on an older one the price history is simply empty |
 | Market movers (Home) | The biggest rises and falls of the day, the week and the month, computed every day from the same [MTGJSON](https://mtgjson.com) price data (Cardmarket, TCGplayer and Card Kingdom) and published for this plugin on GitHub Pages; if they cannot be reached, nothing else is asked and the block says so |
 | Showing one currency everywhere | [frankfurter.dev](https://frankfurter.dev) USD/EUR rate |
@@ -66,8 +66,11 @@ interval you choose (*Settings → Price*, every 24 hours by default). The store
 open the card. Prices are indications taken from third parties, not offers to buy or sell, and can be out of date.
 
 Card Kingdom and Mana Pool publish their whole catalogue as one file (65 MB and 49 MB once unpacked). A computer reads it whole. On a
-phone or tablet, Card Kingdom is read as a stream so that it never sits in memory, and the Mana Pool column says *Not on mobile*: its
-server does not allow that kind of reading, and loading the file the usual way ran Obsidian out of memory.
+phone or tablet, Card Kingdom is read as a stream so that it never sits in memory. Mana Pool's server does not allow that kind of reading, and
+loading the file the usual way ran Obsidian out of memory, so a phone or tablet reads Mana Pool from small daily files instead (one per card, about 1-6 KB).
+That price is **the lowest across all conditions, a day old**: the column says *Lowest* with the day under it (*Oct 15*). A computer shows Mana Pool's
+live Near Mint price. A price more than ten times TCGplayer's (and at least $5) is left out of those files, because MTGJSON's Mana Pool prices occasionally contain
+impossible values; the column then shows a dash.
 
 ## Your data
 
@@ -92,14 +95,14 @@ and it never sends your collection anywhere except to the GitHub repository you 
 
 | Service | What for | When |
 | --- | --- | --- |
-| `api.scryfall.com`, and the images served by `*.scryfall.io` | Card search, card data, prices, format legalities, set and mana symbols, card images | When you search, open or import cards; in the background to keep the prices and legalities of your cards up to date |
+| `api.scryfall.com`, and the images served by `*.scryfall.io` | Card search, card data, prices, format legalities, set and mana symbols, card images | When you search, open or import cards; in the background to keep the prices and legalities of your cards up to date; and, while a card's detail window is open, for the few cards just before and after the one shown (their text, artwork and images, so they appear at once when you move to them) |
 | `api.cardkingdom.com` | Card Kingdom prices | The first time a card is opened in a session (read as a stream on a phone or tablet, to spare its memory) |
-| `manapool.com` | Mana Pool prices | The first time a card is opened in a session, **computers only** |
-| `louis1190.github.io` | Price history and the Cardmarket price: one small file per card, named after the first three characters of its Scryfall id (1 of 4,096 files, ~10-40 KB, shared by about 27 cards). Nothing about you or your collection is in the request. A tiny file next to them, `site.json`, is read first (about once per session) and says where the price files are: normally right there, but it can name another `https` address if the files ever have to move, and the plugin then asks that address instead. The last address that worked is kept on your device. The same site also serves the market movers of Home: twelve small lists (about 8 KB each; one per period and vendor choice), the same for everyone | When a card is opened, and when Home shows its market trends |
+| `manapool.com` | Mana Pool prices (its whole price list) | The first time a card is opened in a session, **computers only** |
+| `louis1190.github.io` | Price history and the Cardmarket price: one small file per card, named after the first three characters of its Scryfall id (1 of 4,096 files, ~10-40 KB, shared by about 27 cards). Nothing about you or your collection is in the request. A tiny file next to them, `site.json`, is read first (about once per session) and says where the price files are: normally right there, but it can name another `https` address if the files ever have to move, and the plugin then asks that address instead. The last address that worked is kept on your device. The same site also serves the market movers of Home: twelve small lists (about 8 KB each; one per period and vendor choice), the same for everyone, and, **on a phone or tablet only**, the Mana Pool price: a second set of small files with the same names (1 of 4,096, about 1-6 KB) | When a card is opened (and, in the background, for the few cards next to it in the detail window), and when Home shows its market trends |
 | `api.frankfurter.dev` | USD/EUR exchange rate | Once per session, when a price needs converting |
 | `api.github.com` | Syncing your data with **your own** private repository | **Only if you turn GitHub storage on** |
 
-Requests to Scryfall are rate-limited as their guidelines ask, and carry a `User-Agent` that names this plugin.
+Requests to Scryfall are rate-limited as their guidelines ask (card search and card data go out at most about twice a second; the image servers have no limit), and carry a `User-Agent` that names this plugin. On a device that asks to save data, the pictures of neighbouring cards are not fetched ahead.
 
 ### Links that open in your browser
 
@@ -111,7 +114,7 @@ itself sends nothing to these sites, and nothing is opened in the background.
 | *Source:* line under the price history (card details) | `mtgjson.com` |
 | *Source:* footer under the market trends (Home) | `mtgjson.com` |
 | Cardmarket column of *Store prices* | A search on `www.cardmarket.com` for the card's name (the name is part of the link) |
-| TCGplayer, Card Kingdom and Mana Pool columns of *Store prices* | The product page link that Scryfall, Card Kingdom and Mana Pool give for that printing (`https://` only) |
+| TCGplayer, Card Kingdom and Mana Pool columns of *Store prices* | The product page link that Scryfall, Card Kingdom and Mana Pool give for that printing (`https://` only); on a phone or tablet, Mana Pool's link is built from the card's set and number (`manapool.com/card/<set>/<number>`) |
 
 ## Files outside your vault
 

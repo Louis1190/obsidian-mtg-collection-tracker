@@ -184,7 +184,9 @@ export function renderHomeOverview(this: MTGCollectionView, container: HTMLEleme
 	buildStatBlock(
 		"heart",
 		"Wantlists",
-		`${wantlists.length} wantlists · ${totalWantlistCards} cards · ${formatMoney(totalWantlistValue, currency)}`,
+		// Same figure as the My Wantlists header: the Inbox is not counted as a wantlist
+		// (see renderWantlistsSection).
+		`${wantlists.filter((w) => !w.isInbox).length} wantlists · ${totalWantlistCards} cards · ${formatMoney(totalWantlistValue, currency)}`,
 		() => {
 			this.activeSection = "wantlists";
 			this.render();

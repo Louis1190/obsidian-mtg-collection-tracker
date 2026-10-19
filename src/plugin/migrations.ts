@@ -9,10 +9,12 @@ import {
 import {
 	CollectionList,
 	DeckCard,
+	ensureInboxWantlistIn,
 	genId,
 	VIEW_TYPE_MTG_COLLECTION,
 } from "../core/data-model";
 import { MTGCollectionView } from "../view";
+import { healInboxesInPlace } from "./settings-sync";
 import type MTGCollectionPlugin from "../plugin";
 
 // Rows as an EARLIER version of the plugin wrote them: the fields that a migration adds or converts may be
@@ -144,31 +146,44 @@ export function migrateFoilSplit(this: MTGCollectionPlugin) {
 	void this.saveSettings();
 }
 
+// Guarantees that exactly one "Inbox" list (isInbox: true, see
+// CollectionList) always exists — called from runSettingsMigrations, hence
+// both at normal load and after a backup restore (an older backup file
+// never has this flag, just like a very first installation). Creates it when no
+// list carries the flag; unshift (not push): purely cosmetic,
+// places the list at the head of the raw array — the real visual pinning
+// comes from renderListGrid, which extracts it and displays it separately,
+// independently of its position here.
+// And the other way round: when SEVERAL lists carry it (a device that joined sync
+// with an Inbox of its own, its random id differing from the other device's, or a
+// backup taken in that state), healInboxes keeps the oldest and gives it the cards of
+// the others. The same heal runs after every sync merge (mergeForeignText).
+
+export function ensureInboxList(this: MTGCollectionPlugin) {
+	if (!this.settings.lists.some((l) => l.isInbox)) {
+		this.settings.lists.unshift({
+			id: genId(),
+			name: "Inbox",
+			dateCreated: Date.now(),
+			isInbox: true,
+		});
+	}
+	if (healInboxesInPlace(this)) void this.saveSettings();
+}
+
+// Same guarantee for the wantlist side (Wantlist.isInbox, added with the
+// wantlist Inbox): exactly one, from every load and every backup restore. The
+// logic lives in core/data-model.ts (Vitest-covered) because, unlike the
+// collection's Inbox, its id is FIXED — see INBOX_WANTLIST_ID for why.
+
+export function ensureInboxWantlist(this: MTGCollectionPlugin) {
+	ensureInboxWantlistIn(this.settings.wantlists);
+}
+
 // "foil" (boolean) becomes "finish" (Regular/Foiled/Etched/Proxy): Etched
 // and Proxy are new values that no existing card can already have, so the
 // conversion is a simple switch foil ? "foiled" : "regular". Applies to the
 // collection AND the wantlist (same field in
-// Guarantees that exactly one "Inbox" list (isInbox: true, see
-// CollectionList) always exists — called from runSettingsMigrations, hence
-// both at normal load and after a backup restore (an older backup file
-// never has this flag, just like a very first installation). No-op as soon
-// as a list already carries it, whichever — this flag is set nowhere else
-// in the code, so once created it can only be duplicated by a manual edit
-// of data.json, not handled here. unshift (not push): purely cosmetic,
-// places the list at the head of the raw array — the real visual pinning
-// comes from renderListGrid, which extracts it and displays it separately,
-// independently of its position here.
-
-export function ensureInboxList(this: MTGCollectionPlugin) {
-	if (this.settings.lists.some((l) => l.isInbox)) return;
-	this.settings.lists.unshift({
-		id: genId(),
-		name: "Inbox",
-		dateCreated: Date.now(),
-		isInbox: true,
-	});
-}
-
 // both, migrateFoilSplit only handles the collection).
 
 export function migrateFoilToFinish(this: MTGCollectionPlugin) {

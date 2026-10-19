@@ -20,11 +20,13 @@ const ck = () => ({ status: 200, headers: {}, json: { meta: { base_url: "https:/
 const mp = () => ({ status: 200, headers: {}, json: { data: [{ scryfall_id: "c1", url: "https://manapool.com/card/x", price_cents: 250, price_cents_foil: 600 }] } });
 const script = (...steps: (() => unknown)[]) => { net.steps = steps; };
 
+// `own` stands for getOwnManaPoolPrice (our own Mana Pool files, plugin/price-history-cache.ts): nothing in this file reaches the network through it.
+const own = vi.fn(async (_id: string, _finish: string): Promise<{ priceCents: number; date: string } | undefined> => undefined);
 function fakePlugin() {
-	return { cardKingdomPricesCache: null, cardKingdomPricesFetchPromise: null, manaPoolPricesCache: null, manaPoolPricesFetchPromise: null, loadCardKingdomPrices, loadManaPoolPrices } as unknown as MTGCollectionPlugin;
+	return { cardKingdomPricesCache: null, cardKingdomPricesFetchPromise: null, manaPoolPricesCache: null, manaPoolPricesFetchPromise: null, loadCardKingdomPrices, loadManaPoolPrices, getOwnManaPoolPrice: own } as unknown as MTGCollectionPlugin;
 }
 
-beforeEach(() => { net.steps = []; net.calls = 0; });
+beforeEach(() => { net.steps = []; net.calls = 0; own.mockClear(); });
 
 // These pricelists are loaded ONCE per session. A rejected promise kept in the cache stayed there for the whole
 // session: a cut at the first click deprived the card of its prices until Obsidian restarted.
@@ -96,19 +98,58 @@ describe("on a phone or tablet", () => {
 		await expect(getCardKingdomPrice.call(plugin, "c1", false)).resolves.toMatchObject({ priceRetail: 4.99 });
 	});
 
-	it("Mana Pool is not loaded: no request of any kind, and the box can tell the user why", async () => {
+	it("Mana Pool's price list is never downloaded: no request of any kind, and a card our files do not have shows no price", async () => {
 		const plugin = fakePlugin();
 		script(mp);
-		await expect(getManaPoolPrice.call(plugin, "c1", "regular")).resolves.toBeUndefined();
+		await expect(getManaPoolPrice.call(plugin, "c1", "regular", { setCode: "LEA", collectorNumber: "232" })).resolves.toBeUndefined();
 		expect(net.calls).toBe(0);
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(manaPoolPricesSupported()).toBe(false);
 		net.platform.isMobileApp = false;
 		expect(manaPoolPricesSupported()).toBe(true);
 	});
+
+	// Phones read Mana Pool from our own files instead (MTGJSON's price: the lowest across all conditions, a day old). The result says so, so the column never shows
+	// it as Near Mint, and the link is built from the printing since the files carry no address.
+	it("the price comes from our own files, marked as the lowest price of a given day (never Near Mint), with a link built from the printing", async () => {
+		const plugin = fakePlugin();
+		own.mockResolvedValueOnce({ priceCents: 250, date: "2026-10-15" });
+		await expect(getManaPoolPrice.call(plugin, "c1", "regular", { setCode: "LEA", collectorNumber: "232" })).resolves.toEqual({
+			priceCents: 250,
+			isNearMint: false,
+			url: "https://manapool.com/card/lea/232",
+			source: "price-history",
+			asOf: "2026-10-15",
+		});
+		expect(own).toHaveBeenCalledWith("c1", "normal");
+		expect(net.calls).toBe(0);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("is looked up as the finish the card is: foil and surge foil are foils, etched is etched, everything else is normal", async () => {
+		const plugin = fakePlugin();
+		for (const finish of ["regular", "foiled", "surged", "etched", "proxy"] as const) {
+			own.mockResolvedValueOnce({ priceCents: 100, date: "2026-10-15" });
+			await getManaPoolPrice.call(plugin, "c1", finish, { setCode: "x", collectorNumber: "1" });
+		}
+		expect(own.mock.calls.map((c) => c[1])).toEqual(["normal", "foil", "foil", "etched", "normal"]);
+	});
+
+	it("without a printing the price is still shown, just without a link", async () => {
+		const plugin = fakePlugin();
+		own.mockResolvedValueOnce({ priceCents: 100, date: "2026-10-15" });
+		await expect(getManaPoolPrice.call(plugin, "c1", "regular")).resolves.toMatchObject({ priceCents: 100, url: "" });
+	});
 });
 
 describe("on a computer", () => {
+	it("Mana Pool is Mana Pool's own price list, Near Mint first: our own files are never asked", async () => {
+		const plugin = fakePlugin();
+		script(() => ({ status: 200, headers: {}, json: { data: [{ scryfall_id: "c1", url: "https://manapool.com/card/x", price_cents: 250, price_cents_nm: 400 }] } }));
+		await expect(getManaPoolPrice.call(plugin, "c1", "regular", { setCode: "LEA", collectorNumber: "232" })).resolves.toEqual({ priceCents: 400, isNearMint: true, url: "https://manapool.com/card/x" });
+		expect(own).not.toHaveBeenCalled();
+	});
+
 	it("Card Kingdom still goes through requestUrl, Mana Pool is loaded", async () => {
 		const plugin = fakePlugin();
 		const fetchSpy = vi.fn();

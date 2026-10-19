@@ -2181,6 +2181,102 @@
 	min-height: 100px;
 }
 
+.is-phone .mtg-set-grid.mtg-pinned-tiles-grid {
+	display: flex;
+	gap: 0.5em;
+	overflow-x: auto;
+	scroll-snap-type: x mandatory;
+	/* A swipe at the end of the row must not chain into Obsidian's drawer gesture
+	   (same measurement as the chip bar, 2026-10-02). */
+	overscroll-behavior-x: contain;
+	margin-bottom: 0;
+}
+
+/* Android only (setupSnapAssist, view/pinned-carousel.ts): the row is driven from script, so the
+   browser must neither scroll it sideways itself (`touch-action: pan-y` leaves vertical gestures to
+   the pane) nor snap it (`mandatory` would pull every scripted scrollLeft write to the nearest page).
+   The row stays `overflow-x: auto` on purpose, see the function's comment. */
+.is-phone .mtg-set-grid.mtg-pinned-tiles-grid.is-script-driven {
+	touch-action: pan-y;
+	scroll-snap-type: none;
+}
+
+.is-phone .mtg-pinned-tiles-grid > .mtg-set-tile {
+	flex: 0 0 82%;
+	scroll-snap-align: start;
+}
+
+.is-phone .mtg-pinned-tiles-grid > .mtg-set-tile:only-child {
+	flex-basis: 100%;
+}
+
+/* No scrollbar. The generic block at the end of this file (`.mtg-collection-view
+   *:not(.mtg-search-results)`, 2 classes) sets `scrollbar-width: thin` and a `height: 8px`
+   ::-webkit-scrollbar on ANY descendant and is declared later: three classes here, not
+   two (same trap as `.mtg-bulk-actions-scroll`). Not scoped to `.is-phone`: where the row
+   doesn't scroll there is no scrollbar to hide. */
+.mtg-collection-view .mtg-set-grid.mtg-pinned-tiles-grid {
+	scrollbar-width: none;
+}
+
+.mtg-collection-view .mtg-set-grid.mtg-pinned-tiles-grid::-webkit-scrollbar {
+	display: none;
+	width: 0;
+	height: 0;
+}
+
+/* Page dots: hidden by default, shown only with the carousel. The active one is a ring
+   around a dot — an `outline` (never a size change, so the dots don't shift when the page
+   changes and the outline can fade). 6px dot + 2px ring 3px away = 16px, the mockup's
+   proportion; the gap leaves ~22px between two centres. The row takes over the 2em the
+   grid's margin-bottom used to keep from the search bar (0.5em above the dots, 1em below). */
+.mtg-pinned-dots {
+	display: none;
+}
+
+.is-phone .mtg-pinned-dots {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 1em;
+	margin: 0.75em 0 1.25em;
+}
+
+.mtg-pinned-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background-color: var(--text-muted);
+	outline: 2px solid transparent;
+	outline-offset: 3px;
+	transition:
+		background-color 0.2s ease-in-out,
+		outline-color 0.2s ease-in-out;
+}
+
+.mtg-pinned-dot.is-active {
+	background-color: var(--mtg-accent, var(--interactive-accent));
+	outline-color: var(--mtg-accent, var(--interactive-accent));
+}
+
+/* From 420px of container (same step as .mtg-set-grid above): the two tiles fit side by
+   side again — undoes the carousel. Declared AFTER it at equal specificity, so it wins.
+   `gap` and `margin-bottom` give back the values the carousel changed; the 2-column
+   `grid-template-columns` is the one of the 420px step above, still applying to this grid. */
+@container mtg-set-grid (min-width: 420px) {
+	.is-phone .mtg-set-grid.mtg-pinned-tiles-grid {
+		display: grid;
+		gap: 1em;
+		overflow: visible;
+		scroll-snap-type: none;
+		margin-bottom: 2em;
+	}
+
+	.is-phone .mtg-pinned-dots {
+		display: none;
+	}
+}
+
 /* Small title above the grid of real lists (under the sort bar) —
    explicitly requested, originally to separate it from the pinned row, same
    visual family (small, discreet) as the other section titles of this
@@ -5210,6 +5306,20 @@ body.is-phone {
 	opacity: 0.55;
 }
 
+/* Phone (BackgroundCrossfader.buildSmoothLayer): the layer is a tiny canvas scaled up by the browser, so no
+   blur, no scale(1.15) and no 30px bleed (those exist to hide the blur's faded edge), and nothing to promote. */
+.mtg-card-detail-bg.mtg-card-detail-bg-canvas {
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	filter: none;
+	transform: none;
+	will-change: auto;
+	/* No fade: an opacity animation under the whole window makes every element over it a composited layer for its duration, and those are
+	   rebuilt at each navigation and painted late (1.0.573, see the art-mode block below). The layer is shown at once. */
+	transition: none;
+}
+
 .mtg-card-detail-scrim {
 	position: absolute;
 	inset: 0;
@@ -6256,6 +6366,244 @@ body.is-phone {
 	}
 }
 
+.is-phone .modal.mtg-card-detail-modal-frame {
+	width: 100%;
+	max-width: none;
+	height: 100%;
+	max-height: none;
+	border-radius: 0;
+}
+
+.is-phone .mtg-card-detail-modal.mtg-card-detail-modal-fixed-height {
+	height: 100%;
+	max-height: none;
+	border-radius: 0;
+	/* Obsidian's `.is-phone .modal-content { overflow: auto }` (0,2,0) beat the plain `overflow: hidden` of
+	   .mtg-card-detail-modal, so the window itself scrolled by the ~100px its blurred background overflows (measured in
+	   the Android app: scrollHeight 1013 for a 910 box) and showed a 5px scrollbar. */
+	overflow: hidden;
+}
+
+/* ART MODE (class set by draw() when the card has a real art crop, see usesArtHeader): the image is
+   the artwork alone, full width, melting into the background at its bottom edge, with the name and
+   the arrows under it and the info boxes below. Everything scrolls as one block: `.mtg-card-detail-layout`
+   becomes the scroller (the media query above already does that below 560px of viewport; a phone in
+   landscape is wider), the close button and the blurred background stay put because they belong to
+   the window, not to the layout. The banner and the header are `flex-shrink: 0`, or the column would
+   squeeze them (min-height 0 on a flex item with a definite height) and overlap the boxes. */
+.mtg-card-detail-art-mode .mtg-card-detail-layout {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75em;
+	padding: 0 1em calc(var(--safe-area-inset-bottom, 0px) + 1.5em);
+	overflow-x: hidden;
+	overflow-y: auto;
+	/* No scrollbar: the real Android WebView draws a 5px one that took its width from the banner (measured,
+	   407px of 412px) and left a strip beside it. A touch screen scrolls without one. */
+	scrollbar-width: none;
+}
+
+.mtg-card-detail-art-mode .mtg-card-detail-layout::-webkit-scrollbar {
+	display: none;
+	width: 0;
+	height: 0;
+}
+
+.mtg-card-detail-art-mode .mtg-card-detail-layout > * {
+	flex-shrink: 0;
+}
+
+/* Negative side margins: the banner goes past the layout's padding to both screen edges. Not a grid
+   item any more, so the "percentage margin collapses it" trap of the desktop layout does not apply. */
+.mtg-card-detail-art-mode .mtg-card-detail-image-column {
+	position: relative;
+	align-self: stretch;
+	width: auto;
+	max-width: none;
+	margin: 0 -1em;
+	--mtg-card-w: 100%;
+}
+
+.mtg-card-detail-art-mode .mtg-card-detail-nav-viewport {
+	--mtg-card-v-pad: 0px;
+	padding: 0;
+	/* Fade out at the bottom instead of the card's side fade: the artwork melts into the window. */
+	-webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+	mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
+/* The status bar overlays the window (edge to edge): content scrolling under its clock stayed unreadable (seen in the Android
+   app). A fixed shade the height of the safe area, drawn by the window itself (which does not scroll), keeps the icons legible. */
+.mtg-card-detail-art-mode::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 3;
+	height: var(--safe-area-inset-top, 0px);
+	background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.35) 60%, transparent);
+	pointer-events: none;
+}
+
+/* A soft shade behind the status bar and the round buttons, which sit on whatever the art is. */
+.mtg-card-detail-art-mode .mtg-card-detail-nav-viewport::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 1;
+	height: calc(var(--safe-area-inset-top, 0px) + 5em);
+	background: linear-gradient(to bottom, rgba(0, 0, 0, 0.45), transparent);
+	pointer-events: none;
+}
+
+/* 626x457 is Scryfall's art crop. The cap keeps a phone held sideways from spending the whole screen
+   on the banner (object-fit crops the sides). Radius 0: the banner is edge to edge, and the tilt
+   layer's own radius (and the Alpha one, which is more specific) would round its corners. */
+.mtg-card-detail-art-mode .mtg-card-detail-image.mtg-card-detail-image {
+	width: 100%;
+	aspect-ratio: 626 / 457;
+	max-height: 42vh;
+	object-fit: cover;
+	border-radius: 0;
+}
+
+.mtg-card-detail-art-mode .mtg-card-detail-image-wrap .mtg-card-detail-tilt {
+	border-radius: 0;
+}
+
+/* Previous/next: NO animation in the banner's area (animateCardNav skips Cover Flow in art mode) and no standing composited layer
+   there either. Measured in the real Android app with the DevTools LayerTree: while the Cover Flow ran, the round close button, the
+   condition/language buttons and the name + arrows (everything that sits over the banner, and all rebuilt at each navigation) were
+   composited layers of their own, reason "Overlap", because the banner's wrap and tilt carried `will-change: transform` and animated
+   (and the CPU-drawn background canvas, see below, was a layer under the whole window). A layer that is new at every navigation is
+   rasterized a frame or two after the rest: on a real phone those elements, and the banner, were missing for a few frames. Without
+   `will-change`, with no transform animation and with the close button kept between redraws, nothing over the banner is a layer. */
+.mtg-card-detail-art-mode .mtg-card-detail-image-wrap,
+.mtg-card-detail-art-mode .mtg-card-detail-tilt {
+	will-change: auto;
+	transition: none;
+}
+
+/* The previous card's artwork under the new one until it has loaded (holdPreviousBanner): no empty banner while the picture arrives. */
+.mtg-card-detail-art-mode .mtg-card-detail-tilt.has-previous-banner {
+	background-image: var(--mtg-previous-banner);
+	background-size: cover;
+	background-position: center;
+}
+
+/* Condition / language: the two round-cornered buttons of the mockup, stacked on the banner's top
+   left, under the status bar (--safe-area-inset-top is Obsidian's, 0 where there is none). */
+.mtg-card-detail-art-mode .mtg-card-detail-image-icons {
+	position: absolute;
+	z-index: 2;
+	top: calc(var(--safe-area-inset-top, 0px) + 0.75em);
+	left: 1em;
+	flex-direction: column;
+	justify-content: flex-start;
+	width: auto;
+	margin: 0;
+}
+
+.mtg-card-detail-art-mode .mtg-card-detail-close-btn {
+	top: calc(var(--safe-area-inset-top, 0px) + 0.75em);
+}
+
+/* "Wanted" markers (a deck card not owned yet, every wantlist card): out of the way of the status
+   bar and of the icon stack. */
+.mtg-card-detail-art-mode .mtg-thumb-wanted-ribbon {
+	/* px, not em: the ribbon's own font-size (0.75em) would shrink an em offset below the close button
+	   (32px tall, from safe-area + 0.75em). */
+	top: calc(var(--safe-area-inset-top, 0px) + 56px);
+	left: auto;
+	right: 16px;
+	font-size: 0.75em;
+}
+
+.mtg-card-detail-art-mode .mtg-wantlist-heart-badge-large {
+	top: calc(var(--safe-area-inset-top, 0px) + 0.75em);
+	left: 1em;
+}
+
+/* Flip button of a double-faced card: over the banner's bottom right, readable on any art. */
+.mtg-card-detail-art-mode .mtg-card-detail-flip-btn {
+	position: absolute;
+	z-index: 2;
+	right: 1em;
+	bottom: 1.8em;
+	margin: 0;
+	background: rgba(0, 0, 0, 0.55);
+	color: #fff;
+	border-color: transparent;
+}
+
+.theme-dark .mtg-card-detail-art-mode .mtg-card-detail-box,
+.theme-dark .mtg-card-detail-art-mode .mtg-card-detail-customprice-box:hover {
+	background: color-mix(in srgb, #000 40%, transparent);
+}
+
+.theme-dark .mtg-card-detail-art-mode .mtg-card-detail-box:hover {
+	background: color-mix(in srgb, #000 30%, transparent);
+}
+
+.theme-dark .mtg-card-detail-art-mode .mtg-card-detail-nav-header .mtg-tile-menu-btn-large {
+	background: rgba(0, 0, 0, 0.45);
+}
+
+.theme-dark .mtg-card-detail-art-mode .mtg-card-detail-close-btn,
+.theme-dark .mtg-card-detail-art-mode .mtg-card-detail-image-icon-btn {
+	background: rgba(0, 0, 0, 0.62);
+}
+
+/* Name + arrows: full width, pulled up over the banner's fade. The 560px cap of the desktop row
+   existed to keep clear of the close button, which now sits on the banner. */
+.mtg-card-detail-art-mode .mtg-card-detail-nav-header {
+	width: 100%;
+	margin: -1.2em 0 0;
+	padding: 0;
+}
+
+/* The info boxes lay out as in the mockup: Quantity | Finish, List | copy | toggle on one line each
+   (the 560px rule above stacks them for a narrow desktop window). The panel no longer scrolls on its own. */
+.mtg-card-detail-art-mode .mtg-card-detail-panel.mtg-card-detail-panel {
+	min-height: auto;
+	max-height: none;
+	overflow: visible;
+}
+
+.mtg-card-detail-art-mode .mtg-card-detail-box-row {
+	flex-direction: row;
+}
+
+.mtg-card-detail-art-mode .mtg-card-detail-header-row {
+	flex-wrap: nowrap;
+}
+
+/* The set box shares its line with the code and the trash button: a slightly smaller name keeps
+   "Limited Edition Alpha" whole next to a three-digit collector number. */
+.mtg-card-detail-art-mode .mtg-card-detail-set-box-name {
+	font-size: 0.9em;
+}
+
+/* Artist + copyright, the last lines of the scrolling layout (Scryfall asks for both next to an artwork shown alone).
+   White on the blurred artwork behind the window, no block, centred; a soft shadow keeps it legible on a light backdrop
+   (the light theme is otherwise untouched on a phone). An unknown artist leaves the first line empty: it disappears. */
+.mtg-card-detail-art-credit {
+	margin-top: 0.5em;
+	text-align: center;
+	font-size: 0.75em;
+	line-height: 1.5;
+	color: #fff;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+	overflow-wrap: anywhere;
+}
+
+.mtg-card-detail-art-credit-artist:empty {
+	display: none;
+}
+
 .mtg-card-detail-panel {
 	min-width: 0;
 	min-height: 0;
@@ -7241,6 +7589,32 @@ body.is-phone {
 	}
 }
 
+/* Loading indicators inside the card-detail window animate OPACITY ONLY (2026-10-19). The bouncing dots and the spinning loader animated
+   `transform`, and Chrome assumes an element with a running transform animation may land anywhere, so everything painted after it that is
+   positioned — here the name and arrows, the condition/language buttons, all rebuilt at each navigation — becomes a composited layer of
+   its own for as long as an indicator is up (the first few hundred ms after every tap, while the store prices load). Layers created at the
+   moment of a navigation are rasterized a frame or two late: on a real phone those elements flashed away. Measured with the DevTools
+   LayerTree in the real Android app: with these two animations off, none of them was a layer. An opacity animation does not make that
+   assumption. */
+@keyframes mtg-dot-pulse {
+	0%,
+	80%,
+	100% {
+		opacity: 0.3;
+	}
+	40% {
+		opacity: 1;
+	}
+}
+
+.mtg-card-detail-modal .mtg-loading-dots span {
+	animation-name: mtg-dot-pulse;
+}
+
+.mtg-card-detail-modal .mtg-price-history-loading svg {
+	animation: mtg-dot-pulse 1s ease-in-out infinite;
+}
+
 /* Caption under the price specifying what it represents (condition or
    "Market price") — same discreet treatment as .mtg-store-price-col-name,
    deliberately smaller: it is a clarification, not a main piece of data of
@@ -7254,8 +7628,8 @@ body.is-phone {
 	white-space: nowrap;
 }
 
-/* A mention that explains why the column is empty ("Not on mobile", Mana Pool on phone) must read in full: it
-   wraps instead of being truncated into "Not on m…" in a column of ~100 px. */
+/* A caption that must read in full wraps instead of being truncated in a column that is 52-58 px wide on a phone: Mana Pool's two-line
+   "Lowest" over its day ("Oct 15"), and Cardmarket's "As of Sep 9" (.is-stale). It used to carry "Not on mobile" too (removed in 1.0.562). */
 .mtg-store-price-col-detail.is-note {
 	white-space: normal;
 	text-align: center;
@@ -7524,6 +7898,20 @@ body.is-phone {
 	align-items: stretch;
 	gap: 0.5em;
 	padding: 0.6em 0.75em 0.75em;
+}
+
+/* Smooth resize of the box between two cards (renderCardDescriptionBox, 2026-10-19): while .is-resizing the height is the carried value
+   (the previous card's, then the new card's), clipped; .is-resizing-play switches the transition on, so the previous value is applied
+   first and only the change animates. Declared after the base rule and repeated on the same classes (0,4,0 against its 0,2,0) because
+   the base says `height: auto`. NO fade on the new text (1.0.571-1.0.572 had one): it left the text invisible for the first frames, which
+   on a phone looked like a missing element, and an animated element makes the positioned ones above it (name, round buttons) composited. */
+.mtg-card-detail-box.mtg-card-description-box.is-resizing {
+	height: var(--mtg-text-box-h);
+	overflow: hidden;
+}
+
+.mtg-card-detail-box.mtg-card-description-box.is-resizing.is-resizing-play {
+	transition: height var(--mtg-text-box-ms, 260ms) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Type on the left, mana cost on the right — same arrangement as the

@@ -25,6 +25,7 @@ import { MTGCollectionSettingTab } from "./setting-tab";
 import { MTGCollectionView } from "./view";
 import { HIDE_BARS_CLASS } from "./view/mobile-bars";
 import * as scryfallCache from "./plugin/scryfall-cache";
+import * as neighborPrefetch from "./plugin/neighbor-prefetch";
 import * as storePrices from "./plugin/store-prices";
 import * as cardbaseCache from "./plugin/cardbase-cache";
 import * as priceHistoryCache from "./plugin/price-history-cache";
@@ -149,6 +150,11 @@ export default class MTGCollectionPlugin extends Plugin {
 	// prices/legalities — see its own comment for why.
 	scryfallImmutableCache: Map<string, ScryfallImmutableSnapshot | null> = new Map();
 	scryfallImmutableInFlight: Map<string, Promise<ScryfallImmutableSnapshot | null>> = new Map();
+	// The in-flight promises that belong to a neighbour prefetch (prefetchScryfallImmutableSnapshots): one of them answering `null`
+	// is a failed batch, not a verdict on the card, so a waiter asks again.
+	scryfallPrefetchPromises: WeakSet<Promise<ScryfallImmutableSnapshot | null>> = new WeakSet();
+	// `performance.now()` time (monotonic ms) before which no neighbour prefetch is sent: set after one that got nothing back, see CARD_TEXT_PREFETCH_PAUSE_MS.
+	scryfallPrefetchPausedUntil = 0;
 	// Card Kingdom pricelist ("Store Prices" block of the detail): same
 	// reasoning as symbologyCache — a single file for the whole catalog, never
 	// persisted (even more true here: ~67 MB, far too big for settings.json).
@@ -494,6 +500,9 @@ export default class MTGCollectionPlugin extends Plugin {
 	fetchCardLegalities = scryfallCache.fetchCardLegalities;
 	getScryfallImmutableSnapshot = scryfallCache.getScryfallImmutableSnapshot;
 	getScryfallImmutableSnapshots = scryfallCache.getScryfallImmutableSnapshots;
+	prefetchScryfallImmutableSnapshots = scryfallCache.prefetchScryfallImmutableSnapshots;
+	prefetchCardTextNeighbors = scryfallCache.prefetchCardTextNeighbors;
+	prefetchNeighborImages = neighborPrefetch.prefetchNeighborImages;
 	fetchScryfallImmutableSnapshot = scryfallCache.fetchScryfallImmutableSnapshot;
 	getTcgplayerUrl = scryfallCache.getTcgplayerUrl;
 	getCardTextInfo = scryfallCache.getCardTextInfo;
@@ -531,6 +540,7 @@ export default class MTGCollectionPlugin extends Plugin {
 	getPriceHistoryBase = priceHistoryCache.getPriceHistoryBase;
 	getPriceHistoryShard = priceHistoryCache.getPriceHistoryShard;
 	getOwnPriceHistory = priceHistoryCache.getOwnPriceHistory;
+	getOwnManaPoolPrice = priceHistoryCache.getOwnManaPoolPrice;
 
 	// -- USD/EUR exchange rate (src/plugin/exchange-rate.ts) --
 	getUsdEurRate = exchangeRate.getUsdEurRate;
@@ -587,6 +597,7 @@ export default class MTGCollectionPlugin extends Plugin {
 	migrateDeckDateCreated = migrations.migrateDeckDateCreated;
 	migrateFoilSplit = migrations.migrateFoilSplit;
 	ensureInboxList = migrations.ensureInboxList;
+	ensureInboxWantlist = migrations.ensureInboxWantlist;
 	migrateFoilToFinish = migrations.migrateFoilToFinish;
 	migrateDamagedCondition = migrations.migrateDamagedCondition;
 	migrateDeckCommanderCategory = migrations.migrateDeckCommanderCategory;

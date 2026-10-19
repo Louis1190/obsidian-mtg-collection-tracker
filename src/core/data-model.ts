@@ -27,7 +27,8 @@ export interface CollectionList {
 	// AddCardsModalOptions.listGallery.defaultListId), and protected against
 	// renaming/deletion (see
 	// ListSettingsModal/MTGCollectionPlugin.deleteList/renameList/bulkDeleteLists/mergeLists)
-	// — no other list must ever carry this flag.
+	// — no other list must ever carry this flag (healInboxes removes the extra one a sync
+	// merge can bring in, see there).
 	isInbox?: boolean;
 	// Cover image chosen manually (ListSettingsModal, "Choose cover image") — the
 	// id of a CollectionCard of THIS list. Absent by default (automatic choice,
@@ -43,6 +44,13 @@ export interface Wantlist {
 	id: string;
 	name: string;
 	dateCreated?: number;
+	// System wantlist "Inbox" (see ensureInboxWantlistIn / INBOX_WANTLIST_ID) — the
+	// mirror of CollectionList.isInbox, same behavior: exactly one, always present
+	// after any settings load, pinned in the "My Wantlists" gallery next to "All
+	// wanted", default destination of the gallery-level "Add cards" flow, and
+	// protected against renaming/deletion/merging (renameWantlist/deleteWantlist/
+	// bulkDeleteWantlists/mergeWantlists). No other wantlist must carry this flag.
+	isInbox?: boolean;
 	// Same field/same reasoning as CollectionList.coverCardId above, on the
 	// wantlist side (WantlistSettingsModal, "Choose cover image") — the id of
 	// a WantlistCard of THIS wantlist. See resolveCoverImage/groupByWantlist
@@ -468,3 +476,91 @@ export function genId(): string {
 export const VIEW_TYPE_MTG_COLLECTION = "mtg-collection-view";
 export const ALL_CARDS_ID = "__all_cards__";
 export const ALL_WANTED_ID = "__all_wanted__";
+
+// Fixed id of the wantlist Inbox — NOT genId(), unlike the collection's Inbox.
+// Every device creates its Inbox on its own at startup (ensureInboxWantlistIn runs
+// before the first sync), so with a random id two synced devices would each invent
+// one and the merge, which never deduces a deletion from an absence, would keep
+// both: two "Inbox" wantlists, one of them unprotected. With the same id on every
+// device the merge sees ONE entity. File-name safe on purpose (shard
+// `wantlist-<id>.json.gz`, see github-shards.ts).
+export const INBOX_WANTLIST_ID = "inbox";
+
+// Guarantees that exactly one wantlist carries `isInbox` (called by
+// MTGCollectionPlugin.ensureInboxWantlist, hence at every load and after a backup
+// restore, whose file may predate the Inbox). Returns whether it created it.
+// unshift: purely cosmetic, the raw array's head; the real pinning is the gallery's.
+export function ensureInboxWantlistIn(wantlists: Wantlist[], now = Date.now()): boolean {
+	if (wantlists.some((w) => w.isInbox)) return false;
+	// Never two entities with the same id: a wantlist already holding the id (an
+	// Inbox whose flag a hand edit dropped) is flagged instead of duplicated.
+	const sameId = wantlists.find((w) => w.id === INBOX_WANTLIST_ID);
+	if (sameId) {
+		sameId.isInbox = true;
+		return true;
+	}
+	wantlists.unshift({ id: INBOX_WANTLIST_ID, name: "Inbox", dateCreated: now, isInbox: true });
+	return true;
+}
+
+export interface InboxHealResult {
+	/** Ids of the extra Inbox lists that were removed. */
+	dropped: string[];
+	/** Number of cards that were given a new `listId`. */
+	moved: number;
+}
+
+// The collection's Inbox has a RANDOM id (ensureInboxList, genId), unlike the wantlist's, so two devices that
+// each created theirs before their first sync end up with two flagged lists once the merge has brought them
+// together (it never deduces a deletion from an absence): the second one shows as an ordinary, unprotected list
+// named "Inbox". The id of existing data cannot be changed, hence this heal step, run after every merge and at
+// every load:
+//  - keeps ONE Inbox: the oldest `dateCreated` (a list with none predates that field, so it is the oldest), ties
+//    by id — the choice only depends on the data, so every device picks the same one and they never fight over it;
+//  - gives the cards of the others to it (`dateModified` moves forward so the move beats the stale copy another
+//    device may still hold) and drops the extra lists;
+//  - also adopts a card whose list no longer exists AND has a deletion record (`syncTombstones.lists`): the
+//    tombstone of a dropped Inbox reaches a device that has added cards to it meanwhile (a device not yet
+//    updated, or one that never synced), the merge then removes the list but not those cards, which would
+//    be left pointing at nothing. A list that was never deleted is not concerned (nothing is "adopted" from
+//    data that was already inconsistent before).
+// Does nothing when there is no Inbox (ensureInboxList creates it) or a single one with no orphan.
+// Idempotent. Mutates `lists`/`collection` in place; the caller records the tombstones of `dropped`.
+export function healInboxes(
+	settings: Pick<MTGCollectionSettings, "lists" | "collection" | "syncTombstones">,
+	now = Date.now()
+): InboxHealResult {
+	const { lists, collection } = settings;
+	const result: InboxHealResult = { dropped: [], moved: 0 };
+	const inboxes = lists.filter((l) => l.isInbox);
+	if (inboxes.length === 0) return result;
+
+	const keeper = inboxes.reduce((best, l) => {
+		const a = l.dateCreated ?? 0;
+		const b = best.dateCreated ?? 0;
+		return a < b || (a === b && l.id < best.id) ? l : best;
+	});
+	const extra = new Set<string>();
+	for (const l of inboxes) {
+		if (l === keeper) continue;
+		lists.splice(lists.indexOf(l), 1);
+		// Two flagged lists sharing one id (a hand edit): the survivor still carries it, so it is neither
+		// reported as dropped (its tombstone would delete the keeper) nor a source of moved cards.
+		if (l.id === keeper.id) continue;
+		result.dropped.push(l.id);
+		extra.add(l.id);
+	}
+
+	const existing = new Set(lists.map((l) => l.id));
+	const deletedLists = settings.syncTombstones?.lists;
+	for (const c of collection) {
+		if (c.listId === keeper.id) continue;
+		const ofDroppedInbox = extra.has(c.listId);
+		const orphanOfDeletedList = !existing.has(c.listId) && deletedLists?.[c.listId] !== undefined;
+		if (!ofDroppedInbox && !orphanOfDeletedList) continue;
+		c.listId = keeper.id;
+		c.dateModified = Math.max(now, (c.dateModified || 0) + 1);
+		result.moved++;
+	}
+	return result;
+}

@@ -42,7 +42,9 @@ import {
 } from "../ui/card-detail-fx";
 import { renderCardsCountTitle } from "./shared-render-helpers";
 import { createBulkActionsBar, replaceInBulkBar } from "./bulk-actions-bar";
+import { setupPinnedCarousel } from "./pinned-carousel";
 import { WantlistSettingsModal } from "../modals/wantlist-settings-modal";
+import { InboxSettingsModal } from "../modals/inbox-settings-modal";
 import { AddCardsModal } from "../modals/add-cards-modal";
 import { ChangePrintingModal } from "../modals/change-printing-modal";
 import { MarkAsAcquiredModal } from "../modals/mark-as-acquired-modal";
@@ -130,7 +132,10 @@ export function openAddWantlistCardsModalWithListPicker(this: MTGCollectionView)
 			this.plugin.undoAddToWantlist(card.id, undoListId, options.finish, delta),
 		sourceKind: "wantlist",
 		titleText: "Add cards",
-		listGallery: { summaries, kind: "wantlist" },
+		// defaultListId (Inbox): "Add"/"Add all" add straight to the Inbox without a
+		// picker, exactly like My Collection (see openAddCollectionCardsModalWithListPicker
+		// for the reasoning, including how to choose another destination afterwards).
+		listGallery: { summaries, kind: "wantlist", defaultListId: this.plugin.settings.wantlists.find((w) => w.isInbox)?.id },
 	});
 	modal.onClose = () => {
 		modal.contentEl.empty();
@@ -502,18 +507,18 @@ export function renderWantlistsSection(this: MTGCollectionView) {
 		this.headerStatsEl.setText("");
 	} else {
 		this.headerTitleEl.setText("Wantlists");
+		// The Inbox (system wantlist, pinned apart from the grid) is not counted as a
+		// wantlist, like the Inbox of My Collection (see renderCollectionSection): its
+		// cards stay in totalCards/totalValue.
+		const realWantlistCount = this.plugin.settings.wantlists.filter((w) => !w.isInbox).length;
 		this.headerStatsEl.setText(
-			`${this.plugin.settings.wantlists.length} wantlists · ${totalCards} cards · ${formatMoney(totalValue, currency)}`
+			`${realWantlistCount} wantlists · ${totalCards} cards · ${formatMoney(totalValue, currency)}`
 		);
 	}
 
-	if (this.plugin.settings.wantlists.length === 0) {
-		this.bodyEl.createEl("p", {
-			text: "No wantlists yet. Use \"+ New wantlist\" to create one.",
-			cls: "mtg-status",
-		});
-		return;
-	}
+	// No "no wantlists yet" guard any more: the Inbox (Wantlist.isInbox/
+	// ensureInboxWantlist) is guaranteed present from the loading of the settings,
+	// so settings.wantlists can no longer be empty once the plugin is loaded.
 
 	if (this.openWantlistId) {
 		this.renderWantlistDetail(this.openWantlistId);
@@ -525,11 +530,21 @@ export function renderWantlistsSection(this: MTGCollectionView) {
 
 export function renderWantlistGrid(this: MTGCollectionView) {
 	const filter = this.wantlistFilterEl.value.trim().toLowerCase();
-	let groups = groupByWantlist(
+	// The Inbox (system wantlist, see Wantlist.isInbox/ensureInboxWantlist) is
+	// taken out of the array the user sorts/filters and re-injected in the pinned
+	// row with "All wanted" (further down), so it always stays on top whatever sort
+	// or search is chosen — same as renderListGrid.
+	const inboxWantlist = this.plugin.settings.wantlists.find((w) => w.isInbox);
+	const allGroups = groupByWantlist(
 		this.plugin.settings.wantlists,
 		this.plugin.settings.wantlist,
 		this.plugin.settings.priceCurrency
-	).filter((g) => !filter || g.name.toLowerCase().includes(filter));
+	);
+	const inboxGroup = inboxWantlist ? allGroups.find((g) => g.id === inboxWantlist.id) : undefined;
+	// The real wantlists, Inbox excluded: exactly what the grid displays under the
+	// "Wantlists: …" title (further down), hence its "total".
+	const realGroups = allGroups.filter((g) => g.id !== inboxWantlist?.id);
+	let groups = realGroups.filter((g) => !filter || g.name.toLowerCase().includes(filter));
 
 	const sortBy = this.plugin.settings.wantlistGridSortBy;
 	const sortReverse = this.plugin.settings.wantlistGridSortReverse;
@@ -553,9 +568,43 @@ export function renderWantlistGrid(this: MTGCollectionView) {
 		return sortReverse ? -cmp : cmp;
 	});
 
-	const showAllWanted = !filter || "all wanted".includes(filter);
+	// Pinned "Inbox"/"All wanted" row, same as "Inbox"/"All cards" in renderListGrid
+	// (see its long comment for the layout reasoning: 1 → 2 columns at the same panel
+	// width as the grid, never 4, its own .mtg-set-grid-wrap, Inbox first). Built in
+	// this.galleryPinnedEl (persistent element of the skeleton, see onOpen) and not in
+	// this.bodyEl, because the row sits ABOVE the persistent filter bar. "All wanted"
+	// used to be the first tile of the main grid and was hidden by a search that did
+	// not match its name; like "All cards" it now stays put, and the search only
+	// filters the real wantlists.
+	const hasAllWantedTile = this.plugin.settings.wantlists.length > 0;
+	if (inboxGroup || hasAllWantedTile) {
+		const pinnedWrap = this.galleryPinnedEl.createDiv({ cls: "mtg-set-grid-wrap" });
+		const pinnedGrid = pinnedWrap.createDiv({
+			cls: `mtg-set-grid mtg-pinned-tiles-grid${
+				this.wantlistGallerySelectMode ? " mtg-gallery-selecting" : ""
+			}`,
+		});
+		if (inboxGroup) {
+			this.renderWantlistTile(pinnedGrid, inboxGroup, true);
+		}
+		if (hasAllWantedTile) {
+			const allCards = this.plugin.settings.wantlist;
+			this.renderWantlistTile(pinnedGrid, {
+				id: ALL_WANTED_ID,
+				name: "All wanted",
+				cards: allCards,
+				totalQty: allCards.reduce((s, c) => s + c.count, 0),
+				totalValue: allCards.reduce((s, c) => s + cardValue(c, this.plugin.settings.priceCurrency), 0),
+				coverImage: pickCoverImage(allCards, this.plugin.settings.priceCurrency),
+			});
+		}
+		// Phone carousel + page dots, same as My Collection's pinned row (view/pinned-carousel.ts).
+		setupPinnedCarousel(this, "wantlists", pinnedWrap, pinnedGrid);
+	}
 
-	if (groups.length === 0 && !showAllWanted) {
+	// The search only applies to the real wantlists (the pinned row above stays
+	// displayed no matter what).
+	if (filter && groups.length === 0) {
 		this.bodyEl.createEl("p", {
 			text: "No wantlist matches your filter.",
 			cls: "mtg-status",
@@ -611,17 +660,12 @@ export function renderWantlistGrid(this: MTGCollectionView) {
 
 	// Small "Wantlists: …" title with the number of wantlists, "x of y
 	// wantlists match" during a search — same title (and same class) as "Lists"
-	// in renderListGrid, explicitly requested for the 3 galleries. "All Wanted"
-	// (virtual tile) is counted in neither number: it is not one of the user's
-	// wantlists.
+	// in renderListGrid, explicitly requested for the 3 galleries. "All wanted"
+	// (virtual tile) and the Inbox (system wantlist) are counted in neither number:
+	// they are pinned apart, not among the user's own wantlists.
 	this.bodyEl.createDiv({
 		cls: "mtg-list-grid-section-title",
-		text: formatCountTitle(
-			"wantlist",
-			groups.length,
-			this.plugin.settings.wantlists.length,
-			filter !== ""
-		),
+		text: formatCountTitle("wantlist", groups.length, realGroups.length, filter !== ""),
 	});
 
 	// Automatic number of columns (1/2/4 depending on the panel's width) — see
@@ -631,65 +675,56 @@ export function renderWantlistGrid(this: MTGCollectionView) {
 		cls: `mtg-set-grid${this.wantlistGallerySelectMode ? " mtg-gallery-selecting" : ""}`,
 	});
 
-	if (showAllWanted && this.plugin.settings.wantlists.length > 0) {
-		const allCards = this.plugin.settings.wantlist;
-		this.renderWantlistTile(grid, {
-			id: ALL_WANTED_ID,
-			name: "All wanted",
-			cards: allCards,
-			totalQty: allCards.reduce((s, c) => s + c.count, 0),
-			totalValue: allCards.reduce((s, c) => s + cardValue(c, this.plugin.settings.priceCurrency), 0),
-			coverImage: pickCoverImage(allCards, this.plugin.settings.priceCurrency),
-		});
-	}
-
 	groups.forEach((group) => this.renderWantlistTile(grid, group));
 }
 
 
-export function renderWantlistTile(this: MTGCollectionView, grid: HTMLElement, group: WantlistGroup) {
+// isInbox: tile of the "Inbox" system wantlist (see Wantlist.isInbox/
+// ensureInboxWantlist) — the mirror of renderListTile (collection-render.ts, read
+// its comment for the reasoning): full accent color, no background image, an
+// "inbox" pictogram, never selectable in gallery selection mode (nothing to delete/
+// merge corresponds to it, see the guards of deleteWantlist/bulkDeleteWantlists/
+// mergeWantlists/renameWantlist), and a "..." menu that opens InboxSettingsModal
+// rather than WantlistSettingsModal, which would wrongly expose a rename/a deletion.
+
+export function renderWantlistTile(this: MTGCollectionView, grid: HTMLElement, group: WantlistGroup, isInbox = false) {
 	const isVirtual = group.id === ALL_WANTED_ID;
+	const nonSelectable = isVirtual || isInbox;
 	const tile = grid.createDiv({
-		cls: `mtg-set-tile${isVirtual ? " mtg-set-tile-all-wanted" : ""}`,
+		cls: `mtg-set-tile${isInbox ? " mtg-set-tile-inbox" : ""}${isVirtual ? " mtg-set-tile-all-wanted" : ""}`,
 	});
 	// "All Wanted" treated exactly like "All Cards" on the My Collection side
 	// (explicitly requested, screenshot in support): no background
 	// image/gradient, fixed dark gray instead (.mtg-set-tile-all-wanted,
 	// modeled on .mtg-set-tile-all-cards) — see renderListTile for the full
 	// reasoning, transposed as is here.
-	if (group.coverImage && !isVirtual) {
+	if (group.coverImage && !isInbox && !isVirtual) {
 		const bg = tile.createDiv({ cls: "mtg-set-tile-bg" });
 		bg.style.backgroundImage = `linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.85)), url("${group.coverImage}")`;
 	}
 	const content = tile.createDiv({ cls: "mtg-set-tile-content" });
 
-	// Virtual aggregate "All Wanted": pictogram (the same heart as "My
-	// Wantlists" in the left menu) + text, anchored at the BOTTOM of the tile
-	// — not the vertically centered layout of Inbox/"All Cards"
-	// (mtg-set-tile-content-pinned) but the same nested row
-	// (mtg-set-tile-icon-row) as a normal list with a manually chosen
-	// pictogram just below: explicitly requested ("just put the elements at
-	// the bottom, as we do for lists") after a first vertically centered
-	// attempt — "All Wanted" shares the grid of the normal wantlists
-	// (min-height 200px, .mtg-set-tile) rather than the dedicated
-	// reduced-height grid of Inbox/"All Cards" (.mtg-pinned-tiles-grid,
-	// 100px), where the centering was barely noticeable; here it left a
-	// visible gap above the text. content therefore keeps its default
-	// flex-direction/justify-content (column, anchored at the bottom) instead
-	// of the -pinned modifier, exactly as for the manual icon below.
+	// Pinned row (Inbox/"All wanted"): horizontal layout — a pictogram in a circle
+	// on the left (the heart of "My Wantlists" in the left menu for "All wanted", the
+	// "inbox" icon for the Inbox), the text on the right — exactly renderListTile's.
+	// "All wanted" used to share the main grid and its bottom-anchored layout (an
+	// earlier vertically centered attempt left a visible gap above the text in a
+	// 200px tile, hence "just put the elements at the bottom, as we do for lists");
+	// now that it sits in the reduced-height pinned grid (.mtg-pinned-tiles-grid,
+	// 100px) next to the Inbox, the centered layout is the right one again.
 	let textParent: HTMLElement = content;
-	if (isVirtual) {
-		const iconRow = content.createDiv({ cls: "mtg-set-tile-icon-row" });
-		const iconCircle = iconRow.createDiv({ cls: "mtg-set-tile-pictogram-circle" });
-		setIcon(iconCircle, "heart");
-		textParent = iconRow.createDiv({ cls: "mtg-set-tile-pinned-text" });
+	if (isInbox || isVirtual) {
+		content.addClass("mtg-set-tile-content-pinned");
+		const iconCircle = content.createDiv({ cls: "mtg-set-tile-pictogram-circle" });
+		setIcon(iconCircle, isInbox ? "inbox" : "heart");
+		textParent = content.createDiv({ cls: "mtg-set-tile-pinned-text" });
 	}
 
 	// Pictogram chosen manually (WantlistSettingsModal, "Choose icon") — same block/same
 	// reasoning as renderListTile (collection-render.ts, see its own comment), transposed as
-	// is on the wantlist side: never for the virtual aggregate "All Wanted" (no real Wantlist
-	// behind it, so no icon to set on it).
-	if (group.icon && !isVirtual) {
+	// is on the wantlist side: never for the pinned tiles (no icon to set on the virtual
+	// aggregate "All Wanted", and the Inbox has its own pictogram, no "Choose icon").
+	if (group.icon && !isInbox && !isVirtual) {
 		const iconRow = content.createDiv({ cls: "mtg-set-tile-icon-row" });
 		const iconCircle = iconRow.createDiv({ cls: "mtg-set-tile-pictogram-circle" });
 		const fetchIcon =
@@ -714,8 +749,10 @@ export function renderWantlistTile(this: MTGCollectionView, grid: HTMLElement, g
 		text: formatMoney(group.totalValue, this.plugin.settings.priceCurrency),
 	});
 
-	const isSelected = !isVirtual && this.selectedWantlistIds.has(group.id);
-	if (this.wantlistGallerySelectMode && !isVirtual) {
+	// Gallery selection mode: "All wanted" (virtual aggregate) and "Inbox" (system
+	// wantlist) are never selectable — see nonSelectable above.
+	const isSelected = !nonSelectable && this.selectedWantlistIds.has(group.id);
+	if (this.wantlistGallerySelectMode && !nonSelectable) {
 		tile.toggleClass("mtg-set-tile-selected", isSelected);
 		const indicator = tile.createDiv({ cls: "mtg-set-tile-select-indicator" });
 		setIcon(indicator, isSelected ? "check-circle-2" : "circle");
@@ -724,7 +761,7 @@ export function renderWantlistTile(this: MTGCollectionView, grid: HTMLElement, g
 
 	tile.addEventListener("click", () => {
 		if (this.wantlistGallerySelectMode) {
-			if (isVirtual) return;
+			if (nonSelectable) return;
 			if (this.selectedWantlistIds.has(group.id)) this.selectedWantlistIds.delete(group.id);
 			else this.selectedWantlistIds.add(group.id);
 			this.render();
@@ -743,10 +780,11 @@ export function renderWantlistTile(this: MTGCollectionView, grid: HTMLElement, g
 	if (!isVirtual && !this.wantlistGallerySelectMode) {
 		const menuBtn = tile.createDiv({ cls: "mtg-tile-menu-btn" });
 		setIcon(menuBtn, "more-vertical");
-		menuBtn.setAttribute("title", "Wantlist settings");
+		menuBtn.setAttribute("title", isInbox ? "Inbox settings" : "Wantlist settings");
 		menuBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
-			new WantlistSettingsModal(this.app, this.plugin, this, group.id).open();
+			if (isInbox) new InboxSettingsModal(this.app, this.plugin, this, group.id, "wantlist").open();
+			else new WantlistSettingsModal(this.app, this.plugin, this, group.id).open();
 		});
 	}
 }
@@ -910,6 +948,10 @@ export function renderWantlistGalleryBulkActionsBar(this: MTGCollectionView,
 
 export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string) {
 	const isVirtual = wantlistId === ALL_WANTED_ID;
+	// "Inbox" system wantlist (see Wantlist.isInbox/ensureInboxWantlist) — opens
+	// InboxSettingsModal instead of WantlistSettingsModal from the "..." menu and the
+	// title of this sticky header, same reasoning as renderWantlistTile.
+	const isInbox = !isVirtual && !!this.plugin.settings.wantlists.find((w) => w.id === wantlistId)?.isInbox;
 	const group = isVirtual
 		? {
 				id: ALL_WANTED_ID,
@@ -976,12 +1018,14 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 	// construction of the modal. isVirtual ("All Wanted") has no settings at
 	// all (no menuBtn either, see further down): title not clickable, as
 	// before.
-	const openWantlistSettings = () =>
-		new WantlistSettingsModal(this.app, this.plugin, this, group.id).open();
+	const openWantlistSettings = () => {
+		if (isInbox) new InboxSettingsModal(this.app, this.plugin, this, group.id, "wantlist").open();
+		else new WantlistSettingsModal(this.app, this.plugin, this, group.id).open();
+	};
 	if (!isVirtual) {
 		const nameRow = titleInfo.createDiv({ cls: "mtg-detail-title-row" });
 		nameRow.createEl("h3", { cls: "mtg-detail-title", text: group.name });
-		nameRow.setAttribute("title", "Wantlist settings");
+		nameRow.setAttribute("title", isInbox ? "Inbox settings" : "Wantlist settings");
 		nameRow.addEventListener("click", openWantlistSettings);
 	} else {
 		titleInfo.createEl("h3", { cls: "mtg-detail-title", text: group.name });
@@ -1029,7 +1073,7 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 	if (!isVirtual) {
 		const menuBtn = actionsRow.createDiv({ cls: "mtg-tile-menu-btn mtg-tile-menu-btn-large" });
 		setIcon(menuBtn, "more-vertical");
-		menuBtn.setAttribute("title", "Wantlist settings");
+		menuBtn.setAttribute("title", isInbox ? "Inbox settings" : "Wantlist settings");
 		menuBtn.addEventListener("click", openWantlistSettings);
 	}
 	const priceOf = displayedPriceOf(this.plugin.settings.priceCurrency);

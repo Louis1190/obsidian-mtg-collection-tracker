@@ -1,5 +1,5 @@
-import { Platform } from "obsidian";
-import { Finish } from "../core/card-model";
+import { Platform, setIcon } from "obsidian";
+import { CARD_COPYRIGHT_LINE, Finish, formatArtistCredit, hasDistinctArtCrop } from "../core/card-model";
 import { effectiveFinish, PricedCard } from "../core/price";
 import { CardbaseDayChange, CardbaseFinish, CardbasePriceHistory, CardbasePricePoint, CardbaseVendor } from "../api/cardbase";
 import { UsdEurRate, convertUsdEur } from "../api/frankfurter";
@@ -19,6 +19,107 @@ import { setSvgMarkup } from "./svg-markup";
 export function openExternalUrl(url: string | null | undefined): void {
 	if (!url || !/^https:\/\//i.test(url)) return;
 	window.open(url, "_blank");
+}
+
+export function usesArtHeader(card: { artCropUrl?: string; imageUrl?: string }): boolean {
+	return document.body.classList.contains("is-phone") && hasDistinctArtCrop(card);
+}
+
+// In art mode the name + previous/next arrows sit UNDER the banner, scrolling with the rest. The
+// header is built first (above the layout, as on a computer) and moved here, in front of the info
+// panel, so the three modals keep one `renderNavHeader` and `animateCardNav` still finds
+// everything below `contentEl`.
+export function moveNavHeaderBelowArt(contentEl: HTMLElement, panel: HTMLElement): void {
+	const header = contentEl.querySelector(":scope > .mtg-card-detail-nav-header");
+	if (header) panel.before(header);
+}
+
+// The last thing in the scrolling layout in art mode: who drew the artwork, then the copyright, on two lines, white, no block. Scryfall
+// asks for both whenever an art_crop is shown alone (see CARD_COPYRIGHT_LINE). A double-faced card shows the illustrator of the face
+// on display, so the flip button calls `showFace`; a back face with no artist of its own keeps the front's.
+export interface ArtCredit {
+	setBackArtist(artist: string | undefined): void;
+	showFace(flipped: boolean): void;
+}
+
+export function renderArtCredit(layout: HTMLElement, frontArtist: string | undefined): ArtCredit {
+	const el = layout.createDiv({ cls: "mtg-card-detail-art-credit" });
+	const artistLine = el.createDiv({ cls: "mtg-card-detail-art-credit-artist" });
+	el.createDiv({ cls: "mtg-card-detail-art-credit-copyright", text: CARD_COPYRIGHT_LINE });
+	let backArtist: string | undefined;
+	const showFace = (flipped: boolean) => {
+		artistLine.setText(formatArtistCredit(flipped && backArtist ? backArtist : frontArtist));
+	};
+	showFace(false);
+	return {
+		setBackArtist: (artist) => {
+			backArtist = artist;
+		},
+		showFace,
+	};
+}
+
+// The window's round close button, created once and kept by every redraw (BackgroundCrossfader.clearSiblingsIn spares it). It sits over
+// the banner, so on a phone it is a composited layer of its own; rebuilt at each navigation it came back as an empty dark square for a
+// few frames (1.0.572, seen on a real phone). The same element for the whole life of the window has none of that.
+export function ensureCloseButton(contentEl: HTMLElement, onClose: () => void): HTMLElement {
+	const existing = contentEl.querySelector<HTMLElement>(":scope > .mtg-card-detail-close-btn");
+	if (existing) return existing;
+	const button = contentEl.createDiv({ cls: "mtg-card-detail-close-btn" });
+	setIcon(button, "x");
+	button.setAttribute("title", "Close");
+	button.addEventListener("click", onClose);
+	return button;
+}
+
+// The banner shows the previous card's artwork under the new one until the new one has loaded, instead of an empty banner: the new picture
+// covers it the moment it arrives (it is opaque), and one that is already cached never shows it. `lastBanner` remembers, per window, the
+// last artwork that really appeared (only a loaded one counts, so tapping through cards faster than they load never holds a blank).
+const lastLoadedBanner = new WeakMap<HTMLElement, string>();
+export function holdPreviousBanner(windowEl: HTMLElement, tilt: HTMLElement, img: HTMLImageElement, url: string): void {
+	const previous = lastLoadedBanner.get(windowEl);
+	if (previous && previous !== url && !(img.complete && img.naturalWidth > 0)) {
+		tilt.addClass("has-previous-banner");
+		tilt.setCssProps({ "--mtg-previous-banner": `url("${previous}")` });
+	}
+	const dropPlaceholder = () => {
+		tilt.removeClass("has-previous-banner");
+		tilt.style.removeProperty("--mtg-previous-banner");
+		if (!tilt.getAttribute("style")) tilt.removeAttribute("style");
+	};
+	if (img.complete && img.naturalWidth > 0) {
+		lastLoadedBanner.set(windowEl, url);
+		dropPlaceholder();
+		return;
+	}
+	// Gone once the picture is there (behind the two faces of a double-faced card it would show at the edges while the card flips) and
+	// when the picture fails (the previous card's artwork must not pass for this one's).
+	img.addEventListener(
+		"load",
+		() => {
+			lastLoadedBanner.set(windowEl, url);
+			dropPlaceholder();
+		},
+		{ once: true }
+	);
+	img.addEventListener("error", dropPlaceholder, { once: true });
+}
+
+// Panel order of the phone mockup, applied once the panel is fully built (art mode only): the card text
+// first (under the name), the "where is it" row (List / Deck / Wantlist) taking the copy button and, when
+// the card has one, the grading toggle that sit next to Quantity and Finish on a computer, and the grading
+// block under that row. Existing nodes are MOVED, so their click handlers and the references the modals
+// keep (the toggle's closing animation reads the grading block) stay valid.
+export function arrangePanelForArt(
+	panel: HTMLElement,
+	placeRow: HTMLElement,
+	joiners: HTMLElement[],
+	gradingBlock: HTMLElement | null
+): void {
+	const cardTextRow = panel.querySelector(".mtg-card-description-box")?.parentElement;
+	if (cardTextRow && cardTextRow.parentElement === panel) panel.prepend(cardTextRow);
+	placeRow.append(...joiners);
+	if (gradingBlock) placeRow.after(gradingBlock);
 }
 
 // Blurred background layer (art crop) + scrim of a card-detail modal, with a
@@ -55,7 +156,8 @@ export class BackgroundCrossfader {
 	// contentEl.empty() that spares this single element.
 	clearSiblingsIn(container: HTMLElement) {
 		Array.from(container.children).forEach((child) => {
-			if (child !== this.el) child.remove();
+			// The close button outlives the redraws too (ensureCloseButton): see there for why.
+			if (child !== this.el && !child.hasClass("mtg-card-detail-close-btn")) child.remove();
 		});
 	}
 
@@ -75,10 +177,22 @@ export class BackgroundCrossfader {
 
 		const preload = new Image();
 		preload.onload = () => {
-			if (token !== this.token) return;
-			const layer = this.el!.createDiv({ cls: "mtg-card-detail-bg" });
-			layer.style.backgroundImage = `url("${url}")`;
+			// clear() can run between the request and the answer.
+			if (token !== this.token || !this.el) return;
+			// A phone paints a tiny smoothed canvas instead of a CSS-blurred layer, and keeps only the newest
+			// layer (see buildSmoothLayer).
+			const lean = document.body.classList.contains("is-phone");
+			const smooth = lean ? this.buildSmoothLayer(preload, container) : null;
+			const layer = smooth ?? this.el.createDiv({ cls: "mtg-card-detail-bg" });
+			if (!smooth) layer.style.backgroundImage = `url("${url}")`;
 			this.layers.push(layer);
+			if (lean) {
+				// No fade on a phone (see buildSmoothLayer): the layer is shown at once and the previous ones go at once.
+				layer.addClass("mtg-card-detail-bg-loaded");
+				this.layers.slice(0, -1).forEach((l) => l.remove());
+				this.layers = [layer];
+				return;
+			}
 			// Two nested requestAnimationFrame calls (same idiom as the modal opening)
 			// to guarantee that the browser really paints the initial opacity:0 state
 			// before triggering the transition to the visible state — otherwise the
@@ -94,6 +208,47 @@ export class BackgroundCrossfader {
 			}
 		};
 		preload.src = url;
+	}
+
+	// The phone version of the blurred background (2026-10-18). A full-screen layer carrying `filter: blur(45px)` and
+	// `scale(1.15)` is a ~35 MB texture on a phone (537x1116 CSS px at 2.6 device pixels each), and up to ten of them piled
+	// up while browsing cards: after about a dozen next-card taps the real Android app stopped painting the content
+	// above them (banner, boxes gone, the DOM intact; reproduced in the emulator). A blurred image is only a few smooth
+	// colour blobs, so the artwork is drawn at 16 px wide, doubled step by step to 128 px (each step smooths), and the
+	// browser scales that tiny canvas up: a texture of a few KB, no filter. Cropped like `background-size: cover`.
+	// Returns null when no 2D context is available (the caller then falls back to the CSS layer).
+	private buildSmoothLayer(img: HTMLImageElement, container: HTMLElement): HTMLElement | null {
+		const iw = img.naturalWidth;
+		const ih = img.naturalHeight;
+		if (!iw || !ih) return null;
+		const aspect = container.clientWidth > 0 && container.clientHeight > 0 ? container.clientHeight / container.clientWidth : 2;
+		const step = (from: CanvasImageSource, sx: number, sy: number, sw: number, sh: number, w: number, h: number) => {
+			const canvas = createEl("canvas");
+			canvas.width = w;
+			canvas.height = h;
+			const ctx = canvas.getContext("2d", { willReadFrequently: true });
+			if (!ctx) return null;
+			ctx.imageSmoothingEnabled = true;
+			ctx.imageSmoothingQuality = "high";
+			ctx.drawImage(from, sx, sy, sw, sh, 0, 0, w, h);
+			return canvas;
+		};
+		const w0 = 16;
+		const h0 = Math.max(8, Math.round(w0 * aspect));
+		// The part of the artwork a `cover` background of that shape would show.
+		const scale = Math.max(w0 / iw, h0 / ih);
+		const cw = w0 / scale;
+		const ch = h0 / scale;
+		let current = step(img, (iw - cw) / 2, (ih - ch) / 2, cw, ch, w0, h0);
+		for (let w = w0 * 2; current && w <= 128; w *= 2) {
+			const h = Math.round(w * (h0 / w0));
+			current = step(current, 0, 0, current.width, current.height, w, h);
+		}
+		if (!current) return null;
+		current.addClass("mtg-card-detail-bg");
+		current.addClass("mtg-card-detail-bg-canvas");
+		this.el!.appendChild(current);
+		return current;
 	}
 
 	// No image for the displayed card: removes everything rather than leaving
@@ -290,7 +445,10 @@ export function animateCardNav(
 	onDone?: () => void
 ) {
 	const oldWrap = contentEl.querySelector(".mtg-card-detail-image-wrap");
-	if (!oldWrap) {
+	// Phone art mode: no animation. Anything that moves or fades in the banner's area makes the round buttons, the name and the arrows
+	// that sit over it composited layers for the duration, created anew at every navigation and painted a frame late: they flashed
+	// away for a few frames (1.0.573). The swap is instant, the old banner stays up until the new one has loaded (holdPreviousBanner).
+	if (!oldWrap || contentEl.hasClass("mtg-card-detail-art-mode")) {
 		update();
 		onDone?.();
 		return;

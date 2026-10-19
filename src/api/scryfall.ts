@@ -49,6 +49,8 @@ export interface ScryfallCard {
 		power?: string;
 		toughness?: string;
 		loyalty?: string;
+		// Each face of a double-faced card names its own illustrator (the two sides can differ).
+		artist?: string;
 		image_uris?: { normal?: string; small?: string; art_crop?: string };
 	}[];
 	prices?: {
@@ -233,6 +235,12 @@ export function buildCardTextInfo(card: ScryfallImmutableSnapshot): CardTextInfo
 export interface DoubleFacedImages {
 	front: string;
 	back: string;
+	// Artwork alone of the back face (art_crop), for the phone detail window that
+	// shows the illustration instead of the whole card. Absent when Scryfall has none.
+	backArt?: string;
+	// Illustrator of the back face: Scryfall asks for the artist next to an artwork shown alone,
+	// and the two sides of a card can have different ones.
+	backArtist?: string;
 }
 
 export function getDoubleFacedImages(card: ScryfallImmutableSnapshot): DoubleFacedImages | null {
@@ -242,7 +250,7 @@ export function getDoubleFacedImages(card: ScryfallImmutableSnapshot): DoubleFac
 	const front = faces[0].image_uris?.normal;
 	const back = faces[1].image_uris?.normal;
 	if (!front || !back) return null;
-	return { front, back };
+	return { front, back, backArt: faces[1].image_uris?.art_crop, backArtist: faces[1].artist };
 }
 
 // "Split" cards (Fire // Ice, Dusk // Dawn...), including the Aftermath
@@ -300,8 +308,39 @@ function reserveScryfallSlot(): Promise<void> {
 	return slot;
 }
 
+// The few endpoints Scryfall limits HARD to 2 requests per second (500 ms) — /cards/search, /cards/named, /cards/random and
+// /cards/collection; every other method is 10/second (https://scryfall.com/docs/api/rate-limits, read 2026-10-19). The 110 ms gate above
+// was calibrated on the older "50-100 ms between requests" advice, which let a run of /cards/collection batches (price refresh, legality
+// warm-up, imports, the neighbour prefetch of the detail window) go out about every 230 ms: more than twice the allowed rate. Those
+// endpoints now ALSO wait their own 550 ms spacing (a margin over 500, like 110 over 100). Unlike the gate above this one is timestamp
+// based, not a chain of sleeps: a request that finds the line idle goes out at once instead of paying the 550 ms every time. The limit
+// is per IP address, so the plugin's own spacing is the only thing it can do; after a 429 Scryfall limits access for 30 seconds.
+const SCRYFALL_STRICT_GAP_MS = 550;
+const SCRYFALL_STRICT_ENDPOINTS = ["/cards/search", "/cards/named", "/cards/random", "/cards/collection"];
+let scryfallStrictNextAt = 0;
+
+export function isScryfallStrictEndpoint(url: string): boolean {
+	const path = url.replace(/^https?:\/\/[^/]+/i, "");
+	return SCRYFALL_STRICT_ENDPOINTS.some((endpoint) => path === endpoint || path.startsWith(`${endpoint}?`) || path.startsWith(`${endpoint}/`));
+}
+
+// For tests only: the spacing is module state, and a test that runs on a fake clock would leave it in the (real) future.
+export function resetScryfallStrictGateForTests(): void {
+	scryfallStrictNextAt = 0;
+}
+
+// performance.now(), not Date.now(): a monotonic clock. A device clock set back by an automatic time sync would otherwise leave the next
+// slot far in the future and every Scryfall request of the session waiting for it.
+function reserveStrictScryfallSlot(): Promise<void> {
+	const now = performance.now();
+	const at = Math.max(now, scryfallStrictNextAt);
+	scryfallStrictNextAt = at + SCRYFALL_STRICT_GAP_MS;
+	return at > now ? sleep(at - now) : Promise.resolve();
+}
+
 export async function requestScryfall(params: RequestUrlParam): Promise<RequestUrlResponse> {
 	await reserveScryfallSlot();
+	if (isScryfallStrictEndpoint(params.url)) await reserveStrictScryfallSlot();
 	const res = await requestUrl({ ...params, throw: false });
 	if (res.status === 429) {
 		const header = res.headers?.["retry-after"] ?? res.headers?.["Retry-After"];
@@ -605,14 +644,26 @@ export const SET_GROUP_ORDER: string[] = [...SET_TYPE_GROUPS.map((g) => g.label)
 // (ui/svg-markup.ts), which rebuilds the DOM from an allow-list and therefore lets
 // through no <script>, no on* attribute, no href, whatever this cleanup left behind. It
 // remains useful upstream: what is cached on disk is already clean.
+//
+// Two things CodeQL (js/bad-tag-filter, js/incomplete-multi-character-sanitization) reported, fixed the way
+// its help recommends. (1) The passes are repeated until the text stops changing: removing a fragment can
+// assemble a new forbidden one out of what sat on both sides of it (`<scr<script></script>ipt>`,
+// `o onclick="x"nload="y"`), which a single pass leaves behind. Every pass only shortens the string, so the
+// loop always ends. (2) An end tag is any `</script` followed by a space, a slash or `>` up to the next `>`:
+// browsers accept `</script >` and `</script foo="bar">`, and so does the HTML parser behind setSvgMarkup.
 export function sanitizeSvg(svg: string): string {
-	let clean = svg.replace(/<script[\s\S]*?<\/script>/gi, "");
-	clean = clean.replace(/\son\w+\s*=\s*"[^"]*"/gi, "");
-	clean = clean.replace(/\son\w+\s*=\s*'[^']*'/gi, "");
-	clean = clean.replace(/\s(?:xlink:)?href\s*=\s*"\s*(?:javascript|data):[^"]*"/gi, "");
-	clean = clean.replace(/\s(?:xlink:)?href\s*=\s*'\s*(?:javascript|data):[^']*'/gi, "");
-	clean = clean.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, "");
-	clean = clean.replace(/<(animate|animatetransform|animatemotion|set)\b[^>]*\/?>(?:[\s\S]*?<\/\1>)?/gi, "");
+	let clean = svg;
+	let previous: string;
+	do {
+		previous = clean;
+		clean = clean.replace(/<script[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi, "");
+		clean = clean.replace(/\son\w+\s*=\s*"[^"]*"/gi, "");
+		clean = clean.replace(/\son\w+\s*=\s*'[^']*'/gi, "");
+		clean = clean.replace(/\s(?:xlink:)?href\s*=\s*"\s*(?:javascript|data):[^"]*"/gi, "");
+		clean = clean.replace(/\s(?:xlink:)?href\s*=\s*'\s*(?:javascript|data):[^']*'/gi, "");
+		clean = clean.replace(/<foreignObject[\s\S]*?<\/foreignObject(?:[\s/][^>]*)?>/gi, "");
+		clean = clean.replace(/<(animate|animatetransform|animatemotion|set)\b[^>]*\/?>(?:[\s\S]*?<\/\1>)?/gi, "");
+	} while (clean !== previous);
 	return clean;
 }
 

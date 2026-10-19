@@ -69,8 +69,14 @@ export function priceHistoryShardName(scryfallId: string): string {
 	return scryfallId.slice(0, 3).toLowerCase();
 }
 
-export function priceHistoryShardUrl(baseUrl: string, shardName: string): string {
-	return `${baseUrl.replace(/\/+$/, "")}/s/${shardName}.json.gz`;
+/**
+ * Which set of files: "s" is the main one (Cardmarket, TCGplayer and Card Kingdom), "mp" the Mana Pool set that phones and tablets read
+ * (same names and layout, 1-6 KB each; Mana Pool is not in "s", see tools/price-history/lib/mp-files.mjs).
+ */
+export type PriceHistoryFolder = "s" | "mp";
+
+export function priceHistoryShardUrl(baseUrl: string, shardName: string, folder: PriceHistoryFolder = "s"): string {
+	return `${baseUrl.replace(/\/+$/, "")}/${folder}/${shardName}.json.gz`;
 }
 
 /** Reading the files needs gunzip (Chromium, Android WebView, iOS/iPadOS 16.4+); a device without it simply keeps cardbase. */
@@ -91,8 +97,8 @@ const SHARD_MAX_JSON_BYTES = 8 * 1024 * 1024;
  * `undefined` = failure of any kind (offline, a status other than 200 or 404, damaged or foreign content). Never
  * throws.
  */
-export async function fetchPriceHistoryShard(baseUrl: string, scryfallId: string): Promise<PriceHistoryShard | null | undefined> {
-	const res = await requestUrlOrNull({ url: priceHistoryShardUrl(baseUrl, priceHistoryShardName(scryfallId)), headers: HEADERS });
+export async function fetchPriceHistoryShard(baseUrl: string, scryfallId: string, folder: PriceHistoryFolder = "s"): Promise<PriceHistoryShard | null | undefined> {
+	const res = await requestUrlOrNull({ url: priceHistoryShardUrl(baseUrl, priceHistoryShardName(scryfallId), folder), headers: HEADERS });
 	if (!res) return undefined;
 	if (res.status === 404) return null;
 	if (res.status !== 200) return undefined;

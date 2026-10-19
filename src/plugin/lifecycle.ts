@@ -78,6 +78,7 @@ async function tolerateNetworkFailure(label: string, run: () => Promise<void>) {
 
 export async function runSettingsMigrations(this: MTGCollectionPlugin) {
 	this.ensureInboxList();
+	this.ensureInboxWantlist();
 	this.migrateFoilSplit();
 	this.migrateFoilToFinish();
 	this.migrateDamagedCondition();

@@ -37,9 +37,11 @@ export class MTGCollectionView extends ItemView {
 	collectionHeaderEl!: HTMLElement;
 	headerTitleEl!: HTMLElement;
 	headerStatsEl!: HTMLElement;
-	// Pinned "Inbox"/"All Cards" row of the My Collection grid — see its
-	// comment at creation (onOpen) and renderListGrid.
-	collectionPinnedEl!: HTMLElement;
+	// Pinned "Inbox"/"All Cards" row of the My Collection grid and "Inbox"/"All
+	// wanted" row of the My Wantlists grid (one element, only one of the two
+	// sections is ever shown) — see its comment at creation (onOpen),
+	// renderListGrid and renderWantlistGrid.
+	galleryPinnedEl!: HTMLElement;
 	collectionToolbarEl!: HTMLElement;
 	decksToolbarEl!: HTMLElement;
 	wantlistsToolbarEl!: HTMLElement;
@@ -249,6 +251,12 @@ export class MTGCollectionView extends ItemView {
 	// while we visit another, and its bar (which therefore does not start from 0, `animate`
 	// being false) would then inherit the position of an unrelated bar.
 	bulkBarScrollLeft: Map<string, number> = new Map();
+
+	// Page (0 = Inbox, 1 = "All cards"/"All wanted") of the phone carousel formed by the
+	// galleries' pinned row, per section ("collection" | "wantlists") — see setupPinnedCarousel
+	// (view/pinned-carousel.ts). The row is rebuilt by every render(), which would otherwise
+	// bring it back to the first tile each time.
+	pinnedCarouselPage: Map<string, number> = new Map();
 
 	// "Gallery" selection mode — one notch above
 	// selectMode/deckSelectMode/wantlistSelectMode above: those select CARDS
@@ -546,14 +554,15 @@ export class MTGCollectionView extends ItemView {
 		});
 
 		// Pinned "Inbox"/"All Cards" row of My Collection (filled by
-		// renderListGrid) — placed BEFORE the filter bar below, explicitly
+		// renderListGrid) and "Inbox"/"All wanted" row of My Wantlists (filled by
+		// renderWantlistGrid) — placed BEFORE the filter bar below, explicitly
 		// requested (search and sort come after these two tiles). It is this row
 		// that goes up above the bar, not the other way round: the filter bar is a
 		// persistent element that render() never rebuilds (its input would lose
 		// focus, and an IME/dead-key composition would be canceled, on every
 		// keystroke), whereas this one is rebuilt on every render(), by the same
 		// detached swap as this.bodyEl — see render().
-		this.collectionPinnedEl = main.createDiv({ cls: "mtg-collection-pinned" });
+		this.galleryPinnedEl = main.createDiv({ cls: "mtg-collection-pinned" });
 
 		// Toolbar "My Collection" : filtre
 		this.collectionToolbarEl = main.createDiv({ cls: "mtg-collection-toolbar" });
@@ -645,8 +654,11 @@ export class MTGCollectionView extends ItemView {
 		// much from the real edge of the panel.
 		this.mainEl.toggleClass("mtg-main-detail-open", this.isDetailViewOpen());
 
-		this.collectionPinnedEl.style.display =
-			this.activeSection === "collection" && !this.openListId ? "" : "none";
+		this.galleryPinnedEl.style.display =
+			(this.activeSection === "collection" && !this.openListId) ||
+			(this.activeSection === "wantlists" && !this.openWantlistId)
+				? ""
+				: "none";
 		this.collectionToolbarEl.style.display =
 			this.activeSection === "collection" && !this.openListId ? "flex" : "none";
 		this.newListBtn.style.display =
@@ -702,13 +714,13 @@ export class MTGCollectionView extends ItemView {
 		// bodyEl (auto-height/block expected for the grid).
 		newBodyEl.removeClass("mtg-collection-body-detail");
 		this.bodyEl = newBodyEl;
-		// Same detached swap for My Collection's pinned row (collectionPinnedEl,
-		// see onOpen): only renderListGrid fills it, every other render leaves it
+		// Same detached swap for the galleries' pinned row (galleryPinnedEl,
+		// see onOpen): only renderListGrid/renderWantlistGrid fill it, every other render leaves it
 		// empty — and hidden, its display having been set above BEFORE this clone,
 		// which cloneNode(false) copies over.
-		const oldPinnedEl = this.collectionPinnedEl;
+		const oldPinnedEl = this.galleryPinnedEl;
 		const newPinnedEl = oldPinnedEl.cloneNode(false) as HTMLElement;
-		this.collectionPinnedEl = newPinnedEl;
+		this.galleryPinnedEl = newPinnedEl;
 		// Reset before rebuilding: only what THIS render pass has just scheduled
 		// (see renderChipFilter) remains "pending" here — never a stale callback
 		// from a previous render.

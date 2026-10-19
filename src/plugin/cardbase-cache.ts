@@ -1,6 +1,7 @@
 import { fetchOwnMovers } from "../api/price-history";
 import { CARDBASE_SOURCE, CardbaseFinish, CardbasePriceHistory, fetchCardbasePriceHistory, fetchCardbasePrintingCardmarketId, CardmarketNativePrices, fetchCardmarketNativePrices, withNativeCardmarketTrend, pickCardmarketTrendSeries, pickCardmarketLatestPrice, fetchCardbaseMovers, CardbaseVendor, CardbaseMoversResult, CardbaseMoverPeriod } from "../api/cardbase";
 import { sleep } from "../api/scryfall";
+import { manaPoolPricesSupported } from "../api/manapool";
 import type MTGCollectionPlugin from "../plugin";
 
 /* ---------------------------------------------------------------------------- */
@@ -37,6 +38,8 @@ export async function getCardbasePriceHistory(this: MTGCollectionPlugin,
 // preloading adds to the request of the card actually displayed, which
 // must always go first and stay fast.
 
+export const OWN_PRICE_PREFETCH_WINDOW = 5;
+
 export function cardbasePrefetchWindow(this: MTGCollectionPlugin): number {
 	return this.settings.cardbaseApiKey ? 5 : 2;
 }
@@ -60,7 +63,9 @@ export async function prefetchCardbaseNeighbors(this: MTGCollectionPlugin,
 	items: ({ scryfallId: string; finish: CardbaseFinish } | null)[],
 	centerIndex: number
 ): Promise<void> {
-	const window = this.cardbasePrefetchWindow();
+	// Our own files are small static files with no rate limit to protect: the same width as the rules text and the pictures (5), not the
+	// 2 kept for cardbase's 10 requests a minute.
+	const window = this.ownPriceHistoryEnabled() ? OWN_PRICE_PREFETCH_WINDOW : this.cardbasePrefetchWindow();
 	const order: number[] = [];
 	for (let d = 1; d <= window; d++) {
 		if (centerIndex + d < items.length) order.push(centerIndex + d);
@@ -73,6 +78,8 @@ export async function prefetchCardbaseNeighbors(this: MTGCollectionPlugin,
 		// nothing to pause for; its shard is then in the session cache by the time the user gets there.
 		if (this.ownPriceHistoryEnabled()) {
 			await this.getOwnPriceHistory(item.scryfallId, item.finish);
+			// A phone or tablet reads Mana Pool's price from our own `mp/` file of the card (see getManaPoolPrice): warm it too.
+			if (!manaPoolPricesSupported()) await this.getPriceHistoryShard(item.scryfallId, "mp");
 			continue;
 		}
 		if (!CARDBASE_SOURCE.enabled) return; // nothing else to warm up

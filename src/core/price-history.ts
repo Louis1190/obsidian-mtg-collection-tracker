@@ -90,8 +90,8 @@ const VENDORS: { code: "ck" | "tcg" | "cm"; vendor: CardbaseVendor; currency: st
 	{ code: "tcg", vendor: "tcgplayer", currency: "USD" },
 	{ code: "cm", vendor: "cardmarket", currency: "EUR" },
 ];
-// Mana Pool ("mp") is collected by the job but NOT published (2026-10-15: nothing reads it, 25 % of the bytes, the least reliable vendor): the
-// files hold these three vendors only, and the chart's vendor set is cardbase's (see cardbase.ts).
+// Mana Pool ("mp") is collected by the job but NOT in these main files (2026-10-15: 25 % of the bytes, the least reliable vendor): they hold these three
+// vendors only, and the chart's vendor set is cardbase's (see cardbase.ts). Phones and tablets read Mana Pool from a set of its own, see readManaPoolPrice.
 
 const FINISH_CODES: Record<CardbaseFinish, string> = { normal: "n", foil: "f", etched: "e" };
 
@@ -150,4 +150,19 @@ export function buildPriceHistory(shard: PriceHistoryShard, scryfallId: string, 
 	}
 	if (series.length === 0) return undefined;
 	return { scryfallId, series, historyBegins: dateOfDay(first), asOf: shard.asOf, source: "price-history" };
+}
+
+/**
+ * A card's Mana Pool price from the Mana Pool set (tools/price-history/lib/mp-files.mjs, read on phones and tablets only), or undefined when it has
+ * none that is current: no series for this finish, or one that stopped listing the card more than LIVE_TOLERANCE_DAYS before the files' day (a card
+ * Mana Pool no longer has in stock). It is MTGJSON's Mana Pool price, i.e. the LOWEST price across all conditions, and about a day old: callers
+ * must not present it as Near Mint or as live. `date` is the day the price is from ("YYYY-MM-DD").
+ */
+export function readManaPoolPrice(shard: PriceHistoryShard, scryfallId: string, finish: CardbaseFinish): { priceCents: number; date: string } | undefined {
+	const rec = shard.cards[scryfallId]?.[`mp.${FINISH_CODES[finish]}`];
+	if (!isRecord(rec)) return undefined;
+	const days = decodeRecord(rec);
+	const last = days[days.length - 1];
+	if (!last || last[0] < dayOfDate(shard.asOf) - LIVE_TOLERANCE_DAYS) return undefined;
+	return { priceCents: last[1], date: dateOfDay(last[0]) };
 }

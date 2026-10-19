@@ -11,6 +11,7 @@ import {
 	dayOfDate,
 	decodeRecord,
 	parseShard,
+	readManaPoolPrice,
 	type PriceHistoryShard,
 	type SeriesRecord,
 } from "./price-history";
@@ -85,7 +86,7 @@ describe("buildPriceHistory", () => {
 				// Cardmarket (EUR), live, and a foil series
 				"cm.n": [20738, 20739, [0, 1000], [1, 1100]],
 				"cm.f": [20738, 20739, [0, 5000]],
-				// Mana Pool is in the files but has no curve
+				// A Mana Pool series, were one ever in these main files, has no curve
 				"mp.n": [20738, 20739, [0, 90]],
 				// Damaged: must be ignored, not crash
 				"ck.f": "garbage" as unknown as SeriesRecord,
@@ -279,5 +280,49 @@ describe("getCardbaseDayChange on cardbase's own histories (no live flag, no day
 		expect(getCardbaseDayChange(hist([10, 12]), "tcgplayer")).toBeUndefined();
 		expect(getCardbaseDayChange(undefined, "cardmarket")).toBeUndefined();
 		expect(getCardbaseDayChange(hist([10, 12], { live: false }), "cardmarket")).toBeUndefined();
+	});
+});
+
+// The Mana Pool set that phones read (tools/price-history/lib/mp-files.mjs): same layout as the main files, "mp.*" series only.
+describe("readManaPoolPrice", () => {
+	const asOf = "2026-10-13"; // day 20739
+	const shard = (cards: PriceHistoryShard["cards"]): PriceHistoryShard => ({ asOf, cards });
+
+	it("is the latest price of the finish asked, and the day it is from", () => {
+		const s = shard({ c1: { "mp.n": [20737, 20739, [0, 100], [2, 125]], "mp.f": [20737, 20739, [0, 900]], "mp.e": [20737, 20739, [0, 4000]] } });
+		expect(readManaPoolPrice(s, "c1", "normal")).toEqual({ priceCents: 125, date: "2026-10-13" });
+		expect(readManaPoolPrice(s, "c1", "foil")).toEqual({ priceCents: 900, date: "2026-10-13" });
+		expect(readManaPoolPrice(s, "c1", "etched")).toEqual({ priceCents: 4000, date: "2026-10-13" });
+	});
+
+	it("takes a price from the day before as current (MTGJSON publishes nothing some days), and says which day it is from", () => {
+		const s = shard({ c1: { "mp.n": [20737, 20738, [0, 100], [1, 130]] } });
+		expect(readManaPoolPrice(s, "c1", "normal")).toEqual({ priceCents: 130, date: "2026-10-12" });
+	});
+
+	it("is nothing for a card Mana Pool no longer lists: a series that stopped 2 days or more before the files' day is not a current price", () => {
+		const s = shard({ c1: { "mp.n": [20700, 20737, [0, 100]] } });
+		expect(readManaPoolPrice(s, "c1", "normal")).toBeUndefined();
+	});
+
+	it("is nothing when the series ends in a hole (the card went out of stock), whatever it cost before", () => {
+		const s = shard({ c1: { "mp.n": [20730, 20739, [0, 100], [5, null]] } });
+		expect(readManaPoolPrice(s, "c1", "normal")).toBeUndefined();
+	});
+
+	it("is nothing for a finish with no series, a card the file does not hold, or a damaged record", () => {
+		const s = shard({ c1: { "mp.n": [20737, 20739, [0, 100]], "mp.f": "garbage" as unknown as SeriesRecord } });
+		expect(readManaPoolPrice(s, "c1", "foil")).toBeUndefined();
+		expect(readManaPoolPrice(s, "c1", "etched")).toBeUndefined();
+		expect(readManaPoolPrice(s, "other", "normal")).toBeUndefined();
+	});
+
+	it("reads Mana Pool's series only: another vendor's price is never taken for it", () => {
+		const s = shard({ c1: { "tcg.n": [20737, 20739, [0, 100]], "ck.n": [20737, 20739, [0, 110]], "cm.n": [20737, 20739, [0, 120]] } });
+		expect(readManaPoolPrice(s, "c1", "normal")).toBeUndefined();
+	});
+
+	it("a free card (price 0) is a price, as everywhere else", () => {
+		expect(readManaPoolPrice(shard({ c1: { "mp.n": [20737, 20739, [0, 0]] } }), "c1", "normal")).toEqual({ priceCents: 0, date: "2026-10-13" });
 	});
 });

@@ -1,7 +1,7 @@
 import type { CardbaseFinish, CardbasePriceHistory } from "../api/cardbase";
 import { sleep } from "../api/scryfall";
-import { fetchPriceHistoryShard, fetchSiteManifest, parseSiteManifest, priceHistoryReadable, priceHistoryShardName } from "../api/price-history";
-import { buildPriceHistory, type PriceHistoryShard } from "../core/price-history";
+import { fetchPriceHistoryShard, fetchSiteManifest, parseSiteManifest, priceHistoryReadable, priceHistoryShardName, type PriceHistoryFolder } from "../api/price-history";
+import { buildPriceHistory, readManaPoolPrice, type PriceHistoryShard } from "../core/price-history";
 import type MTGCollectionPlugin from "../plugin";
 
 /* ---------------------------------------------------------------------------- */
@@ -83,9 +83,12 @@ export function ownPriceHistoryEnabled(this: MTGCollectionPlugin): boolean {
 	return this.priceHistoryBaseUrl !== "" && priceHistoryReadable();
 }
 
-/** The shard that holds a card: from the session cache, from a request already under way, or downloaded now. */
-export async function getPriceHistoryShard(this: MTGCollectionPlugin, scryfallId: string): Promise<PriceHistoryShard | null | undefined> {
-	const name = priceHistoryShardName(scryfallId);
+/**
+ * The shard that holds a card: from the session cache, from a request already under way, or downloaded now. `folder` is the set of files ("s" by default; "mp" is the
+ * Mana Pool set, read on phones and tablets only): both sets share the cache, the pauses and the 64-entry limit, under different keys ("s" keeps the bare shard name).
+ */
+export async function getPriceHistoryShard(this: MTGCollectionPlugin, scryfallId: string, folder: PriceHistoryFolder = "s"): Promise<PriceHistoryShard | null | undefined> {
+	const name = folder === "s" ? priceHistoryShardName(scryfallId) : `${folder}/${priceHistoryShardName(scryfallId)}`;
 	const cached = this.priceHistoryShardCache.get(name);
 	if (cached !== undefined && Date.now() - cached.at < SHARD_TTL_MS) {
 		// Most recently used last, so the oldest is what gets dropped.
@@ -102,7 +105,7 @@ export async function getPriceHistoryShard(this: MTGCollectionPlugin, scryfallId
 		let result: PriceHistoryShard | null | undefined;
 		const base = await this.getPriceHistoryBase();
 		for (let attempt = 0; attempt < 2; attempt++) {
-			result = await fetchPriceHistoryShard(base, scryfallId);
+			result = await fetchPriceHistoryShard(base, scryfallId, folder);
 			if (result !== undefined) break;
 			if (attempt === 0) await sleep(300);
 		}
@@ -130,4 +133,15 @@ export async function getOwnPriceHistory(this: MTGCollectionPlugin, scryfallId: 
 	if (!this.ownPriceHistoryEnabled()) return undefined;
 	const shard = await this.getPriceHistoryShard(scryfallId);
 	return shard ? buildPriceHistory(shard, scryfallId, finish) : undefined;
+}
+
+/**
+ * A card's Mana Pool price from our own Mana Pool files, or undefined: off, unreachable, no such file, or Mana Pool has no current price for this finish.
+ * Only phones and tablets ask (computers read Mana Pool's own price list, which is live and knows Near Mint); the price is MTGJSON's, i.e. the lowest across
+ * all conditions and about a day old, see readManaPoolPrice.
+ */
+export async function getOwnManaPoolPrice(this: MTGCollectionPlugin, scryfallId: string, finish: CardbaseFinish): Promise<{ priceCents: number; date: string } | undefined> {
+	if (!this.ownPriceHistoryEnabled()) return undefined;
+	const shard = await this.getPriceHistoryShard(scryfallId, "mp");
+	return shard ? readManaPoolPrice(shard, scryfallId, finish) : undefined;
 }

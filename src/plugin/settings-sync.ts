@@ -1,5 +1,5 @@
 import { Notice, normalizePath } from "obsidian";
-import { DEFAULT_SETTINGS, type MTGCollectionSettings } from "../core/data-model";
+import { DEFAULT_SETTINGS, healInboxes, type MTGCollectionSettings } from "../core/data-model";
 import { DEVICE_LOCAL_KEYS, omitDeviceLocal, pickDeviceLocal } from "../core/device-settings";
 import {
 	applySettingsInPlace,
@@ -436,12 +436,41 @@ export function mergeForeignText(
 			`MTG Collection Tracker: merged data from another device (+${report.added} −${report.removed} ~${report.updated}).`
 		);
 	}
+	// A second Inbox (another device's, created before its first sync) is a result of the merge, not a
+	// modification of the user: healed here, AFTER the merge and BEFORE the snapshots below, with its own tombstone
+	// (healInboxesInPlace). The healed state differs from both sources, so it has to be saved and sent back.
+	const healed = healInboxesInPlace(plugin);
+	if (healed) {
+		plugin.dataVersion++;
+		plugin.cachedArtists = null;
+		plugin.cachedSets = null;
+		plugin.refreshOpenViews();
+	}
 	// What has just been merged is NOT a local modification: without this update,
 	// the next check would timestamp it as such.
 	plugin.knownKeys = snapshotKeys(local);
 	plugin.knownScalars = snapshotScalars(local);
 	plugin.knownPrints = snapshotEntityPrints(local);
-	return { changedLocal: report.changedLocal, needsWrite: report.needsWrite };
+	return { changedLocal: report.changedLocal || healed, needsWrite: report.needsWrite || healed };
+}
+
+// Keeps a single Inbox (healInboxes, core/data-model.ts: which one, where its cards go, why) and records the
+// deletion of the others the way a local deletion is recorded, so that no device brings them back. Called by
+// every merge (mergeForeignText, the one place both channels go through) and at every load
+// (ensureInboxList, migrations.ts). The tombstone is written here rather than found by prepareLocal's
+// comparison: at load, the snapshot it compares to does not exist yet, and after a merge it is taken
+// right after this. Returns whether anything changed; the caller saves.
+export function healInboxesInPlace(plugin: MTGCollectionPlugin): boolean {
+	const settings = plugin.settings;
+	const now = Date.now();
+	const { dropped, moved } = healInboxes(settings, now);
+	if (dropped.length === 0 && moved === 0) return false;
+	if (dropped.length > 0) {
+		const lists = ((settings.syncTombstones ??= {}).lists ??= {});
+		for (const id of dropped) lists[id] = now;
+	}
+	console.debug(`MTG Collection Tracker: kept a single Inbox (${dropped.length} extra removed, ${moved} cards moved).`);
+	return true;
 }
 
 async function reconcile(plugin: MTGCollectionPlugin, path: string): Promise<{ needsWrite: boolean }> {

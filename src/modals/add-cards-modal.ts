@@ -2694,8 +2694,8 @@ export class AddCardsModal extends Modal {
 				evt.stopPropagation();
 				// defaultListId (Inbox): direct addition, without opening the picker — see
 				// AddCardsModalOptions.listGallery.defaultListId. The picker remains the
-				// behavior when no default is supplied (Wantlist flow, or defensively if
-				// Inbox doesn't exist).
+				// behavior when no default is supplied (defensively, if Inbox doesn't
+				// exist).
 				if (this.listGallery?.defaultListId) {
 					addOne(this.listGallery.defaultListId);
 					return;
