@@ -72,13 +72,85 @@ export function ensureCloseButton(contentEl: HTMLElement, onClose: () => void): 
 	return button;
 }
 
-// The banner shows the previous card's artwork under the new one until the new one has loaded, instead of an empty banner: the new picture
-// covers it the moment it arrives (it is opaque), and one that is already cached never shows it. `lastBanner` remembers, per window, the
-// last artwork that really appeared (only a loaded one counts, so tapping through cards faster than they load never holds a blank).
+// How long the artwork (and the blurred background behind it) takes to melt into the next card's on a phone.
+export const NAV_FADE_MS = 220;
+
+// The longest a single frame may advance an animation, whatever the real gap since the previous one (see `runFrameClock`).
+const MAX_FRAME_MS = 50;
+
+// THE CLOCK every scripted animation of the phone window shares (1.0.580, "comme si on avait peu d'images par seconde"; the text box height
+// joined it in 1.0.581): rebuilding the window for the next card blocks the main thread for ~100 ms (style, layout and paint of the whole
+// new tree, measured in the real Android app), and the first frame only comes after it. An animation timed from the call would already be a
+// third gone when it first shows, and a CSS transition (which the browser starts at the first frame, but then runs on the WALL clock) would
+// jump ahead of the scripted fades at the first hitch. So it is timed from its FIRST frame (which shows it at 0) and a frame advances it by
+// at most MAX_FRAME_MS, however late it comes: a hitch in the middle (a chart painted, the legal formats revealed) pauses everything that
+// shares the clock instead of skipping it. `apply` gets the eased progress (smoothstep) and is called once at 0 at once; `onFinish` runs once,
+// when the time is up, when `isAlive` says the thing animated is gone, or by the timeout net (a hidden window runs no frames, and nothing
+// must be left half-way).
+export function runFrameClock(ms: number, apply: (progress: number) => void, onFinish: () => void, isAlive: () => boolean = () => true): void {
+	let finished = false;
+	const finish = () => {
+		if (finished) return;
+		finished = true;
+		onFinish();
+	};
+	apply(0);
+	let lastFrameAt: number | null = null;
+	let elapsed = 0;
+	const step = (now: number) => {
+		if (finished) return;
+		if (!isAlive()) {
+			finish();
+			return;
+		}
+		if (lastFrameAt !== null) elapsed += Math.min(now - lastFrameAt, MAX_FRAME_MS);
+		lastFrameAt = now;
+		const t = Math.min(1, elapsed / ms);
+		if (t >= 1) {
+			finish();
+			return;
+		}
+		apply(t * t * (3 - 2 * t));
+		window.requestAnimationFrame(step);
+	};
+	window.requestAnimationFrame(step);
+	window.setTimeout(finish, ms + 1000);
+}
+
+// A crossfade driven from script, one opacity write per frame, and NOT a CSS transition/animation. A running opacity animation is a
+// compositing reason: everything painted after the banner that overlaps it (the round buttons, the name and arrows) becomes a composited
+// layer for the animation's duration, created anew at each navigation and painted a frame late — the missing elements of 1.0.573. A plain
+// style write is only repainted. `incoming` goes from 0 to the opacity its stylesheet gives it, `outgoing` from its own to 0 (two
+// translucent layers fading only one way would jump when the old one is removed). The timing is `runFrameClock`'s.
+export function crossfade(incoming: HTMLElement, outgoing: HTMLElement[], ms: number, onDone?: () => void): void {
+	const opacityOf = (el: HTMLElement) => {
+		const value = parseFloat(getComputedStyle(el).opacity);
+		return Number.isFinite(value) ? value : 1;
+	};
+	// The caller may have hidden it already (inline 0) to cover the wait: the target is what the stylesheet says.
+	incoming.style.removeProperty("opacity");
+	const inTarget = opacityOf(incoming);
+	const outs = outgoing.map((el) => ({ el, from: opacityOf(el) }));
+	runFrameClock(
+		ms,
+		(progress) => {
+			incoming.style.opacity = String(inTarget * progress);
+			outs.forEach(({ el, from }) => (el.style.opacity = String(from * (1 - progress))));
+		},
+		() => {
+			incoming.style.removeProperty("opacity");
+			if (!incoming.getAttribute("style")) incoming.removeAttribute("style");
+			onDone?.();
+		},
+		() => incoming.isConnected
+	);
+}
+
 const lastLoadedBanner = new WeakMap<HTMLElement, string>();
 export function holdPreviousBanner(windowEl: HTMLElement, tilt: HTMLElement, img: HTMLImageElement, url: string): void {
 	const previous = lastLoadedBanner.get(windowEl);
-	if (previous && previous !== url && !(img.complete && img.naturalWidth > 0)) {
+	const melts = !!previous && previous !== url;
+	if (melts) {
 		tilt.addClass("has-previous-banner");
 		tilt.setCssProps({ "--mtg-previous-banner": `url("${previous}")` });
 	}
@@ -87,21 +159,25 @@ export function holdPreviousBanner(windowEl: HTMLElement, tilt: HTMLElement, img
 		tilt.style.removeProperty("--mtg-previous-banner");
 		if (!tilt.getAttribute("style")) tilt.removeAttribute("style");
 	};
-	if (img.complete && img.naturalWidth > 0) {
+	const shown = () => {
 		lastLoadedBanner.set(windowEl, url);
-		dropPlaceholder();
+		if (!melts) {
+			dropPlaceholder();
+			return;
+		}
+		// Hidden from now on (before the first frame for a cached picture), shown by the fade once the pixels are ready.
+		img.setCssProps({ opacity: "0" });
+		const start = () => crossfade(img, [], NAV_FADE_MS, dropPlaceholder);
+		if (typeof img.decode === "function") void img.decode().then(start, start);
+		else start();
+	};
+	if (img.complete && img.naturalWidth > 0) {
+		shown();
 		return;
 	}
-	// Gone once the picture is there (behind the two faces of a double-faced card it would show at the edges while the card flips) and
-	// when the picture fails (the previous card's artwork must not pass for this one's).
-	img.addEventListener(
-		"load",
-		() => {
-			lastLoadedBanner.set(windowEl, url);
-			dropPlaceholder();
-		},
-		{ once: true }
-	);
+	// Gone when the fade ends (behind the two faces of a double-faced card it would show at the edges while the card flips) and when the
+	// picture fails (the previous card's artwork must not pass for this one's).
+	img.addEventListener("load", shown, { once: true });
 	img.addEventListener("error", dropPlaceholder, { once: true });
 }
 
@@ -149,6 +225,8 @@ export class BackgroundCrossfader {
 	// don't accumulate indefinitely over a session where the user browses many
 	// cards in the same window.
 	private static readonly MAX_LAYERS = 10;
+	// On a phone the layers are tiny canvases and only live for a fade, so a handful is the most a very fast browser can stack.
+	private static readonly MAX_LEAN_LAYERS = 3;
 
 	// Removes all the children of `container` EXCEPT this layer, so that
 	// draw() can rebuild the rest of the content (panel, header…) without
@@ -187,10 +265,16 @@ export class BackgroundCrossfader {
 			if (!smooth) layer.style.backgroundImage = `url("${url}")`;
 			this.layers.push(layer);
 			if (lean) {
-				// No fade on a phone (see buildSmoothLayer): the layer is shown at once and the previous ones go at once.
 				layer.addClass("mtg-card-detail-bg-loaded");
-				this.layers.slice(0, -1).forEach((l) => l.remove());
-				this.layers = [layer];
+				// Scripted crossfade, never a CSS transition (see crossfade): the new layer melts in while the older ones melt out,
+				// then they are removed. A tap during a fade stacks one more, so a fast browser never holds more than a few full-screen layers.
+				const older = this.layers.slice(0, -1);
+				while (this.layers.length > BackgroundCrossfader.MAX_LEAN_LAYERS) this.layers.shift()!.remove();
+				if (older.length === 0) return;
+				crossfade(layer, older, NAV_FADE_MS, () => {
+					const i = this.layers.indexOf(layer);
+					if (i > 0) this.layers.splice(0, i).forEach((l) => l.remove());
+				});
 				return;
 			}
 			// Two nested requestAnimationFrame calls (same idiom as the modal opening)

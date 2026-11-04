@@ -8,6 +8,9 @@ import { getStaleDataAgeDays, formatAsOfShort } from "../core/market-movers";
 import {
 	animateCardNav,
 	cardbaseFinishOf,
+	crossfade,
+	NAV_FADE_MS,
+	runFrameClock,
 	renderPriceHistoryChart,
 	renderPriceHistorySourceFooter,
 	appendAsOfToSourceFooter,
@@ -28,6 +31,7 @@ import {
 	CARDMARKET_LOGO_SVG,
 } from "../ui/brand-assets";
 import { setSvgMarkup } from "../ui/svg-markup";
+import { registerCardSwipeNav } from "../ui/card-swipe-nav";
 
 /* -------------------------------------------------------------------------- */
 /* Boxes common to the three card detail windows (CardDetailModal / */
@@ -103,6 +107,11 @@ const lastTextBoxCard = new WeakMap<HTMLElement, string>();
 function textBoxResizeMs(distancePx: number): number {
 	return Math.round(Math.min(420, Math.max(220, 180 + Math.abs(distancePx) * 0.75)));
 }
+// What the box showed, per window, for the NEXT card's box to melt from (phone art mode only): clones of the content nodes (everything
+// under the "Card text" label), taken a moment after the content was built so the mana symbols, which are drawn asynchronously, are in.
+const lastTextBoxContent = new WeakMap<HTMLElement, HTMLElement[]>();
+// A text that has not arrived by then no longer holds the previous card's text on screen (a hung request must not leave a WRONG text up).
+const TEXT_GHOST_MAX_MS = 1500;
 
 export function renderCardDescriptionBox(
 	host: DetailBoxHost,
@@ -126,6 +135,37 @@ export function renderCardDescriptionBox(
 		box.addClass("is-resizing");
 		box.setCssProps({ "--mtg-text-box-h": `${previousHeight}px` });
 	}
+	const melts = !!windowEl && windowEl.hasClass("mtg-card-detail-art-mode");
+	let content: HTMLElement = box;
+	let ghost: HTMLElement | null = null;
+	if (melts) {
+		const swap = box.createDiv({ cls: "mtg-card-description-swap" });
+		content = swap.createDiv({ cls: "mtg-card-description-content" });
+		const previousContent = cardChanged && previousHeight !== undefined ? lastTextBoxContent.get(windowEl) : undefined;
+		if (previousContent?.length) {
+			ghost = swap.createDiv({ cls: "mtg-card-description-ghost" });
+			ghost.setAttribute("aria-hidden", "true");
+			previousContent.forEach((node) => ghost!.appendChild(node.cloneNode(true)));
+			content.addClass("is-melting-in");
+		}
+	}
+	let melted = false;
+	const meltIn = (ms: number) => {
+		if (!ghost || melted) return;
+		melted = true;
+		const old = ghost;
+		content.removeClass("is-melting-in");
+		crossfade(content, [old], ms, () => old.remove());
+	};
+	if (ghost) window.setTimeout(() => meltIn(NAV_FADE_MS), TEXT_GHOST_MAX_MS);
+	// Remembered for the next card, after the symbols' SVG are in (they are drawn on a later microtask).
+	const rememberContent = () => {
+		if (!melts) return;
+		window.setTimeout(() => {
+			if (box.isConnected) lastTextBoxContent.set(windowEl, Array.from(content.children).map((node) => node.cloneNode(true) as HTMLElement));
+		}, 0);
+	};
+	let heightAnimating = false;
 	const unlockHeight = () => {
 		box.removeClass("is-resizing");
 		box.removeClass("is-resizing-play");
@@ -135,33 +175,50 @@ export function renderCardDescriptionBox(
 	};
 	// Called once the box holds its final content, whichever branch built it. Measures the natural height with the lock lifted
 	// (same task: nothing is painted in between), puts the lock back at the previous height, then lets CSS carry it to the new one.
-	const settleHeight = () => {
+	const settleHeight = (): number => {
 		// A box the window already replaced (a redraw of the same card while the text was on its way) measures 0: storing that would make
 		// the next card's box start from nothing.
-		if (previousHeight === undefined || !box.isConnected) return;
+		if (previousHeight === undefined || !box.isConnected) return NAV_FADE_MS;
 		box.removeClass("is-resizing");
 		const target = box.getBoundingClientRect().height;
 		if (windowEl) lastTextBoxHeight.set(windowEl, target);
 		if (Math.abs(target - previousHeight) < 1) {
 			unlockHeight();
-			return;
+			return NAV_FADE_MS;
 		}
 		const ms = textBoxResizeMs(target - previousHeight);
 		box.addClass("is-resizing");
+		if (melts) {
+			heightAnimating = true;
+			runFrameClock(
+				ms,
+				(progress) => box.setCssProps({ "--mtg-text-box-h": `${previousHeight + (target - previousHeight) * progress}px` }),
+				unlockHeight,
+				() => box.isConnected
+			);
+			return ms;
+		}
 		void box.offsetHeight; // the locked height must be applied before the transition is switched on
 		box.addClass("is-resizing-play");
 		box.setCssProps({ "--mtg-text-box-h": `${target}px`, "--mtg-text-box-ms": `${ms}ms` });
 		window.setTimeout(unlockHeight, ms + 80);
+		return ms;
+	};
+	// The content is complete: the box moves to its height and the old text melts into the new, over the same time (at most 300 ms).
+	const contentReady = () => {
+		const ms = settleHeight();
+		meltIn(Math.min(ms, 300));
+		rememberContent();
 	};
 
-	const header = box.createDiv({ cls: "mtg-card-description-header" });
+	const header = content.createDiv({ cls: "mtg-card-description-header" });
 	header.createDiv({ cls: "mtg-card-description-type", text: card.typeLine });
 	if (card.manaCost) {
 		const manaCostEl = header.createDiv({ cls: "mtg-card-description-mana-cost" });
 		renderManaCostIcons(manaCostEl, card.manaCost, (letter) => host.plugin.getManaSymbolSvg(letter));
 	}
 
-	const textEl = box.createDiv({ cls: "mtg-card-description-text" });
+	const textEl = content.createDiv({ cls: "mtg-card-description-text" });
 	renderLoadingDots(textEl);
 
 	const requestedId = card.scryfallId;
@@ -172,7 +229,7 @@ export function renderCardDescriptionBox(
 			// Confirmed failure after retry (see fetchCardTextInfo) — the cost/type
 			// above stay displayed, only the text and the stats are missing.
 			textEl.setText("—");
-			settleHeight();
+			contentReady();
 			return;
 		}
 		// Multi-faced card (split, double-faced...): replaces the merged
@@ -183,8 +240,8 @@ export function renderCardDescriptionBox(
 		if (info.faces && info.faces.length > 1) {
 			header.remove();
 			textEl.remove();
-			renderCardDescriptionFaces(box, info.faces, (letter) => host.plugin.getManaSymbolSvg(letter));
-			settleHeight();
+			renderCardDescriptionFaces(content, info.faces, (letter) => host.plugin.getManaSymbolSvg(letter));
+			contentReady();
 			return;
 		}
 		// An empty oracle_text is a real response (vanilla creature with no
@@ -197,18 +254,18 @@ export function renderCardDescriptionBox(
 			host.plugin.getManaSymbolSvg(letter)
 		);
 		if (info.loyalty !== undefined) {
-			box.createDiv({ cls: "mtg-card-description-stats", text: `Loyalty: ${info.loyalty}` });
+			content.createDiv({ cls: "mtg-card-description-stats", text: `Loyalty: ${info.loyalty}` });
 		} else if (info.power !== undefined || info.toughness !== undefined) {
-			box.createDiv({
+			content.createDiv({
 				cls: "mtg-card-description-stats",
 				text: `${info.power ?? "?"}/${info.toughness ?? "?"}`,
 			});
 		}
-		settleHeight();
+		contentReady();
 	}).finally(() => {
 		// Whatever happened (a stale answer, an error), a box still holding the previous height without a transition running must not stay
 		// clipped for good.
-		if (box.hasClass("is-resizing") && !box.hasClass("is-resizing-play")) unlockHeight();
+		if (box.hasClass("is-resizing") && !box.hasClass("is-resizing-play") && !heightAnimating) unlockHeight();
 	});
 }
 
@@ -683,12 +740,29 @@ export function renderCardNavHeader<T>(
 	const navHeader = contentEl.createDiv({ cls: "mtg-card-detail-nav-header" });
 	const canNavigate = cards.length > 1 && currentIndex !== -1;
 
+	// ONE function for the arrows and for the phone's swipe (ui/card-swipe-nav.ts): the ends of the
+	// list and the animation lock apply to both.
+	const go = (direction: "prev" | "next") => {
+		const step = direction === "prev" ? -1 : 1;
+		if (!canNavigate || currentIndex + step < 0 || currentIndex + step >= cards.length) return;
+		if (isAnimating()) return;
+		setAnimating(true);
+		animateCardNav(
+			contentEl,
+			direction,
+			() => goTo(cards[currentIndex + step]),
+			() => {
+				setAnimating(false);
+			}
+		);
+	};
+	registerCardSwipeNav(contentEl, go);
+
 	// Both arrows are always created (even when navigation is impossible, in which case they are simply
 	// hidden via is-hidden) so that the 3-column grid keeps fixed side column widths — otherwise the
 	// central title re-centers itself and the remaining arrow would change position depending on the length
 	// of the name.
 	const addArrow = (direction: "prev" | "next") => {
-		const step = direction === "prev" ? -1 : 1;
 		const arrow = navHeader.createDiv({ cls: "mtg-tile-menu-btn mtg-tile-menu-btn-large" });
 		setIcon(arrow, direction === "prev" ? "chevron-left" : "chevron-right");
 		arrow.setAttribute("title", direction === "prev" ? "Previous card" : "Next card");
@@ -697,18 +771,7 @@ export function renderCardNavHeader<T>(
 		} else if (direction === "prev" ? currentIndex === 0 : currentIndex === cards.length - 1) {
 			arrow.addClass("is-disabled");
 		} else {
-			arrow.addEventListener("click", () => {
-				if (isAnimating()) return;
-				setAnimating(true);
-				animateCardNav(
-					contentEl,
-					direction,
-					() => goTo(cards[currentIndex + step]),
-					() => {
-						setAnimating(false);
-					}
-				);
-			});
+			arrow.addEventListener("click", () => go(direction));
 		}
 	};
 

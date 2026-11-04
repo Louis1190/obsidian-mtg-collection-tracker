@@ -23,9 +23,13 @@ import { renderColorPieChart } from "../ui/deck-stats-fx";
 import { PRICE_HISTORY_SOURCES } from "../ui/card-detail-fx";
 import { NewDeckModal, NewWantlistModal } from "../modals/new-entity-modals";
 import { CardPreviewModal } from "../modals/card-preview-modal";
+import { setupPinnedCarousel } from "./pinned-carousel";
+import { nearestPage, pageOffsets } from "../core/carousel-pages";
 
 
-const HOME_RECENT_CARDS_LIMIT = 10;
+// 8 = two pages of 4 on a wide block, four pages of 2 on a narrow one (renderHomeRecentCarousel):
+// every page is full. It was 10 when the carousel scrolled freely.
+const HOME_RECENT_CARDS_LIMIT = 8;
 // Market Trends: visible rows per column, collapsed then expanded ("Show
 // more", 2026-09-23). The expanded cap is also the number of rows per side
 // for which the Scryfall snapshots are fetched right away (see loadAndDraw).
@@ -46,11 +50,26 @@ const HOME_MOVER_PERIOD_LABELS: Record<CardbaseMoverPeriod, string> = {
 // body the caller fills) — a pure DOM helper with no view/plugin state of
 // its own, so unlike the functions below it stays a plain local function
 // rather than a `this`-parameter one wired into MTGCollectionView.
-function makeHomeBlock(container: HTMLElement, icon: string, title: string): HTMLElement {
-	const block = container.createDiv({ cls: "mtg-home-block" });
+//
+// `action` adds the block's primary button at the right of its header (the card carousels, 2026-11-04);
+// `cls` is an extra class on the block itself.
+interface HomeBlockOptions {
+	action?: { label: string; onClick: () => void };
+	cls?: string;
+}
+
+function makeHomeBlock(container: HTMLElement, icon: string, title: string, opts: HomeBlockOptions = {}): HTMLElement {
+	const block = container.createDiv({ cls: opts.cls ? `mtg-home-block ${opts.cls}` : "mtg-home-block" });
 	const header = block.createDiv({ cls: "mtg-home-block-header" });
 	setIcon(header.createDiv({ cls: "mtg-home-block-header-icon" }), icon);
 	header.createSpan({ text: title });
+	if (opts.action) {
+		const btn = header.createEl("button", {
+			cls: "mtg-search-add-btn mtg-home-block-action",
+			text: `+ ${opts.action.label}`,
+		});
+		btn.addEventListener("click", opts.action.onClick);
+	}
 	return block.createDiv({ cls: "mtg-home-block-body" });
 }
 
@@ -59,9 +78,15 @@ function makeHomeBlock(container: HTMLElement, icon: string, title: string): HTM
 // reused rather than a separate variant: a section with a single block,
 // like Market Trend, just stretches that one child full-width, no special
 // case needed). Same reasoning as makeHomeBlock: no view/plugin state,
-// stays a plain local function.
-function makeHomeSection(container: HTMLElement, title: string): HTMLElement {
+// stays a plain local function. `equalHeights` makes the section's blocks
+// share one height while they sit side by side (styles.css,
+// .mtg-home-section-equal): "heights" and nothing else (Insights), or "fill",
+// which also has each block's body fill it and its button sit at the bottom
+// (Overview, .mtg-home-section-fill).
+function makeHomeSection(container: HTMLElement, title: string, equalHeights?: "heights" | "fill"): HTMLElement {
 	const section = container.createDiv({ cls: "mtg-home-section" });
+	if (equalHeights) section.addClass("mtg-home-section-equal");
+	if (equalHeights === "fill") section.addClass("mtg-home-section-fill");
 	section.createEl("h4", { cls: "mtg-home-section-title", text: title });
 	return section.createDiv({ cls: "mtg-home-grid" });
 }
@@ -85,9 +110,7 @@ export function renderHomeSection(this: MTGCollectionView) {
 			.slice(0, HOME_RECENT_CARDS_LIMIT),
 		onOpenCard: (id) => this.openCollectionCardDetailById(id),
 		emptyText: "No cards in your collection yet.",
-		actionIcon: "plus",
-		actionLabel: "Add cards",
-		onAction: () => this.openAddCollectionCardsModalWithListPicker(),
+		action: { label: "Add cards", onClick: () => this.openAddCollectionCardsModalWithListPicker() },
 	});
 	this.renderHomeRecentCarousel(recentGrid, {
 		icon: "heart",
@@ -97,12 +120,10 @@ export function renderHomeSection(this: MTGCollectionView) {
 			.slice(0, HOME_RECENT_CARDS_LIMIT),
 		onOpenCard: (id) => this.openWantlistCardDetailById(id),
 		emptyText: "No cards in your wantlists yet.",
-		actionIcon: "plus",
-		actionLabel: "Add to wantlist",
-		onAction: () => this.openAddWantlistCardsModalWithListPicker(),
+		action: { label: "Add cards", onClick: () => this.openAddWantlistCardsModalWithListPicker() },
 	});
 
-	const insightsGrid = makeHomeSection(container, "Insights");
+	const insightsGrid = makeHomeSection(container, "Insights", "heights");
 	const currency = this.plugin.settings.priceCurrency;
 	this.renderHomeRecentCarousel(insightsGrid, {
 		icon: "trophy",
@@ -112,9 +133,6 @@ export function renderHomeSection(this: MTGCollectionView) {
 			.slice(0, HOME_RECENT_CARDS_LIMIT),
 		onOpenCard: (id) => this.openCollectionCardDetailById(id),
 		emptyText: "No priced cards in your collection yet.",
-		actionIcon: "plus",
-		actionLabel: "Add cards",
-		onAction: () => this.openAddCollectionCardsModalWithListPicker(),
 	});
 	this.renderHomeColorBreakdown(insightsGrid);
 	this.renderHomeRarityBreakdown(insightsGrid);
@@ -124,7 +142,11 @@ export function renderHomeSection(this: MTGCollectionView) {
 }
 
 export function renderHomeOverview(this: MTGCollectionView, container: HTMLElement) {
-	const grid = makeHomeSection(container, "Overview");
+	const grid = makeHomeSection(container, "Overview", "fill");
+	// On a phone, narrower than two columns, the four blocks are a one-line snapping carousel with
+	// page dots (CSS, `.is-phone .mtg-home-carousel`, + view/pinned-carousel.ts) like the pinned
+	// Inbox / "All cards" row of the galleries; everywhere else it stays this grid.
+	grid.addClass("mtg-home-carousel");
 	const currency = this.plugin.settings.priceCurrency;
 	const { lists, collection, decks, wantlists, wantlist } = this.plugin.settings;
 
@@ -235,6 +257,9 @@ export function renderHomeOverview(this: MTGCollectionView, container: HTMLEleme
 		backupStatus.setText(backupStatusText());
 	};
 	backupBtn.addEventListener("click", () => void backUpNow());
+
+	// Dots under the grid, in the section (the grid's parent), once its four blocks exist.
+	if (grid.parentElement) setupPinnedCarousel(this, "home", grid.parentElement, grid);
 }
 
 interface HomeCarouselOptions {
@@ -243,34 +268,22 @@ interface HomeCarouselOptions {
 	cards: (CollectionCard | WantlistCard)[];
 	onOpenCard: (id: string) => void;
 	emptyText: string;
-	actionIcon: string;
-	actionLabel: string;
-	onAction: () => void;
+	// The block's button at the right of its header; none = no button (Top value).
+	action?: { label: string; onClick: () => void };
 }
 
-// Same mechanism as "Copies in Lists" (card-detail-modal.ts and its 2
-// variants: scrolling scroll-snap track + arrows that do
-// scrollBy(±track.clientWidth)) — its own family of classes
-// (mtg-home-carousel-*) rather than reusing mtg-copies-in-lists-* as is:
-// the tiles there are a fraction (1/3) of the modal panel's width (~1100px
-// known in advance), whereas here a block's width depends on mtg-home-grid
-// — fixed-width tiles (px) adapt to any block width without recalculation.
-// Shared between Collection and Wantlists (called twice with different
-// options) rather than tripled: unlike the rendering of a whole section,
-// this is a pure presentation block, in the same spirit as
-// renderThumbWithBadge (already shared between the 3 sections for the same
-// reason).
 export function renderHomeRecentCarousel(
 	this: MTGCollectionView,
 	container: HTMLElement,
 	opts: HomeCarouselOptions
 ) {
-	const body = makeHomeBlock(container, opts.icon, opts.title);
+	const body = makeHomeBlock(container, opts.icon, opts.title, {
+		action: opts.action,
+		cls: "mtg-home-block-cards",
+	});
 
 	if (opts.cards.length === 0) {
 		body.createDiv({ cls: "mtg-status", text: opts.emptyText });
-		const btn = body.createEl("button", { cls: "mtg-search-add-btn", text: opts.actionLabel });
-		btn.addEventListener("click", opts.onAction);
 		return;
 	}
 
@@ -280,14 +293,6 @@ export function renderHomeRecentCarousel(
 	const track = row.createDiv({ cls: "mtg-home-carousel-track" });
 	const rightArrow = row.createDiv({ cls: "mtg-home-carousel-arrow" });
 	setIcon(rightArrow, "chevron-right");
-	// No layout measurement here (unlike "Copies in Lists", which knows its
-	// track width in advance) — a single card is enough to know there is
-	// nothing to scroll; beyond that, scrollBy() on a track that doesn't
-	// overflow yet simply does nothing visible.
-	leftArrow.toggleClass("is-disabled", opts.cards.length <= 1);
-	rightArrow.toggleClass("is-disabled", opts.cards.length <= 1);
-	leftArrow.addEventListener("click", () => track.scrollBy({ left: -track.clientWidth, behavior: "smooth" }));
-	rightArrow.addEventListener("click", () => track.scrollBy({ left: track.clientWidth, behavior: "smooth" }));
 
 	for (const card of opts.cards) {
 		const tile = track.createDiv({ cls: "mtg-home-carousel-tile" });
@@ -310,10 +315,55 @@ export function renderHomeRecentCarousel(
 		tile.addEventListener("click", () => opts.onOpenCard(card.id));
 	}
 
-	const actionTile = row.createDiv({ cls: "mtg-home-carousel-action-tile" });
-	setIcon(actionTile.createDiv({ cls: "mtg-home-carousel-action-icon" }), opts.actionIcon);
-	actionTile.createDiv({ cls: "mtg-home-carousel-action-label", text: opts.actionLabel });
-	actionTile.addEventListener("click", opts.onAction);
+	const dots = body.createDiv({ cls: "mtg-home-carousel-dots" });
+	dots.setAttribute("aria-hidden", "true");
+	setupRecentPaging(track, leftArrow, rightArrow, dots);
+}
+
+// Pages, arrows and dots of a card carousel (renderHomeRecentCarousel). A page starts at its first card
+// (`pageOffsets`, core/carousel-pages.ts); how many cards a page holds is read back from the CSS variable
+// --mtg-home-per-page (not from the geometry: on a phone half of the next card shows too), so the CSS
+// stays the only place that decides it, and it is measured again whenever the track is resized (a pane
+// resized, a phone turned): the dots are rebuilt when the page count changes. The row is built in render()'s
+// detached clone, where nothing has a size yet: the first ResizeObserver callback (after the swap) is the
+// first measure, same reasoning as setupPinnedCarousel. No explicit disconnect(): the row is recreated on
+// every render and the old observer is collected with its detached track.
+function setupRecentPaging(track: HTMLElement, leftArrow: HTMLElement, rightArrow: HTMLElement, dots: HTMLElement) {
+	const tiles = Array.from(track.children) as HTMLElement[];
+	let offsets: number[] = [0];
+	let dotEls: HTMLElement[] = [];
+
+	const paint = () => {
+		const page = nearestPage(track.scrollLeft, offsets);
+		dotEls.forEach((dot, i) => dot.toggleClass("is-active", i === page));
+		leftArrow.toggleClass("is-disabled", page <= 0);
+		rightArrow.toggleClass("is-disabled", page >= offsets.length - 1);
+	};
+
+	const measure = () => {
+		if (track.clientWidth === 0) return;
+		const lefts = tiles.map((tile) => tile.getBoundingClientRect().left);
+		const perPage = Math.max(1, parseInt(getComputedStyle(track).getPropertyValue("--mtg-home-per-page"), 10) || 1);
+		const starts = lefts.filter((_, i) => i % perPage === 0);
+		offsets = pageOffsets(starts, track.scrollWidth - track.clientWidth);
+		if (dotEls.length !== offsets.length) {
+			dots.empty();
+			dotEls = offsets.map(() => dots.createSpan({ cls: "mtg-pinned-dot" }));
+		}
+		dots.toggleClass("mtg-hidden", offsets.length <= 1);
+		paint();
+	};
+
+	const go = (direction: 1 | -1) => {
+		const target = Math.min(offsets.length - 1, Math.max(0, nearestPage(track.scrollLeft, offsets) + direction));
+		track.scrollTo({ left: offsets[target], behavior: "smooth" });
+	};
+	leftArrow.addEventListener("click", () => go(-1));
+	rightArrow.addEventListener("click", () => go(1));
+	track.addEventListener("scroll", paint, { passive: true });
+	new ResizeObserver(measure).observe(track);
+	// Until the first measure there is one page and nothing to go back to.
+	leftArrow.addClass("is-disabled");
 }
 
 // Own key (not an `in`: "toString"/"constructor" are "in" any object) to
@@ -664,23 +714,13 @@ export function renderHomeRarityBreakdown(this: MTGCollectionView, container: HT
 
 const HOME_DECKS_TO_FINISH_LIMIT = 5;
 
-// "Decks to Finish" (2026-09-23) — getDeckSizeStatus (core/deck-stats.ts)
-// is the simple 60/100-card heuristic, not a real per-format legality
-// check (see its own comment there for why). Capped at
-// HOME_DECKS_TO_FINISH_LIMIT like every other Home list, with a plain
-// "+N more" line rather than its own scroll/carousel — this block is
-// meant to be glanced at, not browsed.
 export function renderHomeDecksToFinish(this: MTGCollectionView, container: HTMLElement) {
-	const body = makeHomeBlock(container, "construction", "Decks to finish");
 	const incomplete = this.plugin.settings.decks
 		.map((deck) => ({ deck, status: getDeckSizeStatus(deck) }))
 		.filter((d) => d.status.isBelowMinimum);
+	if (incomplete.length === 0) return;
 
-	if (incomplete.length === 0) {
-		body.createDiv({ cls: "mtg-status", text: "All your decks meet their format's minimum size." });
-		return;
-	}
-
+	const body = makeHomeBlock(container, "construction", "Decks to finish");
 	const list = body.createDiv({ cls: "mtg-home-deck-alert-list" });
 	incomplete.slice(0, HOME_DECKS_TO_FINISH_LIMIT).forEach(({ deck, status }) => {
 		const row = list.createDiv({ cls: "mtg-home-deck-alert-row" });

@@ -5306,17 +5306,16 @@ body.is-phone {
 	opacity: 0.55;
 }
 
-/* Phone (BackgroundCrossfader.buildSmoothLayer): the layer is a tiny canvas scaled up by the browser, so no
-   blur, no scale(1.15) and no 30px bleed (those exist to hide the blur's faded edge), and nothing to promote. */
 .mtg-card-detail-bg.mtg-card-detail-bg-canvas {
 	inset: 0;
 	width: 100%;
 	height: 100%;
 	filter: none;
 	transform: none;
-	will-change: auto;
-	/* No fade: an opacity animation under the whole window makes every element over it a composited layer for its duration, and those are
-	   rebuilt at each navigation and painted late (1.0.573, see the art-mode block below). The layer is shown at once. */
+	will-change: opacity;
+	/* No CSS fade: an opacity animation under the whole window makes every element over it a composited layer for its duration, and those are
+	   rebuilt at each navigation and painted late (1.0.573, see the art-mode block below). Between two cards the layers melt into each
+	   other by a scripted crossfade (one inline opacity write per frame, `crossfade` in card-detail-fx.ts), which is only repainted. */
 	transition: none;
 }
 
@@ -6384,6 +6383,36 @@ body.is-phone {
 	overflow: hidden;
 }
 
+.is-phone .mtg-card-detail-modal .mtg-card-detail-nav-header {
+	grid-template-columns: 44px 1fr 44px;
+}
+
+.is-phone .mtg-card-detail-modal .mtg-card-detail-nav-header .mtg-tile-menu-btn-large {
+	width: 44px;
+	height: 44px;
+}
+
+.is-phone .mtg-card-detail-modal .mtg-card-detail-nav-header .mtg-tile-menu-btn-large svg {
+	width: 26px;
+	height: 26px;
+}
+
+.is-phone .mtg-card-detail-modal .mtg-card-detail-close-btn {
+	width: 42px;
+	height: 42px;
+}
+
+.is-phone .mtg-card-detail-modal .mtg-card-detail-close-btn svg {
+	width: 24px;
+	height: 24px;
+}
+
+/* Classic layout only: the name row keeps clear of the (now wider) close button, which sits at the same height as the right arrow.
+   Art mode puts the row under the banner, full width, away from the button. */
+.is-phone .mtg-card-detail-modal:not(.mtg-card-detail-art-mode) .mtg-card-detail-nav-header {
+	width: min(560px, 100% - 7.5em);
+}
+
 /* ART MODE (class set by draw() when the card has a real art crop, see usesArtHeader): the image is
    the artwork alone, full width, melting into the background at its bottom edge, with the name and
    the arrows under it and the info boxes below. Everything scrolls as one block: `.mtg-card-detail-layout`
@@ -6487,7 +6516,8 @@ body.is-phone {
 	transition: none;
 }
 
-/* The previous card's artwork under the new one until it has loaded (holdPreviousBanner): no empty banner while the picture arrives. */
+/* The previous card's artwork under the new one (holdPreviousBanner): no empty banner while the picture arrives, and the new picture
+   melts in over it by a scripted opacity crossfade (not a CSS animation, see above). */
 .mtg-card-detail-art-mode .mtg-card-detail-tilt.has-previous-banner {
 	background-image: var(--mtg-previous-banner);
 	background-size: cover;
@@ -6575,6 +6605,10 @@ body.is-phone {
 
 .mtg-card-detail-art-mode .mtg-card-detail-box-row {
 	flex-direction: row;
+}
+
+.is-phone .mtg-card-detail-art-mode .mtg-card-detail-panel > :nth-child(n+2) {
+	will-change: transform;
 }
 
 .mtg-card-detail-art-mode .mtg-card-detail-header-row {
@@ -7902,7 +7936,8 @@ body.is-phone {
 
 /* Smooth resize of the box between two cards (renderCardDescriptionBox, 2026-10-19): while .is-resizing the height is the carried value
    (the previous card's, then the new card's), clipped; .is-resizing-play switches the transition on, so the previous value is applied
-   first and only the change animates. Declared after the base rule and repeated on the same classes (0,4,0 against its 0,2,0) because
+   first and only the change animates (everywhere but the phone's art mode, where the height is written from script on the frame clock of the
+   fades: `runFrameClock`, 1.0.581, and only .is-resizing applies). Declared after the base rule and repeated on the same classes (0,4,0 against its 0,2,0) because
    the base says `height: auto`. NO fade on the new text (1.0.571-1.0.572 had one): it left the text invisible for the first frames, which
    on a phone looked like a missing element, and an animated element makes the positioned ones above it (name, round buttons) composited. */
 .mtg-card-detail-box.mtg-card-description-box.is-resizing {
@@ -7912,6 +7947,36 @@ body.is-phone {
 
 .mtg-card-detail-box.mtg-card-description-box.is-resizing.is-resizing-play {
 	transition: height var(--mtg-text-box-ms, 260ms) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* The text of the previous card melts into the new one (phone art mode only, renderCardDescriptionBox, 1.0.579): the content sits in a wrapper
+   with the same flex column and gap the box itself had, and the previous card's content is a "ghost" over it, out of the layout (absolute) so the
+   box still measures the NEW content. The fade is scripted (`crossfade`), not a transition: see the art-mode block about compositing. The new
+   content is hidden by a class (not an inline value) until the fade starts. */
+.mtg-card-description-swap {
+	position: relative;
+	flex-shrink: 0;
+	min-width: 0;
+}
+
+.mtg-card-description-content,
+.mtg-card-description-ghost {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+}
+
+.mtg-card-description-content.is-melting-in {
+	opacity: 0;
+}
+
+.mtg-card-description-ghost {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	pointer-events: none;
+	user-select: none;
 }
 
 /* Type on the left, mana cost on the right — same arrangement as the
@@ -9866,14 +9931,22 @@ body.is-phone {
 	height: 15px;
 }
 
-/* Every block's own primary action (Overview's "+ Add cards"/"+ New Deck"/
-   "+ New Wantlist", and a Recently Added carousel's empty-state button)
-   fills the block rather than sitting left-aligned at its natural content
-   width — reads better as "this block's one call to action" in a compact
-   card than a small pill floating on its own. */
-.mtg-home-block .mtg-search-add-btn {
+/* The Overview blocks' own primary action ("+ Add cards"/"+ New deck"/
+   "+ New wantlist"/"Back up now") fills the block rather than sitting
+   left-aligned at its natural content width — reads better as "this block's
+   one call to action" in a compact card than a small pill floating on its
+   own. Only the buttons of the block BODY: the card carousels' button sits
+   in their header at its natural width (.mtg-home-block-action). */
+.mtg-home-block-body > .mtg-search-add-btn {
 	width: 100%;
 	justify-content: center;
+}
+
+.mtg-home-block-header .mtg-home-block-action {
+	margin-left: auto;
+	flex: 0 0 auto;
+	text-transform: none;
+	letter-spacing: normal;
 }
 
 .mtg-home-section {
@@ -9894,6 +9967,75 @@ body.is-phone {
    a single combined block in this same follow-up, matching the "block
    owns its own action" idiom the Recently Added carousel tiles already
    used (see CLAUDE.md, "Home dashboard"). */
+
+.mtg-home-section-equal {
+	container-type: inline-size;
+	container-name: mtg-home-equal;
+}
+
+.mtg-home-section-fill .mtg-home-block-body {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+}
+
+.mtg-home-section-fill .mtg-home-block .mtg-search-add-btn {
+	margin-top: auto;
+}
+
+.is-phone .mtg-home-grid.mtg-home-carousel {
+	display: flex;
+	align-items: stretch;
+	gap: 0.5em;
+	overflow-x: auto;
+	scroll-snap-type: x mandatory;
+	overscroll-behavior-x: contain;
+}
+
+.is-phone .mtg-home-grid.mtg-home-carousel.is-script-driven {
+	touch-action: pan-y;
+	scroll-snap-type: none;
+}
+
+.is-phone .mtg-home-carousel > .mtg-home-block {
+	flex: 0 0 82%;
+	scroll-snap-align: start;
+}
+
+/* No scrollbar: three classes, the plugin-wide scrollbar block at the end of this file has two
+   (same trap as .mtg-pinned-tiles-grid). */
+.mtg-collection-view .mtg-home-grid.mtg-home-carousel {
+	scrollbar-width: none;
+}
+
+.mtg-collection-view .mtg-home-grid.mtg-home-carousel::-webkit-scrollbar {
+	display: none;
+	width: 0;
+	height: 0;
+}
+
+.mtg-home-section-equal .mtg-pinned-dots {
+	margin: 0;
+}
+
+@container mtg-home-equal (min-width: 576px) {
+	.mtg-home-section-equal .mtg-home-grid {
+		grid-auto-rows: 1fr;
+		align-items: stretch;
+	}
+
+	/* Room for two columns again (a phone in landscape): the grid is back, no dots. */
+	.is-phone .mtg-home-grid.mtg-home-carousel {
+		display: grid;
+		gap: 1em;
+		overflow: visible;
+		scroll-snap-type: none;
+	}
+
+	.mtg-home-section-equal .mtg-pinned-dots {
+		display: none;
+	}
+}
 
 .mtg-home-overview-row {
 	cursor: pointer;
@@ -9959,12 +10101,11 @@ body.is-phone {
 	background: color-mix(in srgb, var(--color-orange) 70%, #000);
 }
 
-/* -- Recently Added carousels --
-   Same scroll-snap + arrow-scrollBy mechanism as "Copies in Lists"
-   (card-detail modals, .mtg-copies-in-lists-*), its own class family:
-   Home's tiles are fixed-px width (a dashboard block's width varies with
-   .mtg-home-grid, unlike the modal's known ~1100px panel where tiles are
-   sized as an exact 1/3 fraction). */
+
+.mtg-home-block-cards {
+	container-type: inline-size;
+	container-name: mtg-home-cards;
+}
 
 .mtg-home-carousel-row {
 	display: flex;
@@ -9996,7 +10137,21 @@ body.is-phone {
 	cursor: default;
 }
 
+.is-phone .mtg-home-carousel-arrow {
+	display: none;
+}
+
+.is-phone .mtg-home-carousel-track {
+	--mtg-home-peek: 0.5;
+}
+
+/* The gap, the number of cards per page and the part of the NEXT card left showing (0, or half a card
+   on a phone, see below) are variables so that the tile's width, which has to leave room for exactly
+   that, cannot drift from them. setupRecentPaging reads --mtg-home-per-page back. */
 .mtg-home-carousel-track {
+	--mtg-home-per-page: 2;
+	--mtg-home-peek: 0;
+	--mtg-home-tile-gap: 0.6em;
 	flex: 1;
 	min-width: 0;
 	display: flex;
@@ -10004,18 +10159,38 @@ body.is-phone {
 	overflow-x: auto;
 	scroll-snap-type: x mandatory;
 	scroll-behavior: smooth;
+	gap: var(--mtg-home-tile-gap);
+}
+
+/* No scrollbar (the dots and arrows say where you are). Three classes: the plugin-wide scrollbar block
+   (`.mtg-collection-view *:not(.mtg-search-results)`, 2 classes) sets `scrollbar-width: thin` and a styled
+   ::-webkit-scrollbar on every descendant and would win against a single class (same trap as
+   .mtg-pinned-tiles-grid). */
+.mtg-collection-view .mtg-home-carousel-row .mtg-home-carousel-track {
 	scrollbar-width: none;
-	gap: 0.6em;
 }
 
-.mtg-home-carousel-track::-webkit-scrollbar {
+.mtg-collection-view .mtg-home-carousel-row .mtg-home-carousel-track::-webkit-scrollbar {
 	display: none;
+	width: 0;
+	height: 0;
 }
 
+@container mtg-home-cards (min-width: 410px) {
+	.mtg-home-carousel-track {
+		--mtg-home-per-page: 4;
+	}
+}
+
+/* Snap on the first card of each page only (every 2nd, or every 4th once there are 4 per
+   page): a swipe goes a page at a time, like the arrows. */
 .mtg-home-carousel-tile {
-	scroll-snap-align: start;
-	flex: 0 0 96px;
-	width: 96px;
+	scroll-snap-align: none;
+	flex: 0 0
+		calc(
+			(100% - (var(--mtg-home-per-page) - 1 + 2 * var(--mtg-home-peek)) * var(--mtg-home-tile-gap)) /
+				(var(--mtg-home-per-page) + var(--mtg-home-peek))
+		);
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
@@ -10024,6 +10199,20 @@ body.is-phone {
 	border-radius: 8px;
 	padding: 0.25em;
 	border: 2px solid transparent;
+}
+
+.mtg-home-carousel-tile:nth-child(2n + 1) {
+	scroll-snap-align: start;
+}
+
+@container mtg-home-cards (min-width: 410px) {
+	.mtg-home-carousel-tile:nth-child(2n + 1) {
+		scroll-snap-align: none;
+	}
+
+	.mtg-home-carousel-tile:nth-child(4n + 1) {
+		scroll-snap-align: start;
+	}
 }
 
 .mtg-home-carousel-tile:hover {
@@ -10052,35 +10241,13 @@ body.is-phone {
 	margin-top: 0.1em;
 }
 
-.mtg-home-carousel-action-tile {
-	flex: 0 0 72px;
-	width: 72px;
+/* Page dots: the same dot as the pinned rows' (.mtg-pinned-dot, ring on the active one). */
+.mtg-home-carousel-dots {
 	display: flex;
-	flex-direction: column;
-	align-items: center;
 	justify-content: center;
-	gap: 0.4em;
-	border: 2px dashed var(--background-modifier-border);
-	border-radius: 8px;
-	cursor: pointer;
-	color: var(--text-muted);
-	text-align: center;
-	padding: 0.4em;
-}
-
-.mtg-home-carousel-action-tile:hover {
-	border-color: var(--mtg-accent, var(--interactive-accent));
-	color: var(--text-normal);
-}
-
-.mtg-home-carousel-action-icon svg {
-	width: 18px;
-	height: 18px;
-}
-
-.mtg-home-carousel-action-label {
-	font-size: 0.68em;
-	font-weight: 600;
+	align-items: center;
+	gap: 1em;
+	margin-top: 0.7em;
 }
 
 

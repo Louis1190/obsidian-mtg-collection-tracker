@@ -15,6 +15,12 @@ let openPickerAnchorEl: HTMLElement | null = null;
 // accumulate silently.
 let openPickerCleanup: (() => void) | null = null;
 
+// Closes the open picker menu, if any. A menu lives on <body> (position: fixed), outside the window that owns its trigger, so it does not leave
+// with that window: the phone's swipe between cards calls this (a swipe is not a click, so the outside-click closing never sees it).
+export function closeOpenPickerMenu(): void {
+	if (openPickerCleanup) openPickerCleanup();
+}
+
 export function openPickerMenu(
 	anchor: HTMLElement,
 	items: { render: (el: HTMLElement) => void; onSelect: () => void }[],
@@ -56,7 +62,13 @@ export function openPickerMenu(
 	};
 	reposition();
 
+	const watcher = new MutationObserver(() => {
+		if (!anchor.isConnected) cleanup();
+	});
+	if (anchor.isConnected) watcher.observe(document.body, { childList: true, subtree: true });
+
 	const cleanup = () => {
+		watcher.disconnect();
 		menu.remove();
 		window.removeEventListener("scroll", reposition, true);
 		window.removeEventListener("resize", reposition);

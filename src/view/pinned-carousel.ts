@@ -1,4 +1,5 @@
 import { Platform } from "obsidian";
+import { nearestPage, pageOffsets } from "../core/carousel-pages";
 import type { MTGCollectionView } from "../view";
 
 const FLIP_DISTANCE_PX = 24;
@@ -19,6 +20,10 @@ const DIRECTION_SLOP_PX = 6;
 // here and shown or hidden by CSS, because `.is-phone` flips live with the window size and the
 // pane's width decides (container query) — no JS test of the window size.
 //
+// Home's Overview (Collection / Decks / Wantlists / Backup blocks, 2026-11-04) is the same
+// carousel with four pages (`kind` "home", the dots go under the section's grid): the page
+// positions are therefore the tiles' own (`pageOffsets`), not an even split of the scroll range.
+//
 // The row is rebuilt by every render() (detached clone, see view.ts), so a swipe to the second
 // tile would snap back to the first on the next keystroke in the search bar: the page is kept
 // in `view.pinnedCarouselPage` (one entry per section, like `bulkBarScrollLeft`) and restored on
@@ -28,7 +33,7 @@ const DIRECTION_SLOP_PX = 6;
 // changes between a phone and a rotated phone.
 export function setupPinnedCarousel(
 	view: MTGCollectionView,
-	kind: "collection" | "wantlists",
+	kind: "collection" | "wantlists" | "home",
 	wrap: HTMLElement,
 	grid: HTMLElement
 ) {
@@ -44,11 +49,10 @@ export function setupPinnedCarousel(
 	const remembered = Math.min(view.pinnedCarouselPage.get(kind) ?? 0, count - 1);
 	paint(remembered);
 
-	// Tiles are equal in width, so the page is where the scroll sits between 0 and its maximum.
 	const maxLeft = () => grid.scrollWidth - grid.clientWidth;
+	const offsets = () => pageOffsets(Array.from(grid.children, (tile) => tile.getBoundingClientRect().left), maxLeft());
 	grid.addEventListener("scroll", () => {
-		const max = maxLeft();
-		const page = max > 1 ? Math.round((grid.scrollLeft / max) * (count - 1)) : 0;
+		const page = nearestPage(grid.scrollLeft, offsets());
 		paint(page);
 		view.pinnedCarouselPage.set(kind, page);
 	});
@@ -56,12 +60,12 @@ export function setupPinnedCarousel(
 	let restored = false;
 	const observer = new ResizeObserver(() => {
 		const max = maxLeft();
-		// Nothing to restore while the row does not overflow (a wide pane shows the two tiles
+		// Nothing to restore while the row does not overflow (a wide pane shows the tiles
 		// side by side) or is not laid out yet.
 		if (restored || max <= 1) return;
 		restored = true;
 		// The last page asks for "as far as possible" (scrollWidth - clientWidth is rounded).
-		if (remembered > 0) grid.scrollLeft = remembered >= count - 1 ? grid.scrollWidth : (remembered / (count - 1)) * max;
+		if (remembered > 0) grid.scrollLeft = remembered >= count - 1 ? grid.scrollWidth : offsets()[remembered];
 	});
 	// No explicit disconnect(): the row is recreated on every render, the old one and its
 	// observer become eligible for garbage collection once detached.
@@ -94,10 +98,8 @@ function setupSnapAssist(grid: HTMLElement, count: number) {
 	let fallback = 0;
 
 	const maxLeft = () => grid.scrollWidth - grid.clientWidth;
-	const pageAt = (left: number) => {
-		const max = maxLeft();
-		return max > 1 ? Math.round((left / max) * (count - 1)) : 0;
-	};
+	const offsets = () => pageOffsets(Array.from(grid.children, (tile) => tile.getBoundingClientRect().left), maxLeft());
+	const pageAt = (left: number) => nearestPage(left, offsets());
 
 	const stopGlide = () => {
 		window.cancelAnimationFrame(frame);
@@ -109,7 +111,7 @@ function setupSnapAssist(grid: HTMLElement, count: number) {
 		const max = maxLeft();
 		if (max <= 1) return;
 		const from = grid.scrollLeft;
-		const to = (page / (count - 1)) * max;
+		const to = offsets()[page];
 		const distance = Math.abs(to - from);
 		if (distance < 1) {
 			grid.scrollLeft = page >= count - 1 ? grid.scrollWidth : to;
