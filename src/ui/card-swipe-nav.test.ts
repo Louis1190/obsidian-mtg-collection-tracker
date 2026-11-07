@@ -104,6 +104,21 @@ describe("registerCardSwipeNav", () => {
 		expect(go).not.toHaveBeenCalled();
 	});
 
+	it("ignores a gesture that starts over the full card view (the card behind it must not change)", () => {
+		const overlay = document.createElement("div");
+		overlay.className = "mtg-card-detail-fullcard";
+		const card = document.createElement("div");
+		overlay.appendChild(card);
+		contentEl.appendChild(overlay);
+		swipe(card, LEFT.from, LEFT.to);
+		swipe(overlay, LEFT.to, LEFT.from);
+		expect(go).not.toHaveBeenCalled();
+		// Closed, the window swipes again.
+		overlay.remove();
+		swipe(plain, LEFT.from, LEFT.to);
+		expect(go).toHaveBeenCalledTimes(1);
+	});
+
 	it("ignores a gesture that starts in a text field", () => {
 		swipe(input, LEFT.from, LEFT.to);
 		expect(go).not.toHaveBeenCalled();

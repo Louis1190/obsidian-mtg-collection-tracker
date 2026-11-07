@@ -1,4 +1,13 @@
 import { requestUrl, RequestUrlParam, RequestUrlResponse } from "obsidian";
+import {
+	hasLangClause,
+	inAnyLanguage,
+	isForeignPrint,
+	printKey,
+	shouldSearchAnyLanguageFirst,
+	shouldTryAnyLanguage,
+	withPrintLanguage,
+} from "../core/foreign-print";
 
 /* -------------------------------------------------------------------------- */
 /*  Scryfall API helpers                                                      */
@@ -76,6 +85,13 @@ export interface ScryfallCard {
 	border_color?: string;
 	frame?: string;
 	frame_effects?: string[];
+	// Language of THIS print ("en", "fr", "ja", "zhs"…) and the name as printed on
+	// it. Scryfall sends them on every card; `name` stays the English one even on
+	// a foreign print, and a foreign print has no prices. After
+	// resolveEnglishPrints, a card that came from a foreign hit is the ENGLISH
+	// print carrying the hit's `lang`/`printed_name` (see core/foreign-print.ts).
+	lang?: string;
+	printed_name?: string;
 }
 
 // Subset of ScryfallCard consumed by
@@ -366,7 +382,22 @@ export interface ScryfallPagedResult {
 	cards: ScryfallCard[];
 	hasMore: boolean;
 	totalCards: number;
+	// Present (true) only when the cards come from a search made in every language
+	// (see SearchLanguageMode): the caller hands "any" back for the next pages so
+	// that "Load more" asks the same question.
+	searchedAnyLanguage?: boolean;
 }
+
+// Which languages a name search looks in:
+//  - "english": Scryfall's default, English prints only (CSV and decklist
+//    imports, which resolve names exported by other tools);
+//  - "english-then-any": English first, and when that finds nothing for a query
+//    that contains a name, once more in every language (`lang:any`), so that
+//    typing "Blâme de pierre" or "闪电击" finds the card (the add-cards search);
+//    a name with an accent or a non-Latin letter goes to every language at once;
+//  - "any": every language straight away (the next pages of a search that had to
+//    be widened).
+export type SearchLanguageMode = "english" | "english-then-any" | "any";
 
 // JSON body of Scryfall's search and error responses (`res.json` is `any`: we type it here, once).
 interface ScryfallListBody {
@@ -389,13 +420,17 @@ interface ScryfallErrorBody {
 // single Scryfall page returns; never passed by the 2 CSV import call sites
 // in plugin.ts, which only ever want the first result of a name lookup, so
 // it implicitly stays at 1 (default) for them.
+// `languageMode` — see SearchLanguageMode. Whatever the mode, a hit that is a
+// foreign print (a `lang:fr` chip, or the widened search) comes back folded onto
+// its English print, see resolveEnglishPrints.
 export async function searchScryfall(
 	name: string,
 	setCode: string,
 	collectorNumber: string,
 	chipQuery = "",
 	sortOverride?: { order: string; dir: "asc" | "desc" },
-	page = 1
+	page = 1,
+	languageMode: SearchLanguageMode = "english"
 ): Promise<ScryfallPagedResult> {
 	// If a collector number AND a set are provided, we can query the
 	// "cards/{set}/{number}" endpoint directly, exact and fast — a set+number
@@ -442,28 +477,134 @@ export async function searchScryfall(
 		? "order=set&dir=asc"
 		: "order=released";
 
-	const query = encodeURIComponent(fullQuery);
 	const pageParam = page > 1 ? `&page=${page}` : "";
-	const res = await requestScryfall({
-		url: `https://api.scryfall.com/cards/search?q=${query}&${orderParams}&unique=prints${pageParam}`,
-		headers: SCRYFALL_HEADERS,
-		throw: false,
-	});
-
-	if (res.status === 404) return { cards: [], hasMore: false, totalCards: 0 }; // no card found, normal Scryfall response
-	if (res.status !== 200) {
-		throw new ScryfallError(
-			res.status,
-			(res.json as ScryfallErrorBody | undefined)?.details ?? `Scryfall returned HTTP ${res.status}`
-		);
-	}
-	const data = res.json as ScryfallListBody;
-	const cards = data.data ?? [];
-	return {
-		cards,
-		hasMore: !!data.has_more,
-		totalCards: typeof data.total_cards === "number" ? data.total_cards : cards.length,
+	const fetchPage = async (q: string): Promise<ScryfallPagedResult> => {
+		const res = await requestScryfall({
+			url: `https://api.scryfall.com/cards/search?q=${encodeURIComponent(q)}&${orderParams}&unique=prints${pageParam}`,
+			headers: SCRYFALL_HEADERS,
+			throw: false,
+		});
+		if (res.status === 404) return { cards: [], hasMore: false, totalCards: 0 }; // no card found, normal Scryfall response
+		if (res.status !== 200) {
+			throw new ScryfallError(
+				res.status,
+				(res.json as ScryfallErrorBody | undefined)?.details ?? `Scryfall returned HTTP ${res.status}`
+			);
+		}
+		const data = res.json as ScryfallListBody;
+		const found = data.data ?? [];
+		return {
+			cards: found,
+			hasMore: !!data.has_more,
+			totalCards: typeof data.total_cards === "number" ? data.total_cards : found.length,
+		};
 	};
+
+	// A query that already names a language is left exactly as the user wrote it. A name with an accent or a
+	// non-Latin letter cannot be an English name: every language straight away, one request instead of two.
+	let result: ScryfallPagedResult;
+	let searchedAnyLanguage = false;
+	const anyLanguageNow =
+		languageMode === "any" ||
+		(languageMode === "english-then-any" && page === 1 && shouldSearchAnyLanguageFirst(fullQuery));
+	if (anyLanguageNow && !hasLangClause(fullQuery)) {
+		result = await fetchPage(inAnyLanguage(fullQuery));
+		searchedAnyLanguage = true;
+	} else {
+		result = await fetchPage(fullQuery);
+		if (
+			result.cards.length === 0 &&
+			languageMode === "english-then-any" &&
+			page === 1 &&
+			shouldTryAnyLanguage(fullQuery)
+		) {
+			result = await fetchPage(inAnyLanguage(fullQuery));
+			searchedAnyLanguage = true;
+		}
+	}
+	const resolved = await resolveEnglishPrints(result.cards);
+	if (!searchedAnyLanguage) return { ...result, cards: resolved };
+	// Every language includes the English prints (and the foreign copies of a card whose ENGLISH name matches, e.g. a
+	// typed "Lim-Dûl"): the English prints come first, as the English-only search would have given them.
+	const cards = [...resolved.filter((card) => !isForeignPrint(card)), ...resolved.filter(isForeignPrint)];
+	return { ...result, cards, searchedAnyLanguage };
+}
+
+// Foreign prints already looked up this session: printing key → its English
+// print, or null once Scryfall has confirmed there is none. Only confirmed
+// answers are kept (a failed request is not cached), and the prices of a kept
+// card are those of the moment, which is all a search result needs: the daily
+// refresh keeps the stored copies current.
+const ENGLISH_PRINT_CACHE_MAX = 500;
+const englishPrintCache = new Map<string, ScryfallCard | null>();
+
+export function clearEnglishPrintCacheForTests() {
+	englishPrintCache.clear();
+}
+
+function rememberEnglishPrint(key: string, card: ScryfallCard | null) {
+	if (englishPrintCache.size >= ENGLISH_PRINT_CACHE_MAX) {
+		const oldest = englishPrintCache.keys().next();
+		if (!oldest.done) englishPrintCache.delete(oldest.value);
+	}
+	englishPrintCache.set(key, card);
+}
+
+// Replaces every foreign print among `cards` by the English print of the same set
+// and collector number (id, name, picture, rules text and, above all, prices),
+// keeping the hit's `lang` and `printed_name` so the language of the copy can be
+// recorded. One /cards/collection request per 75 printings, through the shared
+// pacing in requestScryfall. Anything that cannot be resolved (a request that
+// fails, a printing that exists in a single foreign language) stays as it came:
+// the search never fails because of this step. Two hits that end up as the same
+// card in the same language collapse to one.
+export async function resolveEnglishPrints(cards: ScryfallCard[]): Promise<ScryfallCard[]> {
+	const foreign = cards.filter(isForeignPrint);
+	if (foreign.length === 0) return cards;
+
+	const wanted = new Map<string, { set: string; collector_number: string }>();
+	for (const card of foreign) {
+		const key = printKey(card);
+		if (!englishPrintCache.has(key) && !wanted.has(key)) {
+			wanted.set(key, { set: card.set, collector_number: card.collector_number });
+		}
+	}
+	for (const part of chunk(Array.from(wanted.entries()), 75)) {
+		let res: RequestUrlResponse;
+		try {
+			res = await requestScryfall({
+				url: "https://api.scryfall.com/cards/collection",
+				method: "POST",
+				headers: { ...SCRYFALL_HEADERS, "Content-Type": "application/json" },
+				body: JSON.stringify({ identifiers: part.map(([, id]) => id) }),
+				throw: false,
+			});
+		} catch {
+			break;
+		}
+		if (res.status !== 200) break;
+		const body = res.json as {
+			data?: ScryfallCard[];
+			not_found?: { set?: string; collector_number?: string }[];
+		};
+		for (const card of body.data ?? []) rememberEnglishPrint(printKey(card), card);
+		for (const missing of body.not_found ?? []) {
+			if (missing.set && missing.collector_number) {
+				rememberEnglishPrint(printKey({ set: missing.set, collector_number: missing.collector_number }), null);
+			}
+		}
+	}
+
+	const seen = new Set<string>();
+	const out: ScryfallCard[] = [];
+	for (const card of cards) {
+		const resolved = isForeignPrint(card) ? withPrintLanguage(card, englishPrintCache.get(printKey(card))) : card;
+		const identity = `${resolved.id}|${resolved.lang ?? ""}`;
+		if (seen.has(identity)) continue;
+		seen.add(identity);
+		out.push(resolved);
+	}
+	return out;
 }
 
 // The most recently released cards, paper version only (the plugin only

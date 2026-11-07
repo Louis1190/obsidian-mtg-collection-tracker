@@ -355,7 +355,10 @@ export function getListNameFor(lists: ListNameSource, card: { listId?: string })
 export function compareCardsBy<T extends SortableCard>(
 	sortBy: SortByOption,
 	lists: ListNameSource,
-	priceOf: (card: T) => number
+	priceOf: (card: T) => number,
+	// The name a card is DISPLAYED with (the printed one when the "Card names" setting says so, see
+	// core/printed-name.ts): a name sort follows what the list shows, same rule as `priceOf`.
+	nameOf: (card: T) => string = (card) => card.name
 ): (a: T, b: T) => number {
 	return (a, b) => {
 		switch (sortBy) {
@@ -364,7 +367,7 @@ export function compareCardsBy<T extends SortableCard>(
 			case "collectorNumber":
 				return collectorNumberCompare(a.collectorNumber, b.collectorNumber);
 			case "color":
-				return colorSortKey(a) - colorSortKey(b) || a.name.localeCompare(b.name);
+				return colorSortKey(a) - colorSortKey(b) || nameOf(a).localeCompare(nameOf(b));
 			case "dateAdded":
 				return (a.dateAdded || 0) - (b.dateAdded || 0);
 			case "dateModified":
@@ -387,12 +390,16 @@ export function compareCardsBy<T extends SortableCard>(
 				return (a.typeLine || "").localeCompare(b.typeLine || "");
 			case "name":
 			default:
-				return a.name.localeCompare(b.name);
+				return nameOf(a).localeCompare(nameOf(b));
 		}
 	};
 }
 
-export function groupSortValue<T extends SortableCard>(groupBy: GroupByOption, card: T): number | string {
+export function groupSortValue<T extends SortableCard>(
+	groupBy: GroupByOption,
+	card: T,
+	nameOf: (card: T) => string = (c) => c.name
+): number | string {
 	switch (groupBy) {
 		// Always a STRING (never a bare number) — see deckFunctionSortKey
 		// (deck-function.ts): groupOrderCmp (further down in this file) only
@@ -421,13 +428,17 @@ export function groupSortValue<T extends SortableCard>(groupBy: GroupByOption, c
 		case "type":
 			return primaryType(card.typeLine);
 		case "name":
-			return card.name;
+			return nameOf(card);
 		default:
 			return "";
 	}
 }
 
-export function groupLabelFor<T extends SortableCard>(groupBy: GroupByOption, card: T): string {
+export function groupLabelFor<T extends SortableCard>(
+	groupBy: GroupByOption,
+	card: T,
+	nameOf: (card: T) => string = (c) => c.name
+): string {
 	switch (groupBy) {
 		case "artist":
 			return card.artist || "Unknown artist";
@@ -444,7 +455,7 @@ export function groupLabelFor<T extends SortableCard>(groupBy: GroupByOption, ca
 		case "manaValue":
 			return `Mana value ${card.manaValue ?? 0}`;
 		case "name":
-			return (card.name[0] || "#").toUpperCase();
+			return (nameOf(card)[0] || "#").toUpperCase();
 		case "quantity":
 			return `${card.count}x`;
 		case "rarity":
@@ -580,9 +591,10 @@ export function groupAndSortCards<T extends SortableCard>(
 	sortReverse: boolean,
 	groupReverse: boolean,
 	lists: ListNameSource,
-	priceOf: (card: T) => number
+	priceOf: (card: T) => number,
+	nameOf?: (card: T) => string
 ): CardGroup<T>[] {
-	const cmp = compareCardsBy<T>(sortBy, lists, priceOf);
+	const cmp = compareCardsBy<T>(sortBy, lists, priceOf, nameOf);
 
 	if (groupBy === "none") {
 		const sorted = [...cards].sort(cmp);
@@ -591,8 +603,8 @@ export function groupAndSortCards<T extends SortableCard>(
 	}
 
 	const groupOrderCmp = (a: T, b: T) => {
-		const va = groupSortValue(groupBy, a);
-		const vb = groupSortValue(groupBy, b);
+		const va = groupSortValue(groupBy, a, nameOf);
+		const vb = groupSortValue(groupBy, b, nameOf);
 		if (typeof va === "number" && typeof vb === "number") return va - vb;
 		return String(va).localeCompare(String(vb));
 	};
@@ -602,7 +614,7 @@ export function groupAndSortCards<T extends SortableCard>(
 	[...cards]
 		.sort(groupOrderCmp)
 		.forEach((card) => {
-			const label = groupLabelFor(groupBy, card);
+			const label = groupLabelFor(groupBy, card, nameOf);
 			if (!map.has(label)) {
 				map.set(label, []);
 				order.push(label);

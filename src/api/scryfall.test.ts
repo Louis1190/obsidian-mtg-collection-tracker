@@ -23,6 +23,8 @@ import {
 	SET_GROUP_ORDER,
 	ScryfallSetSummary,
 	searchScryfall,
+	resolveEnglishPrints,
+	clearEnglishPrintCacheForTests,
 	fetchLatestPaperPrintings,
 	searchAllPrintings,
 	fetchScryfallCollection,
@@ -1010,5 +1012,271 @@ describe("getSplitCardInfo", () => {
 	it("returns null when layout is entirely absent (older cached data, defensive)", () => {
 		const card = makeScryfallCard({ layout: undefined });
 		expect(getSplitCardInfo(card)).toBeNull();
+	});
+});
+
+describe("searching by a name printed in another language", () => {
+	// Shapes taken from live responses of 2026-11-07: the French print of Rocky
+	// Rebuke (TLA 193) has the English `name`, the French `printed_name` and prices
+	// that are ALL null, the English print has the prices.
+	const frenchHit = makeScryfallCard({
+		id: "fr-id",
+		name: "Rocky Rebuke",
+		set: "tla",
+		collector_number: "193",
+		lang: "fr",
+		printed_name: "Blâme de pierre",
+		prices: { usd: undefined, eur: undefined },
+	});
+	const englishPrint = makeScryfallCard({
+		id: "en-id",
+		name: "Rocky Rebuke",
+		set: "tla",
+		collector_number: "193",
+		lang: "en",
+		prices: { usd: "0.20", usd_foil: "0.23", eur: "0.08" },
+	});
+
+	type Handler = {
+		search?: (query: string) => { status: number; json: unknown };
+		collection?: (identifiers: { set: string; collector_number: string }[]) => { status: number; json: unknown };
+	};
+	function serve(handler: Handler) {
+		mockRequestUrl.mockImplementation((async (params: { url: string; body?: string }) => {
+			if (params.url.includes("/cards/search")) {
+				const query = new URL(params.url).searchParams.get("q") ?? "";
+				return handler.search?.(query) ?? { status: 404, json: {} };
+			}
+			if (params.url.endsWith("/cards/collection")) {
+				const identifiers = JSON.parse(params.body ?? "{}").identifiers;
+				return handler.collection?.(identifiers) ?? { status: 200, json: { data: [], not_found: [] } };
+			}
+			return { status: 404, json: {} };
+		}) as any);
+	}
+	const searchQueries = () =>
+		mockRequestUrl.mock.calls
+			.filter((c) => (c[0] as any).url.includes("/cards/search"))
+			.map((c) => new URL((c[0] as any).url).searchParams.get("q"));
+	const collectionCalls = () => mockRequestUrl.mock.calls.filter((c) => (c[0] as any).url.endsWith("/cards/collection"));
+
+	// The strict endpoints are spaced 550 ms apart: run on a fake clock.
+	async function run<T>(start: () => Promise<T>): Promise<T> {
+		vi.useFakeTimers();
+		try {
+			resetScryfallStrictGateForTests();
+			const pending = start();
+			await vi.advanceTimersByTimeAsync(20_000);
+			return await pending;
+		} finally {
+			vi.useRealTimers();
+			resetScryfallStrictGateForTests();
+		}
+	}
+
+	beforeEach(() => {
+		clearEnglishPrintCacheForTests();
+	});
+
+	it("looks in every language when English finds nothing, and returns the English print carrying the language", async () => {
+		serve({
+			search: (q) => (q.endsWith("lang:any") ? { status: 200, json: { data: [frenchHit], total_cards: 1 } } : { status: 404, json: {} }),
+			collection: () => ({ status: 200, json: { data: [englishPrint], not_found: [] } }),
+		});
+
+		// typed without the accent: nothing says it is not English, so English is tried first
+		const result = await run(() => searchScryfall("", "", "", "Blame de pierre", undefined, 1, "english-then-any"));
+
+		expect(searchQueries()).toEqual(["Blame de pierre", "Blame de pierre lang:any"]);
+		expect(result.searchedAnyLanguage).toBe(true);
+		expect(result.cards).toHaveLength(1);
+		const card = result.cards[0];
+		expect(card.id).toBe("en-id");
+		expect(card.prices?.usd).toBe("0.20");
+		expect(card.lang).toBe("fr");
+		expect(card.printed_name).toBe("Blâme de pierre");
+		// the English print is asked for by set + collector number, nothing else
+		expect(JSON.parse((collectionCalls()[0][0] as any).body)).toEqual({
+			identifiers: [{ set: "tla", collector_number: "193" }],
+		});
+	});
+
+	it("asks for every language at once when the name has an accent or a non-Latin letter, even if English would have found something", async () => {
+		serve({
+			search: () => ({ status: 200, json: { data: [frenchHit, englishPrint], total_cards: 2 } }),
+			collection: () => ({ status: 200, json: { data: [englishPrint], not_found: [] } }),
+		});
+
+		const result = await run(() => searchScryfall("", "", "", "Blâme de pierre", undefined, 1, "english-then-any"));
+
+		expect(searchQueries()).toEqual(["Blâme de pierre lang:any"]);
+		expect(result.searchedAnyLanguage).toBe(true);
+		// the English print itself (lang "en") and the French copy of it are two different results
+		// ... the English one first
+		expect(result.cards.map((c) => `${c.id}:${c.lang}`)).toEqual(["en-id:en", "en-id:fr"]);
+	});
+
+	it("puts the English prints first in a search made in every language, keeping the order inside each group", async () => {
+		const spanish = { ...frenchHit, id: "es-id", lang: "es", printed_name: "Reprimenda rocosa", collector_number: "194" };
+		const englishOther = { ...englishPrint, id: "en-id-2", collector_number: "194" };
+		serve({
+			search: () => ({ status: 200, json: { data: [frenchHit, spanish, englishPrint, englishOther], total_cards: 4 } }),
+			collection: (identifiers) => ({
+				status: 200,
+				json: { data: identifiers.map((i) => (i.collector_number === "194" ? englishOther : englishPrint)) },
+			}),
+		});
+		const result = await run(() => searchScryfall("", "", "", "Blâme", undefined, 1, "any"));
+		expect(result.cards.map((c) => `${c.id}:${c.lang}`)).toEqual(["en-id:en", "en-id-2:en", "en-id:fr", "en-id-2:es"]);
+	});
+
+	it("does not do that for an accented name in the default English mode, on a later page, or next to a lang: clause", async () => {
+		serve({ search: () => ({ status: 404, json: {} }) });
+		await run(() => searchScryfall("", "", "", "Blâme"));
+		await run(() => searchScryfall("", "", "", "Blâme", undefined, 2, "english-then-any"));
+		await run(() => searchScryfall("", "", "", "Blâme lang:fr", undefined, 1, "english-then-any"));
+		expect(searchQueries()).toEqual(["Blâme", "Blâme", "Blâme lang:fr"]);
+	});
+
+	it("does not look further in the default English mode", async () => {
+		serve({ search: () => ({ status: 404, json: {} }) });
+		const result = await run(() => searchScryfall("", "", "", "Blâme de pierre"));
+		expect(searchQueries()).toEqual(["Blâme de pierre"]);
+		expect(result).toEqual({ cards: [], hasMore: false, totalCards: 0 });
+	});
+
+	it("does not look further when English already found cards, and says nothing about languages", async () => {
+		serve({ search: () => ({ status: 200, json: { data: [englishPrint], total_cards: 1 } }) });
+		const result = await run(() => searchScryfall("", "", "", "Rocky", undefined, 1, "english-then-any"));
+		expect(searchQueries()).toEqual(["Rocky"]);
+		expect(collectionCalls()).toHaveLength(0);
+		expect(result).toEqual({ cards: [englishPrint], hasMore: false, totalCards: 1 });
+	});
+
+	it("does not widen a query that already names a language, nor one with no name in it", async () => {
+		serve({ search: () => ({ status: 404, json: {} }) });
+		await run(() => searchScryfall("", "", "", "Blâme lang:ja", undefined, 1, "english-then-any"));
+		await run(() => searchScryfall("", "", "", "c:r t:elf", undefined, 1, "english-then-any"));
+		expect(searchQueries()).toEqual(["Blâme lang:ja", "c:r t:elf"]);
+	});
+
+	it("does not retry in every language on a later page, and goes straight there in 'any' mode", async () => {
+		serve({
+			search: (q) => (q.endsWith("lang:any") ? { status: 200, json: { data: [frenchHit] } } : { status: 404, json: {} }),
+			collection: () => ({ status: 200, json: { data: [englishPrint] } }),
+		});
+		await run(() => searchScryfall("", "", "", "Blâme", undefined, 2, "english-then-any"));
+		expect(searchQueries()).toEqual(["Blâme"]);
+
+		mockRequestUrl.mockClear();
+		const next = await run(() => searchScryfall("", "", "", "Blâme", undefined, 2, "any"));
+		expect(searchQueries()).toEqual(["Blâme lang:any"]);
+		expect(next.searchedAnyLanguage).toBe(true);
+		expect(next.cards[0].id).toBe("en-id");
+	});
+
+	it("folds the results of an explicit lang:fr search too (they used to be stored with the French print's id and no price)", async () => {
+		serve({
+			search: () => ({ status: 200, json: { data: [frenchHit], total_cards: 1 } }),
+			collection: () => ({ status: 200, json: { data: [englishPrint] } }),
+		});
+		const result = await run(() => searchScryfall("", "", "", "Rocky lang:fr"));
+		expect(searchQueries()).toEqual(["Rocky lang:fr"]);
+		expect(result.searchedAnyLanguage).toBeUndefined();
+		expect(result.cards[0]).toMatchObject({ id: "en-id", lang: "fr", prices: { usd: "0.20" } });
+	});
+
+	it("remembers a printing it has looked up, so a second search does not ask again", async () => {
+		serve({
+			search: () => ({ status: 200, json: { data: [frenchHit] } }),
+			collection: () => ({ status: 200, json: { data: [englishPrint] } }),
+		});
+		await run(() => searchScryfall("", "", "", "Rocky lang:fr"));
+		await run(() => searchScryfall("", "", "", "Blâme lang:fr"));
+		expect(collectionCalls()).toHaveLength(1);
+	});
+
+	it("keeps the foreign hit when the lookup fails, without throwing, and asks again next time", async () => {
+		serve({
+			search: () => ({ status: 200, json: { data: [frenchHit] } }),
+			collection: () => ({ status: 500, json: {} }),
+		});
+		const result = await run(() => searchScryfall("", "", "", "Rocky lang:fr"));
+		expect(result.cards[0]).toBe(frenchHit);
+
+		serve({
+			search: () => ({ status: 200, json: { data: [frenchHit] } }),
+			collection: () => ({ status: 200, json: { data: [englishPrint] } }),
+		});
+		const again = await run(() => searchScryfall("", "", "", "Rocky lang:fr"));
+		expect(again.cards[0].id).toBe("en-id");
+	});
+
+	it("keeps the foreign hit when the request itself fails (offline)", async () => {
+		serve({ search: () => ({ status: 200, json: { data: [frenchHit] } }) });
+		mockRequestUrl.mockImplementation((async (params: { url: string }) => {
+			if (params.url.includes("/cards/search")) return { status: 200, json: { data: [frenchHit] } };
+			throw new Error("net::ERR_INTERNET_DISCONNECTED");
+		}) as any);
+		const result = await run(() => searchScryfall("", "", "", "Rocky lang:fr"));
+		expect(result.cards[0]).toBe(frenchHit);
+	});
+
+	it("remembers a confirmed 'no such English printing' and keeps the hit", async () => {
+		serve({
+			search: () => ({ status: 200, json: { data: [frenchHit] } }),
+			collection: () => ({ status: 200, json: { data: [], not_found: [{ set: "tla", collector_number: "193" }] } }),
+		});
+		const first = await run(() => searchScryfall("", "", "", "Rocky lang:fr"));
+		const second = await run(() => searchScryfall("", "", "", "Rocky lang:fr"));
+		expect(first.cards[0]).toBe(frenchHit);
+		expect(second.cards[0]).toBe(frenchHit);
+		expect(collectionCalls()).toHaveLength(1);
+	});
+
+	it("keeps a printing that exists in one foreign language only (the counterpart is not English)", async () => {
+		const japaneseOnly = makeScryfallCard({
+			id: "ja-id", set: "sta", collector_number: "111", lang: "ja", printed_name: "豊穣な収穫", prices: { usd: "2.74" },
+		});
+		serve({
+			search: () => ({ status: 200, json: { data: [japaneseOnly] } }),
+			collection: () => ({ status: 200, json: { data: [japaneseOnly] } }),
+		});
+		const result = await run(() => searchScryfall("", "", "", "豊穣 lang:ja"));
+		expect(result.cards).toEqual([japaneseOnly]);
+		expect(result.cards[0].prices?.usd).toBe("2.74");
+	});
+
+	it("asks for at most 75 printings per request", async () => {
+		const hits = Array.from({ length: 80 }, (_, i) =>
+			makeScryfallCard({ id: `fr-${i}`, set: "tla", collector_number: String(i + 1), lang: "fr", printed_name: `n${i}` })
+		);
+		serve({
+			collection: (identifiers) => ({
+				status: 200,
+				json: {
+					data: identifiers.map((id) =>
+						makeScryfallCard({ id: `en-${id.collector_number}`, set: id.set, collector_number: id.collector_number, lang: "en" })
+					),
+				},
+			}),
+		});
+		const resolved = await run(() => resolveEnglishPrints(hits));
+		expect(collectionCalls().map((c) => JSON.parse((c[0] as any).body).identifiers.length)).toEqual([75, 5]);
+		expect(resolved).toHaveLength(80);
+		expect(resolved.every((c) => c.id.startsWith("en-") && c.lang === "fr")).toBe(true);
+	});
+
+	it("keeps one card per (card, language): the same French print twice collapses, French and German stay apart", async () => {
+		const german = { ...frenchHit, id: "de-id", lang: "de", printed_name: "Felsiger Tadel" };
+		serve({ collection: () => ({ status: 200, json: { data: [englishPrint] } }) });
+		const resolved = await run(() => resolveEnglishPrints([frenchHit, { ...frenchHit }, german, englishPrint]));
+		expect(resolved.map((c) => `${c.id}:${c.lang}`)).toEqual(["en-id:fr", "en-id:de", "en-id:en"]);
+	});
+
+	it("sends nothing when no hit is a foreign print", async () => {
+		const resolved = await run(() => resolveEnglishPrints([englishPrint, makeScryfallCard({ id: "x" })]));
+		expect(mockRequestUrl).not.toHaveBeenCalled();
+		expect(resolved).toHaveLength(2);
 	});
 });

@@ -1127,8 +1127,8 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 			// AddCardsModalOptions.onAdd (harmonization with Collection/Wantlist
 			// explicitly requested — the Deck flow until now had neither a stepper,
 			// nor a clickable tile, nor a history panel).
-			onAdd: (card) => {
-				const row = this.plugin.addCardToDeck(deck.id, card);
+			onAdd: (card, options) => {
+				const row = this.plugin.addCardToDeck(deck.id, card, options.language);
 				return row ? { id: row.scryfallId, count: row.count, listId: deck.id } : undefined;
 			},
 			onChangeQuantity: (entryId, delta, onDone) =>
@@ -1204,7 +1204,9 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 	const boardCards = deck.cards.filter((c) => deckBoardTabMatches(c, this.deckActiveBoard));
 	const priceOf = displayedPriceOf(this.plugin.settings.priceCurrency);
 	const filteredCards = boardCards.filter((c) =>
-		cardMatchesTokens(c, this.deckCardFilterTokens, this.deckCardFilterDraft, undefined, undefined, priceOf)
+		cardMatchesTokens(c, this.deckCardFilterTokens, this.deckCardFilterDraft, undefined, undefined, priceOf, (card) =>
+			this.plugin.getPrintedName(card)
+		)
 	);
 	this.renderChipFilter(
 		filterRow,
@@ -1268,7 +1270,7 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 		this.lastDeckRenderSignature = renderSignature;
 	}
 
-	const dataSignature = `${renderSignature}::${this.plugin.dataVersion}`;
+	const dataSignature = `${renderSignature}::${this.plugin.dataVersion}::${this.plugin.printedNamesVersion}`;
 	let cardGroups: CardGroup<DeckCard>[];
 	if (this.lastDeckDataSignature === dataSignature && this.cachedDeckCardGroups) {
 		cardGroups = this.cachedDeckCardGroups;
@@ -1282,7 +1284,8 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 			this.plugin.settings.lists,
 			// The price the row shows; a deck card's price fields are optional, hence
 			// toDeckPricedCard (a card not yet backfilled counts as 0).
-			(c) => getCardPriceNumber(toDeckPricedCard(c), this.plugin.settings.priceCurrency)
+			(c) => getCardPriceNumber(toDeckPricedCard(c), this.plugin.settings.priceCurrency),
+			(c) => this.plugin.cardDisplayName(c)
 		);
 		this.cachedDeckCardGroups = cardGroups;
 		this.lastDeckDataSignature = dataSignature;
@@ -1603,7 +1606,7 @@ export function renderDeckStacksView(this: MTGCollectionView, container: HTMLEle
 			const finish = getDeckCardFinish(card);
 			this.renderThumbWithBadge(
 				cardWrap,
-				card.imageUrl,
+				this.plugin.cardDisplayImage(card),
 				card.setCode,
 				card.rarity,
 				finishHasFoilLook(finish),
@@ -1805,10 +1808,10 @@ export function deckCardRowSignature(this: MTGCollectionView, deck: Deck, card: 
 		? this.plugin.getCachedLegalities(card.scryfallId)?.[deck.format]
 		: undefined;
 	return [
-		card.imageUrl,
+		this.plugin.cardDisplayImage(card),
 		card.setCode,
 		card.rarity,
-		card.name,
+		this.plugin.cardDisplayName(card),
 		card.manaCost,
 		card.setName,
 		card.collectorNumber,
@@ -1879,7 +1882,7 @@ export function buildDeckCardRow(this: MTGCollectionView, deck: Deck, card: Deck
 	const finish = getDeckCardFinish(card);
 	this.renderThumbWithBadge(
 		row,
-		card.imageUrl,
+		this.plugin.cardDisplayImage(card),
 		card.setCode,
 		card.rarity,
 		finishHasFoilLook(finish),
@@ -1898,7 +1901,7 @@ export function buildDeckCardRow(this: MTGCollectionView, deck: Deck, card: Deck
 	// the width of the rendered text, a possible foil-pill is added next to it
 	// without stretching it.
 	const nameLine = body.createDiv({ cls: "mtg-card-row-name-line" });
-	const nameTextSpan = nameLine.createSpan({ cls: "mtg-card-row-name", text: card.name });
+	const nameTextSpan = nameLine.createSpan({ cls: "mtg-card-row-name", text: this.plugin.cardDisplayName(card) });
 	if (finish !== "regular") {
 		nameLine.createSpan({ cls: "mtg-foil-pill", text: getFinishLabel(finish) });
 	}
@@ -1914,7 +1917,7 @@ export function buildDeckCardRow(this: MTGCollectionView, deck: Deck, card: Deck
 			manaValueCell.createSpan({ cls: "mtg-table-mana-value-empty", text: "—" });
 		}
 		nameTextSpan.addEventListener("mouseenter", () =>
-			this.showCardNamePreview(nameTextSpan, card.imageUrl)
+			this.showCardNamePreview(nameTextSpan, this.plugin.cardDisplayImage(card))
 		);
 		nameTextSpan.addEventListener("mouseleave", () => this.hideCardNamePreview());
 	}
@@ -2121,7 +2124,7 @@ export function buildDeckCardTile(this: MTGCollectionView, deck: Deck, card: Dec
 	const finish = getDeckCardFinish(card);
 	this.renderThumbWithBadge(
 		tile,
-		card.imageUrl,
+		this.plugin.cardDisplayImage(card),
 		card.setCode,
 		card.rarity,
 		finishHasFoilLook(finish),

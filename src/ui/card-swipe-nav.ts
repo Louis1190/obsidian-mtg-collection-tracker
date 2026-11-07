@@ -19,12 +19,14 @@ function scrollsHorizontally(el: Element): boolean {
 	return overflowX === "auto" || overflowX === "scroll";
 }
 
-// A gesture that starts in a text field is about the text (caret, selection), and one that starts in
-// a sideways scroller is about that scroller.
+// A gesture that starts in a text field is about the text (caret, selection), in a sideways scroller
+// is about that scroller, and over the full card view (ui/full-card-view.ts) is about nothing: the card
+// behind it must not change.
 function startsInSwipeBlocker(target: EventTarget | null, contentEl: HTMLElement): boolean {
 	// Element, not HTMLElement: the price chart's targets are SVG elements.
 	let el = target instanceof Element ? target : null;
 	while (el && el !== contentEl) {
+		if (el.classList.contains("mtg-card-detail-fullcard")) return true;
 		const tag = el.tagName;
 		if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (el as HTMLElement).isContentEditable) return true;
 		if (!el.classList.contains("mtg-card-detail-layout") && scrollsHorizontally(el)) return true;

@@ -45,6 +45,8 @@ export function addCardToCollection(this: MTGCollectionPlugin,
 	listId: string,
 	options: AddCardOptions
 ): CollectionCard {
+	// A card found by its name in another language brings its printed name along (see resolveEnglishPrints).
+	this.rememberPrintedName(card);
 	const existing = this.settings.collection.find(
 		(c) =>
 			c.scryfallId === card.id &&

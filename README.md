@@ -18,6 +18,9 @@ Everything is stored in your own files, on your own devices. There is no account
   stores, and the other lists and decks that hold a copy.
 - **Search** that understands what you type (colours, rarities, types, sets, artists, `legal:modern`, `border:showcase`,
   `oracle:"draw a card"`, `#235`…). The *Add cards* window searches all of Scryfall; each list has the same search over what it holds.
+- **Cards in any language**: search a card by its name in any language Scryfall has ("Blâme de pierre", "闪电击"); the copy is
+  added in that language and priced as the English printing. Two optional settings show the name and the picture printed on
+  your copy; searching finds both names.
 - **Copy, move, merge**: move or copy cards between lists, decks and wantlists, merge lists, merge duplicate cards.
 - **Import and export**: CSV and plain-text decklists (Moxfield, Archidekt, MTGO, Arena), export to CSV or text, or to
   the clipboard, one ZIP for several lists at once.
@@ -95,7 +98,7 @@ and it never sends your collection anywhere except to the GitHub repository you 
 
 | Service | What for | When |
 | --- | --- | --- |
-| `api.scryfall.com`, and the images served by `*.scryfall.io` | Card search, card data, prices, format legalities, set and mana symbols, card images | When you search, open or import cards; in the background to keep the prices and legalities of your cards up to date; and, while a card's detail window is open, for the few cards just before and after the one shown (their text, artwork and images, so they appear at once when you move to them) |
+| `api.scryfall.com`, and the images served by `*.scryfall.io` | Card search, card data, prices, format legalities, set and mana symbols, card images | When you search, open or import cards (a name typed in another language that finds nothing is searched again in every language, and the English printing of each match is looked up to give its price); in the background, for each card you mark as being in another language, the name printed on it (one small request per card, then kept on your device; the same answer also says where the picture printed in that language is, used only if you choose to show printed pictures); in the background to keep the prices and legalities of your cards up to date; and, while a card's detail window is open, for the few cards just before and after the one shown (their text, artwork and images, so they appear at once when you move to them) |
 | `api.cardkingdom.com` | Card Kingdom prices | The first time a card is opened in a session (read as a stream on a phone or tablet, to spare its memory) |
 | `manapool.com` | Mana Pool prices (its whole price list) | The first time a card is opened in a session, **computers only** |
 | `louis1190.github.io` | Price history and the Cardmarket price: one small file per card, named after the first three characters of its Scryfall id (1 of 4,096 files, ~10-40 KB, shared by about 27 cards). Nothing about you or your collection is in the request. A tiny file next to them, `site.json`, is read first (about once per session) and says where the price files are: normally right there, but it can name another `https` address if the files ever have to move, and the plugin then asks that address instead. The last address that worked is kept on your device. The same site also serves the market movers of Home: twelve small lists (about 8 KB each; one per period and vendor choice), the same for everyone, and, **on a phone or tablet only**, the Mana Pool price: a second set of small files with the same names (1 of 4,096, about 1-6 KB) | When a card is opened (and, in the background, for the few cards next to it in the detail window), and when Home shows its market trends |

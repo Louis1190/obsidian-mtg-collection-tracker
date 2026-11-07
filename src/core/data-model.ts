@@ -2,6 +2,7 @@ import { CollectionCard, WantlistCard, Finish, GradingCompany } from "./card-mod
 import { GroupByOption, SortByOption, CardViewMode, primaryType } from "./card-sorting";
 import { detectDeckCardFunction } from "./deck-function";
 import type { PriceCurrency } from "./price";
+import type { CardImageMode, CardNameMode } from "./printed-name";
 import type { CardbaseMoverPeriod, CardbaseVendor } from "../api/cardbase";
 
 // Pictogram displayed to the left of a list's name (ListSettingsModal,
@@ -340,6 +341,12 @@ export interface MTGCollectionSettings {
 	priceRefreshIntervalHours: number;
 	lastPriceRefresh: number;
 	priceCurrency: PriceCurrency;
+	// Which name a copy in another language shows in the lists, rows and detail title: "english" (the default;
+	// exports always write the English name) or the name printed on the copy (core/printed-name.ts).
+	cardNameMode: CardNameMode;
+	// Same for the picture of a copy in another language: the English print's (default) or the one printed in its language
+	// when Scryfall has a real scan of it (core/printed-name.ts, printedImageFromBody).
+	cardImageMode: CardImageMode;
 	cardbaseApiKey: string;
 	// Automatic backups (2026-09-02, see
 	// MTGCollectionPlugin.maybeAutoBackup/runAutoBackup) — same
@@ -431,6 +438,8 @@ export const DEFAULT_SETTINGS: MTGCollectionSettings = {
 	priceRefreshIntervalHours: 24,
 	lastPriceRefresh: 0,
 	priceCurrency: "usd",
+	cardNameMode: "english",
+	cardImageMode: "english",
 	cardbaseApiKey: "",
 	autoBackupIntervalHours: 168,
 	lastAutoBackup: 0,

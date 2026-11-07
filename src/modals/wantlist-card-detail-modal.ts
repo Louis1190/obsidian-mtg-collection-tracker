@@ -9,6 +9,7 @@ import {
 	FINISH_OPTIONS,
 } from "../core/card-model";
 import { openPickerMenu } from "../ui/picker-menu";
+import { addFullCardButton, resolveFullCardUrl } from "../ui/full-card-view";
 import { getDeckCardFinish, isDeckCardOwned } from "../core/data-model";
 import {
 	BackgroundCrossfader,
@@ -241,6 +242,23 @@ export class WantlistCardDetailModal extends Modal {
 			// cropped.
 			const wantBadge = tilt.createDiv({ cls: "mtg-wantlist-heart-badge mtg-wantlist-heart-badge-large" });
 			setIcon(wantBadge, "heart");
+
+			// Phone art mode shows the artwork alone: a square button shows the whole card. A wantlist card has no
+			// condition or language button, so the stack holds this one only, set just under the heart badge.
+			if (artMode) {
+				const imageIcons = imageColumn.createDiv({
+					cls: "mtg-card-detail-image-icons mtg-card-detail-image-icons-below-badge",
+				});
+				addFullCardButton(imageIcons, contentEl, () =>
+					resolveFullCardUrl(
+						(id) => this.plugin.getCardFaceImages(id),
+						this.card.scryfallId,
+						this.flipped,
+						this.card.imageUrl
+					),
+					{ alpha: isAlpha }
+				);
+			}
 
 			// 3D "flip" button — see CardDetailModal for the full reasoning (same
 			// shared function, same staleness guard).

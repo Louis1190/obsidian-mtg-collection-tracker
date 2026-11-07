@@ -3,6 +3,7 @@ import type MTGCollectionPlugin from "../plugin";
 import {
 	ScryfallCard,
 	ScryfallError,
+	SearchLanguageMode,
 	searchScryfall,
 	fetchLatestPaperPrintings,
 	applySvgColor,
@@ -17,7 +18,8 @@ import {
 	animateResultTilesOut,
 	applyResultTileStaggerEntrance,
 } from "./shared-search-ui";
-import { getFinishLabel } from "../core/card-model";
+import { getFinishLabel, getLanguage } from "../core/card-model";
+import { languageCodeOfPrint } from "../core/foreign-print";
 import { createFlagImg } from "../ui/option-icons";
 import {
 	isNegatedToken,
@@ -116,10 +118,10 @@ const ADD_ALL_HARD_CAP = 5000;
 // A batch of additions sharing the same options (finish/language/condition)
 // — a HistoryEntry (see below) can in theory carry several contributions if
 // the same printing was added to the same destination with DIFFERENT
-// options, but computeAddOptions always returns the same constant value
-// since the removal of every Finish/Language/Condition selector in this
-// modal — a 2nd distinct group therefore no longer has a realistic path to
-// occur today. `count` is the number of times onAdd was actually called with
+// options. Since the removal of every Finish/Language/Condition selector in
+// this modal only the LANGUAGE can differ (computeAddOptions reads it from the
+// hit: the same printing found once by its English name and once by its French
+// one gives two groups). `count` is the number of times onAdd was actually called with
 // THESE precise options, never a signed delta (a disabled entry no longer
 // has "negative" contributions, it starts again from zero at the next
 // addition — see recordHistoryAdd).
@@ -247,7 +249,15 @@ export class AddCardsModal extends Modal {
 	private loadingMorePage = false;
 	private totalCardsFound = 0;
 	private loadMoreEl: HTMLElement | null = null;
-	private loadMoreQuery: { setCode: string; collectorNumber: string; chipQuery: string } | null = null;
+	// languageMode: "any" once the search had to be widened to every language
+	// (see SearchLanguageMode, scryfall.ts), so the next pages ask the same
+	// question; "english-then-any" otherwise.
+	private loadMoreQuery: {
+		setCode: string;
+		collectorNumber: string;
+		chipQuery: string;
+		languageMode: SearchLanguageMode;
+	} | null = null;
 	// Incremented on every resetResults() (new search) — see runAddAll: an
 	// auto-paginated "Add all" (hasMorePages) runs over several network round
 	// trips, during which the user remains free to launch ANOTHER search
@@ -820,9 +830,10 @@ export class AddCardsModal extends Modal {
 		// The Finish/Language/Condition trio of the Collection flow had already
 		// been removed; the remaining Finish row, specific to the Wantlist flow,
 		// was removed in turn (explicitly requested) — a card added from this
-		// modal now always takes finish "regular"/language ""/condition "" by
-		// default (see computeAddOptions), to be refined afterwards from the
-		// card's detail panel like any other wantlist/collection card.
+		// modal now always takes finish "regular"/condition "" by default (and
+		// the language of the hit when it is not English, see computeAddOptions),
+		// to be refined afterwards from the card's detail panel like any other
+		// wantlist/collection card.
 
 		// "Search oracle" block (renamed from "Filter oracle" — explicitly
 		// requested; the CSS class/field names stay "filter-description", not
@@ -1040,7 +1051,6 @@ export class AddCardsModal extends Modal {
 		this.addAllInProgress = true;
 		this.addAllBtn.disabled = true;
 		const generation = this.addAllGeneration;
-		const options = this.computeAddOptions();
 		const destinationName = this.resolveDestinationName(listId ?? "");
 
 		// Snapshot of the search to paginate — never re-read from this. during the
@@ -1086,7 +1096,8 @@ export class AddCardsModal extends Modal {
 								query.collectorNumber,
 								query.chipQuery,
 								this.sortOverride ?? undefined,
-								page
+								page,
+								query.languageMode
 						  )
 						: await fetchLatestPaperPrintings(this.sortOverride ?? undefined, page));
 				} catch {
@@ -1102,6 +1113,8 @@ export class AddCardsModal extends Modal {
 				// is), then we stop.
 				const stillCurrent = this.addAllGeneration === generation;
 				cards.forEach((card) => {
+					// Per card: a copy found by its French name is added as French.
+					const options = this.computeAddOptions(card);
 					const result = this.onAddCard(card, options, listId);
 					if (result) this.recordHistoryAdd(card, options, result.listId, () => {});
 				});
@@ -1412,10 +1425,12 @@ export class AddCardsModal extends Modal {
 
 	// Options applied to a card added from this modal — none of the 3 flows
 	// (Collection/Wantlist/Deck) exposes a Finish/Language/Condition selector
-	// here any more, always the default values; to be refined afterwards from
-	// the card's detail panel.
-	private computeAddOptions(): AddCardOptions {
-		return { finish: "regular", language: "", condition: "" };
+	// here any more; finish and condition take their defaults, to be refined
+	// afterwards from the card's detail panel. The language is the one thing a
+	// search can tell us: a hit found by its French (Japanese…) name is a copy in
+	// that language, an English one keeps the empty tag.
+	private computeAddOptions(card: ScryfallCard): AddCardOptions {
+		return { finish: "regular", language: languageCodeOfPrint(card), condition: "" };
 	}
 
 	// Resolved by default (nothing to wait for on the very first call, before
@@ -1540,13 +1555,16 @@ export class AddCardsModal extends Modal {
 		let cards: ScryfallCard[] = [];
 		let hasMore = false;
 		let totalCards = 0;
+		let searchedAnyLanguage = false;
 		try {
-			({ cards, hasMore, totalCards } = await searchScryfall(
+			({ cards, hasMore, totalCards, searchedAnyLanguage = false } = await searchScryfall(
 				"",
 				setCode,
 				collectorNumber,
 				chipQuery,
-				this.sortOverride ?? undefined
+				this.sortOverride ?? undefined,
+				1,
+				"english-then-any"
 			));
 		} catch (e) {
 			this.resetResults();
@@ -1578,7 +1596,12 @@ export class AddCardsModal extends Modal {
 		// more" take over beyond the 1st page.
 		cards.forEach((card, i) => this.renderResult(card, i));
 		this.updateAddAllButtonState();
-		this.loadMoreQuery = { setCode, collectorNumber, chipQuery };
+		this.loadMoreQuery = {
+			setCode,
+			collectorNumber,
+			chipQuery,
+			languageMode: searchedAnyLanguage ? "any" : "english-then-any",
+		};
 		this.totalCardsFound = totalCards;
 		this.hasMorePages = hasMore;
 		if (hasMore) this.renderLoadMoreTile();
@@ -1631,7 +1654,8 @@ export class AddCardsModal extends Modal {
 						this.loadMoreQuery.collectorNumber,
 						this.loadMoreQuery.chipQuery,
 						this.sortOverride ?? undefined,
-						nextPage
+						nextPage,
+						this.loadMoreQuery.languageMode
 				  )
 				: await fetchLatestPaperPrintings(this.sortOverride ?? undefined, nextPage);
 			this.currentPage = nextPage;
@@ -2664,14 +2688,14 @@ export class AddCardsModal extends Modal {
 		// all, which shows a single summary at the end rather than stacking one
 		// notification per card.
 		const addOne = (listId?: string, silent = false) => {
-			const options = this.computeAddOptions();
+			const options = this.computeAddOptions(card);
 			const result = this.onAddCard(card, options, listId);
 			if (!silent) {
-				new Notice(
-					options.finish === "regular"
-						? `Added: ${card.name}`
-						: `Added (${getFinishLabel(options.finish)}): ${card.name}`
-				);
+				const details = [
+					options.finish === "regular" ? "" : getFinishLabel(options.finish),
+					options.language ? getLanguage(options.language).label : "",
+				].filter(Boolean);
+				new Notice(`Added${details.length ? ` (${details.join(", ")})` : ""}: ${card.name}`);
 			}
 			handleAdded(result, options);
 		};

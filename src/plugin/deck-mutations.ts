@@ -277,9 +277,14 @@ export function mergeDecks(this: MTGCollectionPlugin, deckIds: string[], name: s
 // same key that changeDeckCardCount/removeDeckCard/undoAddToDeck already
 // use to find a row in deck.cards.
 
-export function addCardToDeck(this: MTGCollectionPlugin, deckId: string, card: ScryfallCard): DeckCard | undefined {
+// `language`: the language the copy is added in (the "Add cards" search sets it
+// for a card found by its French name, see core/foreign-print.ts); only a NEW row
+// takes it, because a deck row is keyed by scryfallId alone (see the limit noted
+// on changeDeckCardCount) and a merged one keeps what it had.
+export function addCardToDeck(this: MTGCollectionPlugin, deckId: string, card: ScryfallCard, language = ""): DeckCard | undefined {
 	const deck = this.settings.decks.find((d) => d.id === deckId);
 	if (!deck) return undefined;
+	this.rememberPrintedName(card);
 	const existing = deck.cards.find((c) => c.scryfallId === card.id);
 	if (existing) {
 		existing.count += 1;
@@ -316,6 +321,7 @@ export function addCardToDeck(this: MTGCollectionPlugin, deckId: string, card: S
 		priceEurFoil: card.prices?.eur_foil ?? "",
 		priceUsdEtched: card.prices?.usd_etched ?? "",
 		priceEurEtched: card.prices?.eur_etched ?? "",
+		...(language ? { language } : {}),
 	};
 	deck.cards.push(newCard);
 	void this.saveSettings();

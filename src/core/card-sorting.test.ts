@@ -479,3 +479,35 @@ describe("effectiveViewMode", () => {
 		}
 	});
 });
+
+describe("a name sort and a group by name follow the displayed name", () => {
+	const cards = [
+		makeCard({ name: "Rocky Rebuke" }),
+		makeCard({ name: "Sol Ring" }),
+		makeCard({ name: "Arc Lightning" }),
+	];
+	// "Rocky Rebuke" is displayed as its French printed name
+	const nameOf = (c: SortableCard) => (c.name === "Rocky Rebuke" ? "Blâme de pierre" : c.name);
+
+	it("sorts on the displayed name", () => {
+		const byEnglish = [...cards].sort(compareCardsBy("name", lists, noPrice)).map((c) => c.name);
+		expect(byEnglish).toEqual(["Arc Lightning", "Rocky Rebuke", "Sol Ring"]);
+		// a printed name that sorts after "Sol Ring" moves the copy to the end
+		const moved = (c: SortableCard) => (c.name === "Rocky Rebuke" ? "Zèbre" : c.name);
+		const byDisplayed = [...cards].sort(compareCardsBy("name", lists, noPrice, moved)).map((c) => c.name);
+		expect(byDisplayed).toEqual(["Arc Lightning", "Sol Ring", "Rocky Rebuke"]);
+	});
+
+	it("labels and orders a group by name with the displayed name's first letter", () => {
+		expect(groupLabelFor("name", cards[0])).toBe("R");
+		expect(groupLabelFor("name", cards[0], nameOf)).toBe("B");
+		expect(groupSortValue("name", cards[0], nameOf)).toBe("Blâme de pierre");
+		const groups = groupAndSortCards(cards, "name", "name", false, false, lists, noPrice, nameOf);
+		expect(groups.map((g) => g.label)).toEqual(["A", "B", "S"]);
+	});
+
+	it("keeps the English name when no function is given", () => {
+		const groups = groupAndSortCards(cards, "name", "name", false, false, lists, noPrice);
+		expect(groups.map((g) => g.label)).toEqual(["A", "R", "S"]);
+	});
+});

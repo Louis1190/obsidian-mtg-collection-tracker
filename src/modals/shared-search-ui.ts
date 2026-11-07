@@ -1,6 +1,8 @@
 import { setIcon } from "obsidian";
 import type MTGCollectionPlugin from "../plugin";
-import { Finish } from "../core/card-model";
+import { Finish, getLanguage } from "../core/card-model";
+import { languageCodeOfPrint } from "../core/foreign-print";
+import { createLanguageIcon } from "../ui/option-icons";
 import { ScryfallCard, getImageUrl, applySvgColor, getRarityColor } from "../api/scryfall";
 import { ListGroup, WantlistGroup, formatScryfallPrice } from "../core/price";
 import { setSvgMarkup } from "../ui/svg-markup";
@@ -363,11 +365,25 @@ export function renderScryfallResultTile(
 		cls: "mtg-result-card-number",
 		text: `#${card.collector_number}`,
 	});
+	// A hit found by its name in another language (see resolveEnglishPrints,
+	// scryfall.ts): the tile shows the English print, its flag says which language
+	// the copy will be added in, and the tooltip carries the name as printed.
+	const printLanguage = languageCodeOfPrint(card);
+	if (printLanguage) {
+		const label = getLanguage(printLanguage).label;
+		const flag = footerLeft.createSpan({
+			cls: "mtg-result-card-lang",
+			attr: { title: card.printed_name ? `${label}: ${card.printed_name}` : label },
+		});
+		createLanguageIcon(flag, printLanguage);
+	}
 
-	// Right: last price recorded by Scryfall.
+	// Right: last price recorded by Scryfall — the English print's, also for a
+	// card added in another language (a foreign print has no price of its own).
 	footer.createSpan({
 		cls: "mtg-result-card-price",
 		text: formatScryfallPrice(card, plugin.settings.priceCurrency) || "—",
+		attr: printLanguage ? { title: "Price of the English printing" } : {},
 	});
 
 	renderAction(tile);

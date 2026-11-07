@@ -718,6 +718,21 @@ export function renderCopiesInListsBox(
 	others.forEach((other) => buildTile(other, false, other.onClick));
 }
 
+// Replaces the card's picture in place (a language change can change it, "Card images" setting). Not in the phone's art mode, where
+// the banner is the artwork, the same in every language.
+export function updateCardImage(contentEl: HTMLElement, url: string): void {
+	if (contentEl.hasClass("mtg-card-detail-art-mode")) return;
+	const img = contentEl.querySelector("img.mtg-card-detail-image");
+	if (img && img.getAttribute("src") !== url) img.setAttribute("src", url);
+}
+
+// Replaces the card name shown in the nav header in place: a change of the copy's language can change the name it is
+// displayed with ("Card names" setting, see cardDisplayName), and the window must not need closing and reopening.
+export function updateCardNavName(contentEl: HTMLElement, name: string): void {
+	const nameEl = contentEl.querySelector(".mtg-card-detail-nav-name");
+	if (nameEl && nameEl.textContent !== name) nameEl.setText(name);
+}
+
 // Card name centered above the two columns, flanked by previous/next arrows that walk through `cards` (the
 // filtered/sorted list as it was displayed when the window opened), with the "Card X of Y" marker below.
 // goTo(card) is called IN THE MIDDLE of the Cover Flow animation (see animateCardNav): the modal changes

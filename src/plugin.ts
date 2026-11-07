@@ -26,6 +26,7 @@ import { MTGCollectionView } from "./view";
 import { HIDE_BARS_CLASS } from "./view/mobile-bars";
 import * as scryfallCache from "./plugin/scryfall-cache";
 import * as neighborPrefetch from "./plugin/neighbor-prefetch";
+import * as printedNames from "./plugin/printed-names";
 import * as storePrices from "./plugin/store-prices";
 import * as cardbaseCache from "./plugin/cardbase-cache";
 import * as priceHistoryCache from "./plugin/price-history-cache";
@@ -58,6 +59,9 @@ import { setSvgMarkup } from "./ui/svg-markup";
 function isStringOrNull(v: unknown): boolean {
 	return v === null || typeof v === "string";
 }
+function isString(v: unknown): boolean {
+	return typeof v === "string";
+}
 function isNumberOrNull(v: unknown): boolean {
 	return v === null || typeof v === "number";
 }
@@ -89,6 +93,21 @@ export default class MTGCollectionPlugin extends Plugin {
 	// src/plugin/scryfall-cache.ts) — same reasoning as setIconCache above, the languages actually
 	// printed for a given printing don't change once that printing is out.
 	printLanguagesCache: Map<string, string[]> = new Map();
+	// Names printed on copies in another language, "tla:193:fr" -> "Blâme de pierre" ("" = that print has
+	// none), persisted like the cache above (src/plugin/printed-names.ts has the lookup and its queue).
+	printedNamesCache: Map<string, string> = new Map();
+	// Same key, the address of the print's real picture ("" = none), see PRINTED_IMAGES_CACHE_FILENAME.
+	printedImagesCache: Map<string, string> = new Map();
+	printedNameQueue = new Set<string>();
+	printedNameInFlight: string | null = null;
+	printedNameTimer: number | undefined = undefined;
+	printedNamesDraining = false;
+	// Bumped whenever a printed name is learned: the sorted/grouped lists are cached per data version and
+	// a name sort or search must follow a name that arrived in the background (dataVersion itself is the
+	// sync engine's "something changed" signal, not to be bumped for a cache).
+	printedNamesVersion = 0;
+	printedNamePausedUntil = 0;
+	printedNameListeners = new Set<() => void>();
 	// Symbol requests (set/mana) already in flight, indexed by cache key:
 	// prevents several rows displaying the same set/symbol at the same time
 	// (initial render of a long list, for example) from each triggering their
@@ -291,6 +310,8 @@ export default class MTGCollectionPlugin extends Plugin {
 				this.printLanguagesCache,
 				isStringArray
 			),
+			this.loadPersistedMapCache(printedNames.PRINTED_NAMES_CACHE_FILENAME, this.printedNamesCache, isString),
+			this.loadPersistedMapCache(printedNames.PRINTED_IMAGES_CACHE_FILENAME, this.printedImagesCache, isString),
 			this.loadPersistedAllSetsCache(),
 		]);
 
@@ -378,6 +399,8 @@ export default class MTGCollectionPlugin extends Plugin {
 		// Same reasoning for the 4 "immutable" caches persisted separately (see
 		// scheduleMapCachePersist/flushPendingImmutableCaches).
 		this.flushPendingImmutableCaches();
+		// The lookup of printed names/pictures stops (the run in progress ends after its current request).
+		this.stopPrintedNameLookups();
 		// Belt and braces with the view's register() (src/view/mobile-bars.ts): a class left on
 		// <body> would hide Obsidian's bars across the WHOLE app.
 		document.body.removeClass(HIDE_BARS_CLASS);
@@ -514,6 +537,14 @@ export default class MTGCollectionPlugin extends Plugin {
 	getManaSymbolSvg = scryfallCache.getManaSymbolSvg;
 	fetchManaSymbolSvg = scryfallCache.fetchManaSymbolSvg;
 	getAvailableLanguages = scryfallCache.getAvailableLanguages;
+	getPrintedName = printedNames.getPrintedName;
+	cardDisplayName = printedNames.cardDisplayName;
+	cardDisplayImage = printedNames.cardDisplayImage;
+	rememberPrintedName = printedNames.rememberPrintedName;
+	queuePrintedName = printedNames.queuePrintedName;
+	drainPrintedNames = printedNames.drainPrintedNames;
+	onPrintedNamesLearned = printedNames.onPrintedNamesLearned;
+	stopPrintedNameLookups = printedNames.stopPrintedNameLookups;
 	loadPersistedMapCache = scryfallCache.loadPersistedMapCache;
 
 	// -- Card Kingdom / Mana Pool price lists (src/plugin/store-prices.ts) --

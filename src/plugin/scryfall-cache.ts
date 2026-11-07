@@ -20,6 +20,7 @@ import {
 import { MTGCollectionView } from "../view";
 import type MTGCollectionPlugin from "../plugin";
 import { CARDMARKET_ID_CACHE_FILENAME } from "./cardbase-cache";
+import { PRINTED_IMAGES_CACHE_FILENAME, PRINTED_NAMES_CACHE_FILENAME } from "./printed-names";
 
 // fetchScryfallCollection catches HTTP statuses (an empty map, see its comment) but NOT a transport error:
 // offline, TLS inspection on a corporate network, captive portal. The four getters of this file that use it feed
@@ -328,6 +329,8 @@ export function flushPendingImmutableCaches(this: MTGCollectionPlugin): void {
 		[SCRYFALL_IMMUTABLE_CACHE_FILENAME, this.scryfallImmutableCache],
 		[CARDMARKET_ID_CACHE_FILENAME, this.cardmarketIdCache],
 		[PRINT_LANGUAGES_CACHE_FILENAME, this.printLanguagesCache],
+		[PRINTED_NAMES_CACHE_FILENAME, this.printedNamesCache],
+		[PRINTED_IMAGES_CACHE_FILENAME, this.printedImagesCache],
 	];
 	caches.forEach(([filename, map]) => {
 		const timer = this.immutableCachePersistTimers.get(filename);

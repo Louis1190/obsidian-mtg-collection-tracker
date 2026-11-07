@@ -1417,6 +1417,14 @@
 	text-overflow: ellipsis;
 }
 
+/* Flag of the language a hit will be added in (a card found by its French,
+   Japanese… name), next to the collector number. */
+.mtg-result-card-lang {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
 .mtg-result-card-price {
 	font-weight: 700;
 	color: var(--text-accent);
@@ -6636,6 +6644,127 @@ body.is-phone {
 
 .mtg-card-detail-art-credit-artist:empty {
 	display: none;
+}
+
+.mtg-card-detail-art-mode .mtg-card-detail-fullcard-btn svg {
+	width: 22px;
+	height: 22px;
+}
+
+/* Wantlist window: no condition / language button, so the stack holds the full card button alone, and the heart badge sits at the
+   stack's usual place (top left of the banner): the button goes just under it (the badge is 2em, plus the stack's 0.4em gap). */
+.mtg-card-detail-art-mode .mtg-card-detail-image-icons.mtg-card-detail-image-icons-below-badge {
+	top: calc(var(--safe-area-inset-top, 0px) + 0.75em + 2em + 0.4em);
+}
+
+/* `container-type: size` makes the card's own width/height below follow the room left in the overlay (cqw / cqh are measured on its
+   content box, i.e. inside the padding): the top padding keeps the card clear of the cross on a short phone. */
+.mtg-card-detail-fullcard {
+	position: absolute;
+	z-index: 5;
+	inset: 0;
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: calc(var(--safe-area-inset-top, 0px) + 3.6em) 1em calc(var(--safe-area-inset-bottom, 0px) + 1.5em);
+	container-type: size;
+	background: rgba(0, 0, 0, 0.88);
+	cursor: pointer;
+	/* `backwards` only: after the animation the natural styles apply, so no composited layer is kept at rest. */
+	animation: mtg-fullcard-scrim-in 200ms ease-out backwards;
+}
+
+.mtg-card-detail-fullcard.is-closing {
+	pointer-events: none;
+	animation: mtg-fullcard-scrim-out 220ms ease-in forwards;
+}
+
+/* A Magic card is 63 x 88 mm; Scryfall's "normal" picture is 488 x 680. Its corners are 3 mm radius (4.76 % of the width), as px, never a
+   percentage (a % radius resolves per axis and traces an ellipse). Hidden until the picture is decoded (`.is-ready`). */
+.mtg-card-detail-fullcard-card {
+	--mtg-fullcard-w: min(100cqw, calc(100cqh * 488 / 680));
+	width: var(--mtg-fullcard-w);
+	aspect-ratio: 488 / 680;
+	border-radius: calc(var(--mtg-fullcard-w) * 0.0476);
+	overflow: hidden;
+	opacity: 0;
+}
+
+/* Limited Edition Alpha: the same 29 / 14 factor as the classic window's `.mtg-card-detail-image-wrap-alpha`. */
+.mtg-card-detail-fullcard-card.is-alpha {
+	border-radius: calc(var(--mtg-fullcard-w) * 0.0476 * 29 / 14);
+}
+
+.mtg-card-detail-fullcard.is-ready .mtg-card-detail-fullcard-card {
+	opacity: 1;
+	animation: mtg-fullcard-rise 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* Declared after the rule above, same specificity: closing wins over `.is-ready`. */
+.mtg-card-detail-fullcard.is-closing .mtg-card-detail-fullcard-card {
+	animation: mtg-fullcard-sink 200ms ease-in forwards;
+}
+
+.mtg-card-detail-fullcard-img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	pointer-events: none;
+	-webkit-user-drag: none;
+	user-select: none;
+}
+
+.mtg-card-detail-fullcard-card.is-error {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1em;
+	box-sizing: border-box;
+	text-align: center;
+	color: #fff;
+	background: rgba(255, 255, 255, 0.08);
+}
+
+@keyframes mtg-fullcard-scrim-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes mtg-fullcard-scrim-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+@keyframes mtg-fullcard-rise {
+	from {
+		opacity: 0;
+		transform: translateY(28px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes mtg-fullcard-sink {
+	from {
+		opacity: 1;
+		transform: translateY(0);
+	}
+	to {
+		opacity: 0;
+		transform: translateY(28px);
+	}
 }
 
 .mtg-card-detail-panel {

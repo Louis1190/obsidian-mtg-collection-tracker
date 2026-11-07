@@ -1236,3 +1236,33 @@ describe("describeSearchFilters", () => {
 		);
 	});
 });
+
+describe("searching by the name printed on a copy", () => {
+	const card = makeSearchableCard({ name: "Rocky Rebuke", language: "fr" });
+	const printedNameOf = (c: SearchableCard) => (c.name === "Rocky Rebuke" ? "Blâme de pierre" : undefined);
+
+	it("textTokenMatches finds the printed name as well as the English one", () => {
+		expect(textTokenMatches(card, "blâme", "Blâme de pierre")).toBe(true);
+		expect(textTokenMatches(card, "rocky", "Blâme de pierre")).toBe(true);
+		expect(textTokenMatches(card, "blâme")).toBe(false);
+		expect(textTokenMatches(card, "zzz", "Blâme de pierre")).toBe(false);
+	});
+
+	it("textTokenMatches ignores accents and case on the printed name, whichever way they were typed", () => {
+		const printed = "Production de l'île de Braise";
+		for (const typed of ["ile", "île", "ÎLE", "braise", "l'ile de"]) {
+			expect(textTokenMatches(card, typed, printed)).toBe(true);
+		}
+		expect(textTokenMatches(card, "iles", printed)).toBe(false);
+	});
+
+	it("cardMatchesTokens takes the printed name from the function it is given, for a positive and a negative text chip", () => {
+		expect(cardMatchesTokens(card, ["pierre"], "", undefined, undefined, undefined, printedNameOf)).toBe(true);
+		expect(cardMatchesTokens(card, ["pierre"], "", undefined, undefined, undefined)).toBe(false);
+		expect(cardMatchesTokens(card, ["-pierre"], "", undefined, undefined, undefined, printedNameOf)).toBe(false);
+		expect(cardMatchesTokens(card, ["-pierre"], "", undefined, undefined, undefined)).toBe(true);
+		// a card with no printed name is not affected
+		const plain = makeSearchableCard({ name: "Sol Ring" });
+		expect(cardMatchesTokens(plain, ["pierre"], "", undefined, undefined, undefined, printedNameOf)).toBe(false);
+	});
+});

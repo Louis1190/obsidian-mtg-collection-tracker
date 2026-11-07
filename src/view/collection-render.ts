@@ -833,7 +833,8 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 			this.listCardFilterDraft,
 			this.plugin.recentlyAddedCollectionCardIds,
 			legalitiesByScryfallId,
-			priceOf
+			priceOf,
+			(c) => this.plugin.getPrintedName(c)
 		)
 	);
 	this.renderChipFilter(
@@ -893,7 +894,7 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		this.lastListRenderSignature = renderSignature;
 	}
 
-	const dataSignature = `${renderSignature}::${this.plugin.dataVersion}`;
+	const dataSignature = `${renderSignature}::${this.plugin.dataVersion}::${this.plugin.printedNamesVersion}`;
 	let cardGroups: CardGroup<CollectionCard>[];
 	if (this.lastListDataSignature === dataSignature && this.cachedListCardGroups) {
 		cardGroups = this.cachedListCardGroups;
@@ -907,7 +908,9 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 			this.plugin.settings.lists,
 			// The price the row shows (finish + currency), not the USD field: the cache
 			// is rebuilt on a currency change since saveSettings() bumps dataVersion.
-			(c) => getCardPriceNumber(c, this.plugin.settings.priceCurrency)
+			(c) => getCardPriceNumber(c, this.plugin.settings.priceCurrency),
+			// A name sort / "Group by name" follows the name the row shows (the "Card names" setting).
+			(c) => this.plugin.cardDisplayName(c)
 		);
 		this.cachedListCardGroups = cardGroups;
 		this.lastListDataSignature = dataSignature;
@@ -1201,11 +1204,11 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 
 export function collectionCardRowSignature(this: MTGCollectionView, card: CollectionCard, isSelected: boolean): string {
 	return [
-		card.imageUrl,
+		this.plugin.cardDisplayImage(card),
 		card.setCode,
 		card.rarity,
 		card.finish,
-		card.name,
+		this.plugin.cardDisplayName(card),
 		card.manaCost,
 		card.setName,
 		card.collectorNumber,
@@ -1248,11 +1251,11 @@ export function buildCollectionCardRow(this: MTGCollectionView, card: Collection
 		if (isSelected) indicator.addClass("is-selected");
 	}
 
-	this.renderThumbWithBadge(row, card.imageUrl, card.setCode, card.rarity, finishHasFoilLook(card.finish));
+	this.renderThumbWithBadge(row, this.plugin.cardDisplayImage(card), card.setCode, card.rarity, finishHasFoilLook(card.finish));
 
 	const body = row.createDiv({ cls: "mtg-card-row-body" });
 	const nameLine = body.createDiv({ cls: "mtg-card-row-name-line" });
-	const nameSpan = nameLine.createSpan({ cls: "mtg-card-row-name", text: card.name });
+	const nameSpan = nameLine.createSpan({ cls: "mtg-card-row-name", text: this.plugin.cardDisplayName(card) });
 	if (card.finish !== "regular") {
 		nameLine.createSpan({ cls: "mtg-foil-pill", text: getFinishLabel(card.finish) });
 	}
@@ -1274,7 +1277,7 @@ export function buildCollectionCardRow(this: MTGCollectionView, card: Collection
 		// .mtg-card-row-name-line cell — explicitly requested ("the name only, not
 		// the whole cell").
 		nameSpan.addEventListener("mouseenter", () =>
-			this.showCardNamePreview(nameSpan, card.imageUrl)
+			this.showCardNamePreview(nameSpan, this.plugin.cardDisplayImage(card))
 		);
 		nameSpan.addEventListener("mouseleave", () => this.hideCardNamePreview());
 	}
@@ -1455,7 +1458,7 @@ export function buildCollectionCardTile(this: MTGCollectionView, card: Collectio
 
 	this.renderThumbWithBadge(
 		tile,
-		card.imageUrl,
+		this.plugin.cardDisplayImage(card),
 		card.setCode,
 		card.rarity,
 		finishHasFoilLook(card.finish),

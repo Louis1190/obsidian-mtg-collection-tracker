@@ -299,7 +299,7 @@ export function renderHomeRecentCarousel(
 		const imgWrap = tile.createDiv({ cls: "mtg-home-carousel-tile-image-wrap" });
 		this.renderThumbWithBadge(
 			imgWrap,
-			card.imageUrl,
+			this.plugin.cardDisplayImage(card),
 			card.setCode,
 			card.rarity,
 			finishHasFoilLook(card.finish),
@@ -307,7 +307,7 @@ export function renderHomeRecentCarousel(
 			"tile"
 		);
 		const info = tile.createDiv({ cls: "mtg-home-carousel-tile-info" });
-		info.createDiv({ cls: "mtg-home-carousel-tile-name", text: card.name });
+		info.createDiv({ cls: "mtg-home-carousel-tile-name", text: this.plugin.cardDisplayName(card) });
 		info.createDiv({
 			cls: "mtg-home-carousel-tile-meta",
 			text: `${card.count}x · ${formatCardPrice(card, this.plugin.settings.priceCurrency)}`,

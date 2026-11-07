@@ -332,6 +332,46 @@ export class MTGCollectionSettingTab extends PluginSettingTab {
 							);
 						},
 					},
+					{
+						name: "Card images",
+						desc: "For a card you marked as being in another language, show the picture of that language's printing instead of the English one. Only when Scryfall has a real scan of it: for sets that only have a stand-in picture the English picture stays. Artwork banners are the same in every language and do not change.",
+						aliases: ["language", "french", "printed", "picture", "image", "scan"],
+						render: (setting) => {
+							setting.addDropdown((dropdown) =>
+								dropdown
+									.addOptions({
+										english: "English pictures",
+										printed: "Pictures as printed, when available",
+									})
+									.setValue(plugin.settings.cardImageMode)
+									.onChange(async (value) => {
+										plugin.settings.cardImageMode = value === "printed" ? "printed" : "english";
+										await plugin.saveSettings();
+										plugin.refreshOpenViews();
+									})
+							);
+						},
+					},
+					{
+						name: "Card names",
+						desc: "How a card you marked as being in another language is named in your lists: in English, or as printed on your copy (for example \"Blâme de pierre\" instead of \"Rocky Rebuke\"). Searching finds both names; exports always write the English name.",
+						aliases: ["language", "french", "printed", "localized", "translate", "name"],
+						render: (setting) => {
+							setting.addDropdown((dropdown) =>
+								dropdown
+									.addOptions({
+										english: "English names",
+										printed: "Names as printed on the card",
+									})
+									.setValue(plugin.settings.cardNameMode)
+									.onChange(async (value) => {
+										plugin.settings.cardNameMode = value === "printed" ? "printed" : "english";
+										await plugin.saveSettings();
+										plugin.refreshOpenViews();
+									})
+							);
+						},
+					},
 				],
 			},
 			{

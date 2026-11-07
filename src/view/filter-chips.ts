@@ -562,7 +562,9 @@ export function getKeywordSuggestions(this: MTGCollectionView,
 	return combined.map((s) => ({
 		...s,
 		count: baseCards.filter((c) =>
-			cardMatchesTokens(c, [...tokens, s.value], "", recentlyAddedIds, legalitiesByScryfallId, priceOf)
+			cardMatchesTokens(c, [...tokens, s.value], "", recentlyAddedIds, legalitiesByScryfallId, priceOf, (card) =>
+				this.plugin.getPrintedName(card)
+			)
 		).length,
 	}));
 }

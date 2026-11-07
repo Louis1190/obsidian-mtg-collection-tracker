@@ -47,7 +47,10 @@ import {
 	getFinishLabel,
 	finishHasFoilLook,
 } from "../core/card-model";
+import { languageTooltip } from "../core/foreign-print";
+import { NEIGHBOR_IMAGE_WINDOW } from "../plugin/neighbor-prefetch";
 import { openPickerMenu } from "../ui/picker-menu";
+import { addFullCardButton, resolveFullCardUrl } from "../ui/full-card-view";
 import { createConditionIcon, createLanguageIcon, createFlagImg } from "../ui/option-icons";
 import { applySvgColor, getRarityColor } from "../api/scryfall";
 import { formatCardPrice, toDeckPricedCard } from "../core/price";
@@ -62,6 +65,8 @@ import {
 	renderStorePricesBox,
 	renderCopiesInListsBox,
 	renderCardNavHeader,
+	updateCardImage,
+	updateCardNavName,
 	CopyTile,
 } from "./shared-detail-boxes";
 
@@ -95,6 +100,7 @@ export class DeckCardDetailModal extends Modal {
 	// Same idea for the rules text of the neighbouring cards (scheduleTextPrefetch): its own timer, since it must not wait
 	// for the price history box (a proxy card has none) and starts from draw().
 	private textPrefetchTimeout: number | null = null;
+	private stopWatchingNames: (() => void) | undefined;
 	// See CardDetailModal.flipped — same reasoning (3D "flip" button), reset
 	// at the 2 places where this.card is reassigned further down.
 	private flipped = false;
@@ -148,7 +154,16 @@ export class DeckCardDetailModal extends Modal {
 		// Opening fade + zoom, shared by all of the plugin's modals — see
 		// modal-animation.ts.
 		applyModalOpenAnimation(this);
+		// A printed name that arrives while the window is open (a language just chosen whose name was not known yet).
+		this.stopWatchingNames = this.plugin.onPrintedNamesLearned(() => this.refreshNavName());
 		this.draw();
+	}
+
+	// The card name under the arrows and the picture follow the copy's language and the "Card names" / "Card images" settings
+	// without reopening the window.
+	private refreshNavName() {
+		updateCardNavName(this.contentEl, this.plugin.cardDisplayName(this.card));
+		updateCardImage(this.contentEl, this.plugin.cardDisplayImage(this.card));
 	}
 
 	close() {
@@ -159,7 +174,7 @@ export class DeckCardDetailModal extends Modal {
 		renderCardNavHeader(contentEl, {
 			cards: this.navCards,
 			currentIndex: this.navCards.findIndex((c) => c.scryfallId === this.card.scryfallId),
-			name: this.card.name,
+			name: this.plugin.cardDisplayName(this.card),
 			isAnimating: () => this.navAnimating,
 			setAnimating: (animating) => {
 				this.navAnimating = animating;
@@ -297,6 +312,7 @@ export class DeckCardDetailModal extends Modal {
 		const applyLanguage = (code: string) => {
 			this.plugin.setDeckCardLanguage(this.deck.id, this.card.scryfallId, code);
 			this.card.language = code;
+			this.refreshNavName();
 			const lang = getLanguage(code);
 			if (langBtnImageEl && langFlagImageEl) {
 				langFlagImageEl.remove();
@@ -306,7 +322,7 @@ export class DeckCardDetailModal extends Modal {
 					"mtg-card-detail-image-icon-flag",
 					"mtg-card-detail-image-icon-glyph"
 				);
-				langBtnImageEl.setAttribute("title", lang.label);
+				langBtnImageEl.setAttribute("title", languageTooltip(code));
 			}
 			if (langValuePanelEl) {
 				langValuePanelEl.setText(lang.label);
@@ -337,12 +353,25 @@ export class DeckCardDetailModal extends Modal {
 				"mtg-card-detail-image-icon-flag",
 				"mtg-card-detail-image-icon-glyph"
 			);
-			langBtn.setAttribute("title", getLanguage(getDeckCardLanguage(this.card)).label);
+			langBtn.setAttribute("title", languageTooltip(getDeckCardLanguage(this.card)));
 			langBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
 				openLanguagePickerFrom(langBtn);
 			});
 			langBtnImageEl = langBtn;
+
+			// Phone art mode shows the artwork alone: a third square button, under these two, shows the whole card.
+			if (artMode) {
+				addFullCardButton(imageIcons, contentEl, () =>
+					resolveFullCardUrl(
+						(id) => this.plugin.getCardFaceImages(id),
+						this.card.scryfallId,
+						this.flipped,
+						this.plugin.cardDisplayImage(this.card)
+					),
+					{ alpha: isAlpha }
+				);
+			}
 		}
 
 		const viewport = imageColumn.createDiv({ cls: "mtg-card-detail-nav-viewport" });
@@ -354,7 +383,7 @@ export class DeckCardDetailModal extends Modal {
 			const tilt = imageWrap.createDiv({ cls: "mtg-card-detail-tilt" });
 			const bannerImg = tilt.createEl("img", {
 				cls: "mtg-card-detail-image",
-				attr: { src: artMode ? this.card.artCropUrl : this.card.imageUrl },
+				attr: { src: artMode ? this.card.artCropUrl : this.plugin.cardDisplayImage(this.card) },
 			});
 			if (artMode) holdPreviousBanner(contentEl, tilt, bannerImg, this.card.artCropUrl);
 			// Foil/holo color layers — see CardDetailModal for the full reasoning,
@@ -1001,13 +1030,20 @@ export class DeckCardDetailModal extends Modal {
 			);
 			// The pictures too (artwork, the card's own image and a couple of its copies): see prefetchNeighborImages.
 			this.plugin.prefetchNeighborImages(
-				this.navCards.map((c) => ({ name: c.name, artCropUrl: c.artCropUrl, imageUrl: c.imageUrl })),
+				// The displayed picture (printed or English) only for the cards that are fetched: asking for it queues a lookup
+				// of the print, which must not happen for the whole navigation list.
+				this.navCards.map((c, i) => ({
+					name: c.name,
+					artCropUrl: c.artCropUrl,
+					imageUrl: Math.abs(i - centerIndex) <= NEIGHBOR_IMAGE_WINDOW ? this.plugin.cardDisplayImage(c) : c.imageUrl,
+				})),
 				centerIndex
 			);
 		}, 400);
 	}
 
 	onClose() {
+		this.stopWatchingNames?.();
 		if (this.textPrefetchTimeout != null) window.clearTimeout(this.textPrefetchTimeout);
 		this.contentEl.empty();
 	}

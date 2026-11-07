@@ -1,4 +1,5 @@
 import { Finish, LANGUAGES, getCondition } from "./card-model";
+import { foldAccents } from "./printed-name";
 import { MAIN_TYPES, isLand } from "./card-sorting";
 
 // Enriched keyword search, with facets: keywords of the SAME category
@@ -643,10 +644,13 @@ export function legalityTokenMatches(
 	return legalities?.[entry.key] === legalityMatch.status;
 }
 
-export function textTokenMatches(card: SearchableCard, token: string): boolean {
+// `printedName`: the name printed on a copy in another language (core/printed-name.ts), when the caller
+// knows it — a search finds "Rocky Rebuke" and "Blâme de pierre" alike, whichever one the list displays.
+export function textTokenMatches(card: SearchableCard, token: string, printedName?: string): boolean {
 	const q = token.trim().toLowerCase();
 	if (!q) return true;
 	if (card.name.toLowerCase().includes(q)) return true;
+	if (printedName && foldAccents(printedName).includes(foldAccents(q))) return true;
 	if (card.typeLine && card.typeLine.toLowerCase().includes(q)) return true;
 	if (card.setName && card.setName.toLowerCase().includes(q)) return true;
 	if (card.artist && card.artist.toLowerCase().includes(q)) return true;
@@ -999,7 +1003,9 @@ export function cardMatchesTokens(
 	legalitiesByScryfallId?: Map<string, Record<string, string>>,
 	// What the "price:" chip compares (see numericTokenMatches): every caller that has a currency
 	// passes displayedPriceOf(currency), price.ts.
-	priceOf?: (card: SearchableCard) => number
+	priceOf?: (card: SearchableCard) => number,
+	// The name printed on a copy in another language, when it has one and it is known (see textTokenMatches).
+	printedNameOf?: (card: SearchableCard) => string | undefined
 ): boolean {
 	const allTokens = draft.trim() ? [...tokens, draft] : tokens;
 	if (allTokens.length === 0) return true;
@@ -1077,7 +1083,11 @@ export function cardMatchesTokens(
 			continue;
 		}
 		const matcher =
-			cat === "text" ? textTokenMatches : cat === "oracle" ? oracleTokenMatches : TOKEN_MATCHERS[cat];
+			cat === "text"
+				? (c: SearchableCard, t: string) => textTokenMatches(c, t, printedNameOf?.(c))
+				: cat === "oracle"
+				? oracleTokenMatches
+				: TOKEN_MATCHERS[cat];
 		if (matcher(card, negToken)) return false;
 	}
 
@@ -1152,7 +1162,7 @@ export function cardMatchesTokens(
 	if (buckets.oracle.length > 0 && !buckets.oracle.every((t) => oracleTokenMatches(card, t)))
 		return false;
 
-	if (buckets.text.length > 0 && !buckets.text.every((t) => textTokenMatches(card, t)))
+	if (buckets.text.length > 0 && !buckets.text.every((t) => textTokenMatches(card, t, printedNameOf?.(card))))
 		return false;
 
 	return true;
