@@ -48,9 +48,11 @@ import { ChangePrintingModal } from "./change-printing-modal";
 import { CopyCardModal } from "./copy-card-modal";
 import { applyModalOpenAnimation, closeModalAnimated, addModalCloseButton } from "../ui/modal-animation";
 import { renderLoadingDots } from "../ui/card-detail-fx";
-import { setupChipRowScroll } from "../ui/chip-row-scroll";
+import { setupChipRowScroll, setupWheelHorizontalScroll } from "../ui/chip-row-scroll";
 import { holdAtOffset, releaseOffset } from "../ui/flip";
 import { setSvgMarkup } from "../ui/svg-markup";
+import { createAddCardsScan } from "../card-recognition-entry";
+import type { AddCardsScan } from "../card-recognition-types";
 
 /* -------------------------------------------------------------------------- */
 /*  Suggested filters (below the search bar)                                  */
@@ -219,8 +221,11 @@ export class AddCardsModal extends Modal {
 	// through toggleHistoryDrawer (which only runs on a click).
 	private historyPanelEl?: HTMLElement;
 	private historyCollapsed = true;
+	// This window's card scan (camera button, list of scanned cards); null where the feature does not exist.
+	private scan: AddCardsScan | null = null;
 	private titleText: string;
 	private listGallery?: AddCardsModalOptions["listGallery"];
+	private onClosed?: () => void;
 	private chipTokens: string[] = [];
 	private chipDraft = "";
 	private chipSuggestionHighlightIndex = -1;
@@ -300,7 +305,11 @@ export class AddCardsModal extends Modal {
 	// otherwise, see the "input" handler further down) — hence
 	// updateSaveFilterButtonState, called separately in both cases.
 	private saveFilterBtn!: HTMLButtonElement;
+	// The saved filter whose pill is asking "Delete?" (a phone only, see renderSuggestedFilters), null when none is
+	private confirmingFilterDeleteId: string | null = null;
 	private resultsCountEl!: HTMLElement;
+	// The same count, in the results block's header (shown by a phone instead of resultsCountEl): see writeResultsCount
+	private resultsHeaderCountEl!: HTMLElement;
 	// "Search oracle" block (renamed from "Filter oracle") — fixed title + an
 	// English sentence describing the current chip bar (see
 	// describeSearchFilters, card-search.ts, and updateFilterDescription).
@@ -322,6 +331,7 @@ export class AddCardsModal extends Modal {
 		this.sourceKind = options.sourceKind;
 		this.titleText = options.titleText ?? "Search Magic: The Gathering cards";
 		this.listGallery = options.listGallery;
+		this.onClosed = options.onClosed;
 	}
 
 	// Autocompletion of the Set field: filters the complete list of sets by
@@ -443,6 +453,12 @@ export class AddCardsModal extends Modal {
 			},
 		});
 		input.value = this.chipDraft;
+
+		// A phone only: a tap on the bar's own empty space (above and below the input, which is 30px high in a 50px bar, or between the chips and it) puts the cursor in the input, as a search field
+		// should. The test is on the target, so a chip, its buttons, the "?" and "Save filter" keep their own taps; the phone switch is read at the tap (like the swipe's), a computer is as it was.
+		wrap.addEventListener("click", (evt) => {
+			if ((evt.target === wrap || evt.target === inner) && document.body.classList.contains("is-phone")) input.focus();
+		});
 
 		const commitToken = (value: string) => {
 			this.chipTokens.push(stripQuotesFromCommittedToken(value));
@@ -742,7 +758,25 @@ export class AddCardsModal extends Modal {
 		// modal all benefit from it consistently.
 		topSection.createEl("h2", { text: this.titleText, cls: "mtg-search-modal-title" });
 
-		this.resultsEl = setupResultsCarousel(topSection);
+		// The carousel sits in a block of its own (header + carousel), the shape of Home's "Collection"/"Wantlists" blocks. Only a phone shows the block's look and its
+		// header (styles.css, `.is-phone`); everywhere else this is a plain div around the carousel with nothing of its own, so the layout is what it was. The scan view
+		// hides the whole block (not the carousel alone), or its header would stay up over an empty box.
+		const resultsBlock = topSection.createDiv({ cls: "mtg-search-results-block" });
+		const resultsHeader = resultsBlock.createDiv({ cls: "mtg-search-results-block-header" });
+		setIcon(resultsHeader.createSpan({ cls: "mtg-search-results-block-icon" }), "search");
+		resultsHeader.createSpan({ text: "Results" });
+		// The count a phone shows in the header, at its right (the one in the search block is hidden there): every write goes through writeResultsCount, which fills both, so
+		// neither ever shows a stale number. Inside the header, so it is as hidden as the header is off a phone.
+		this.resultsHeaderCountEl = resultsHeader.createSpan({ cls: "mtg-search-results-block-count" });
+		this.resultsEl = setupResultsCarousel(resultsBlock);
+		// The scan of this window (only where the feature exists): its own class, given what it needs of this one and nothing more
+		this.scan = createAddCardsScan({
+			plugin: this.plugin,
+			topSection,
+			resultsBlock,
+			renderAddControl: (block, card, opts) => this.renderAddControl(block, card, opts),
+			updateAddAllButtonState: () => this.updateAddAllButtonState(),
+		});
 
 		// 2-column row, each with its OWN distinct darkened background
 		// (bottomMainEl/historyPanelEl further down, see styles.css — explicitly
@@ -795,6 +829,9 @@ export class AddCardsModal extends Modal {
 		setIcon(this.addAllBtn.createSpan({ cls: "mtg-search-add-all-icon" }), "plus");
 		this.addAllBtn.createSpan({ text: "Add all" });
 		this.addAllBtn.addEventListener("click", () => this.showAddAllConfirm());
+
+		// A photo of a card in place of typing its name (only where the feature exists)
+		this.scan?.mountCameraButton(searchBarRow);
 
 		// "Save filter" prompt — name + Save/Cancel, revealed by the square "Save
 		// filter" button of the chip bar (see higher up) instead of a new Modal
@@ -861,6 +898,8 @@ export class AddCardsModal extends Modal {
 		// remaining space at the bottom of the window — explicitly requested,
 		// replaces the old row at natural height under the form.
 		this.suggestedFiltersEl = bottomMainEl.createDiv({ cls: "mtg-search-suggested-filters" });
+		// A vertical wheel scrolls the one-line row sideways when it overflows (a phone-width window on a computer); a wrapped row never overflows sideways, so this does nothing there.
+		setupWheelHorizontalScroll(this.suggestedFiltersEl);
 		this.renderSuggestedFilters();
 
 		// "Add history" panel — 2nd column of bottomSection, to the right of bottomMainEl —
@@ -954,7 +993,8 @@ export class AddCardsModal extends Modal {
 	}
 
 	private updateAddAllButtonState() {
-		this.addAllBtn.disabled = this.addAllInProgress || this.currentResultControls.length === 0;
+		// the carousel is hidden while the list of scanned cards shows: "Add all" would add what is not on screen
+		this.addAllBtn.disabled = this.addAllInProgress || this.currentResultControls.length === 0 || (this.scan?.isShowingScan() ?? false);
 	}
 
 	// REAL total that "Add all" would add — beyond the page currently loaded
@@ -1083,9 +1123,7 @@ export class AddCardsModal extends Modal {
 			let hasMore = this.hasMorePages;
 			while (hasMore) {
 				page += 1;
-				this.resultsCountEl.setText(
-					`Adding cards… (${controls.length + addedBeyondPage} of ${this.totalCardsFound})`
-				);
+				this.writeResultsCount(`Adding cards… (${controls.length + addedBeyondPage} of ${this.totalCardsFound})`);
 				let cards: ScryfallCard[];
 				let totalCards: number;
 				try {
@@ -1189,7 +1227,8 @@ export class AddCardsModal extends Modal {
 
 		let enabled = true;
 
-		const toggleBtn = tile.createEl("input", { cls: "mtg-search-history-toggle-checkbox" });
+		// The label around the checkbox is what a phone makes 44px square (styles.css, TOUCH TARGETS): a tap anywhere on it toggles the box. On a computer it has no box of its own.
+		const toggleBtn = tile.createEl("label", { cls: "mtg-search-history-toggle" }).createEl("input", { cls: "mtg-search-history-toggle-checkbox" });
 		toggleBtn.type = "checkbox";
 		toggleBtn.checked = true;
 		toggleBtn.setAttribute("title", "Disable (undo this whole batch)");
@@ -1251,6 +1290,9 @@ export class AddCardsModal extends Modal {
 	// after a mutation of chipTokens.
 	private renderSuggestedFilters() {
 		const container = this.suggestedFiltersEl;
+		// On a phone this row is ONE line that scrolls sideways (styles.css, "Filters: one line"). It is emptied and refilled in the same task, with no layout in
+		// between, so the browser never clamps its scroll position: tapping a filter far to the right leaves the row where it was (measured, 250px before and after;
+		// a restore of scrollLeft was tried and removed, the bench gave the same result without it). Do not read a layout value in the middle of this function.
 		container.empty();
 		DEFAULT_SUGGESTED_FILTERS.forEach((filter) => {
 			const isActive =
@@ -1263,6 +1305,7 @@ export class AddCardsModal extends Modal {
 			});
 			btn.toggleClass("is-active", isActive);
 			btn.addEventListener("click", () => {
+				this.confirmingFilterDeleteId = null;
 				if (filter.kind === "chip") {
 					// Toggle: a second click removes the chip rather than adding a second
 					// identical one.
@@ -1294,6 +1337,23 @@ export class AddCardsModal extends Modal {
 		// the saved filter itself (settings, persisted), not just its current
 		// application.
 		this.plugin.settings.savedSearchFilters.forEach((filter) => {
+			if (this.confirmingFilterDeleteId === filter.id) {
+				// "Delete?": the pill is replaced, where it stands, by a Cancel and a Delete. Cancel comes FIRST: the tap on the cross left the finger near the pill's right end, so a second tap that
+				// lands here by accident cancels instead of deleting.
+				const cancelBtn = container.createEl("button", { cls: "mtg-search-suggested-filter-btn mtg-search-suggested-filter-cancel", text: "Cancel" });
+				cancelBtn.addEventListener("click", () => {
+					this.confirmingFilterDeleteId = null;
+					this.renderSuggestedFilters();
+				});
+				const confirmBtn = container.createEl("button", { cls: "mtg-search-suggested-filter-btn mtg-search-suggested-filter-confirm", attr: { title: `Delete saved filter "${filter.label}"` } });
+				confirmBtn.createSpan({ cls: "mtg-search-suggested-filter-confirm-label", text: `Delete "${filter.label}"` });
+				confirmBtn.addEventListener("click", () => {
+					this.confirmingFilterDeleteId = null;
+					this.plugin.deleteSearchFilter(filter.id);
+					this.renderSuggestedFilters();
+				});
+				return;
+			}
 			const isActive = this.savedFilterIsActive(filter);
 			const btn = container.createEl("button", {
 				cls: "mtg-search-suggested-filter-btn mtg-search-suggested-filter-btn-saved",
@@ -1308,10 +1368,11 @@ export class AddCardsModal extends Modal {
 				// would otherwise ALSO trigger the button's handler (bubbling up to it) —
 				// it would apply/toggle the filter instead of deleting it.
 				evt.stopPropagation();
-				this.plugin.deleteSearchFilter(filter.id);
+				this.confirmingFilterDeleteId = filter.id;
 				this.renderSuggestedFilters();
 			});
 			btn.addEventListener("click", () => {
+				this.confirmingFilterDeleteId = null;
 				if (isActive) {
 					this.chipTokens = [];
 					this.sortOverride = null;
@@ -1439,6 +1500,8 @@ export class AddCardsModal extends Modal {
 	private resultsExitPromise: Promise<void> = Promise.resolve();
 
 	private triggerSearch() {
+		// a typed search shows the carousel; the scanned cards stay in their list (the pill brings it back)
+		this.scan?.showSearchView();
 		// Starts the animated exit of the currently displayed tiles right away
 		// (see animateResultTilesOut, shared-search-ui.ts) — from the commit, not
 		// only once the 400ms delay has elapsed, for immediate visual feedback
@@ -1471,7 +1534,7 @@ export class AddCardsModal extends Modal {
 	// nothing to distinguish).
 	private setResultsCount(count: number | null, total?: number) {
 		if (count === null) return;
-		this.resultsCountEl.setText(
+		this.writeResultsCount(
 			total !== undefined && total > count
 				? `${count} of ${total} cards found`
 				: `${count} card${count === 1 ? "" : "s"} found`
@@ -1479,7 +1542,13 @@ export class AddCardsModal extends Modal {
 	}
 
 	private clearResultsCount() {
-		this.resultsCountEl.setText("");
+		this.writeResultsCount("");
+	}
+
+	// The ONE place the count is written: the search block's line (every platform but a phone) and the results header's (a phone), the other of the two being hidden by CSS.
+	private writeResultsCount(text: string) {
+		this.resultsCountEl.setText(text);
+		this.resultsHeaderCountEl.setText(text);
 	}
 
 	// Content displayed before any keystroke: the most recently released paper
@@ -1887,7 +1956,8 @@ export class AddCardsModal extends Modal {
 		// rather than a fully custom widget: recolors a native checkbox in the
 		// plugin's accent without having to reproduce its shape/states
 		// (checked/hovered/focus) by hand.
-		hEntry.toggleBtn = tile.createEl("input", { cls: "mtg-search-history-toggle-checkbox" });
+		// Same wrapper as the batch tile's: the label is the phone's 44px touch target (styles.css, TOUCH TARGETS)
+		hEntry.toggleBtn = tile.createEl("label", { cls: "mtg-search-history-toggle" }).createEl("input", { cls: "mtg-search-history-toggle-checkbox" });
 		hEntry.toggleBtn.type = "checkbox";
 		hEntry.toggleBtn.addEventListener("change", () => this.toggleHistoryEntry(hEntry));
 
@@ -2549,8 +2619,16 @@ export class AddCardsModal extends Modal {
 	// — see AddCardsModalOptions). The container is rebuilt in place (empty()
 	// + rebuild) rather than replaced by a new element, so as not to disturb
 	// the layout of the tile around it.
-	private renderAddControl(tile: HTMLElement, card: ScryfallCard) {
-		const container = tile.createDiv({ cls: "mtg-result-card-add-control" });
+	//
+	// `opts` is for the blocks of the list of scanned cards (scan-result-block.ts), which add exactly as a tile does: `host` is where the control goes (the block is `tile`, the area
+	// that opens the card's window once added), `compact` makes the button a small ✓, `track` false keeps the card out of "Add all" (the carousel's), `onAddedChange` hears
+	// whether the card is added (true) or not any more (false, undone from the history). Answers what takes the control away again.
+	private renderAddControl(
+		tile: HTMLElement,
+		card: ScryfallCard,
+		opts: { host?: HTMLElement; compact?: boolean; track?: boolean; onAddedChange?: (added: boolean) => void } = {}
+	): () => void {
+		const container = (opts.host ?? tile).createDiv({ cls: "mtg-result-card-add-control" });
 		// Entry already added this session, if any — the object returned by
 		// addCardToCollection/addCardToWantlist is the same reference as the one mutated in
 		// place by changeCollectionCardCount/changeWantlistCardCount, so its .count stays up
@@ -2589,10 +2667,11 @@ export class AddCardsModal extends Modal {
 		// (rebuild the stepper, or go back to "Add" if the row has disappeared) —
 		// same mechanism as the "Add history" panel, just triggered by another
 		// event.
-		tile.addEventListener("click", () => {
+		const onTileClick = () => {
 			if (!entry || !this.onOpenDetail) return;
 			this.onOpenDetail(entry.id, syncFromHistory);
-		});
+		};
+		tile.addEventListener("click", onTileClick);
 
 		const buildStepper = () => {
 			if (!entry) return;
@@ -2662,6 +2741,7 @@ export class AddCardsModal extends Modal {
 				tile.removeClass("mtg-result-card-tile-clickable");
 				buildAddButton();
 			}
+			opts.onAddedChange?.(!!row);
 		};
 
 		const handleAdded = (result: { id: string; count: number; listId: string } | void, options: AddCardOptions) => {
@@ -2672,6 +2752,7 @@ export class AddCardsModal extends Modal {
 			if (!result || !this.onChangeQuantity) return;
 			entry = result;
 			buildStepper();
+			opts.onAddedChange?.(true);
 			if (this.onUndoAdd) {
 				historyOptions = options;
 				historyListId = result.listId;
@@ -2705,9 +2786,10 @@ export class AddCardsModal extends Modal {
 		// than two copies of the same button to maintain in parallel.
 		const buildAddButton = () => {
 			const addBtn = container.createEl("button", {
-				cls: "mtg-result-card-add-btn",
-				text: "Add",
+				cls: opts.compact ? "mtg-result-card-add-btn mtg-scan-block-add-btn" : "mtg-result-card-add-btn",
+				...(opts.compact ? { attr: { "aria-label": "Add this card", title: "Add this card" } } : { text: "Add" }),
 			});
+			if (opts.compact) setIcon(addBtn, "check");
 			// stopPropagation: see the comment of the click on tile above — by the
 			// time this event bubbles up to tile, handleAdded may already have set
 			// `entry` and rebuilt the stepper (it all happens synchronously in this
@@ -2740,7 +2822,12 @@ export class AddCardsModal extends Modal {
 		};
 		buildAddButton();
 
-		this.currentResultControls.push({ card, addOne });
+		if (opts.track !== false) this.currentResultControls.push({ card, addOne });
+		return () => {
+			tile.removeEventListener("click", onTileClick);
+			tile.removeClass("mtg-result-card-tile-clickable");
+			container.remove();
+		};
 	}
 
 	close() {
@@ -2748,7 +2835,9 @@ export class AddCardsModal extends Modal {
 	}
 
 	onClose() {
+		this.scan?.close();
 		this.contentEl.empty();
+		this.onClosed?.();
 	}
 }
 

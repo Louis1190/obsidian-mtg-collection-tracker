@@ -81,11 +81,8 @@ export function openAddWantlistCardsModal(this: MTGCollectionView, wantlistId: s
 		destinationName: wantlistName,
 		sourceKind: "wantlist",
 		titleText: `Add cards to "${wantlistName}"`,
+		onClosed: () => this.render(),
 	});
-	modal.onClose = () => {
-		modal.contentEl.empty();
-		this.render();
-	};
 	modal.open();
 }
 
@@ -136,11 +133,8 @@ export function openAddWantlistCardsModalWithListPicker(this: MTGCollectionView)
 		// picker, exactly like My Collection (see openAddCollectionCardsModalWithListPicker
 		// for the reasoning, including how to choose another destination afterwards).
 		listGallery: { summaries, kind: "wantlist", defaultListId: this.plugin.settings.wantlists.find((w) => w.isInbox)?.id },
+		onClosed: () => this.render(),
 	});
-	modal.onClose = () => {
-		modal.contentEl.empty();
-		this.render();
-	};
 	modal.open();
 }
 

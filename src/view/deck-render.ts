@@ -1154,11 +1154,8 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 			// Finish/Language/Condition selector exists anymore in this modal anyway
 			// (the last one, specific to the Wantlist flow, was removed in turn).
 			titleText: `Add cards to "${deck.name}"`,
+			onClosed: () => this.render(),
 		});
-		modal.onClose = () => {
-			modal.contentEl.empty();
-			this.render();
-		};
 		modal.open();
 	});
 

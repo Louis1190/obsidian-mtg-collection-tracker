@@ -49,6 +49,8 @@ export interface ScryfallCard {
 	// this field (falls back to the presence/absence of image_uris at the
 	// root, more reliable, see its own comment).
 	layout?: string;
+	/** the id of the illustration (the same on every printing that reuses the artwork); what the image fingerprint looks a card up by */
+	illustration_id?: string;
 	image_uris?: { normal?: string; small?: string; art_crop?: string };
 	card_faces?: {
 		name?: string;
@@ -927,4 +929,157 @@ export async function fetchScryfallCollection(
 		if (i < chunks.length - 1) await sleep(120);
 	}
 	return map;
+}
+
+// The cards of some ENGLISH names, in one /cards/collection request (a name identifier answers with the card's default printing, in English). The map is
+// keyed by the lower-cased name that was asked for, so a caller can find each answer again; a name Scryfall does not know is simply absent. Used by the card
+// recognition (recognition/ui/card-scan.ts) to show the cards a photo may be. Never throws: a request that fails answers an empty map and the caller says so.
+export async function fetchCardsByName(names: string[]): Promise<Map<string, ScryfallCard>> {
+	const map = new Map<string, ScryfallCard>();
+	const wanted = Array.from(new Set(names.filter((n) => n.trim() !== ""))).slice(0, 75);
+	if (wanted.length === 0) return map;
+	let res: RequestUrlResponse;
+	try {
+		res = await requestScryfall({
+			url: "https://api.scryfall.com/cards/collection",
+			method: "POST",
+			headers: { ...SCRYFALL_HEADERS, "Content-Type": "application/json" },
+			body: JSON.stringify({ identifiers: wanted.map((name) => ({ name })) }),
+			throw: false,
+		});
+	} catch {
+		return map;
+	}
+	if (res.status !== 200) return map;
+	const cards = (res.json as { data?: ScryfallCard[] }).data ?? [];
+	// an answer carries the card's real name ("Fire // Ice"); a name asked for that is one face of it ("Fire") is found by that face
+	const lowered = wanted.map((n) => n.toLowerCase());
+	for (const card of cards) {
+		const full = card.name.toLowerCase();
+		const faces = full.split(" // ");
+		for (const asked of lowered) {
+			if (asked === full || faces.includes(asked)) map.set(asked, card);
+		}
+	}
+	return map;
+}
+
+// ALL the English printings of some English card names, newest first: ONE /cards/search request (unique=prints), the first page only (175). The name says which card,
+// not which edition: /cards/collection by name answers a default printing that was the wrong one for 6 of 14 cards on the first real phone test, so the card recognition
+// ranks these printings by what is printed on the card (recognition/printing-rank.ts). Never throws: a request that fails answers an empty list.
+export async function fetchPrintingsOfNames(names: string[]): Promise<ScryfallCard[]> {
+	const wanted = Array.from(new Set(names.map((n) => n.replace(/"/g, "").trim()).filter((n) => n !== ""))).slice(0, 5);
+	if (wanted.length === 0) return [];
+	const q = wanted.length === 1 ? `!"${wanted[0]}"` : `(${wanted.map((n) => `!"${n}"`).join(" or ")})`;
+	let res: RequestUrlResponse;
+	try {
+		res = await requestScryfall({
+			url: `https://api.scryfall.com/cards/search?q=${encodeURIComponent(q)}&unique=prints&order=released&dir=desc`,
+			headers: SCRYFALL_HEADERS,
+			throw: false,
+		});
+	} catch {
+		return [];
+	}
+	if (res.status !== 200) return [];
+	return (res.json as { data?: ScryfallCard[] }).data ?? [];
+}
+
+// ALL the paper printings that carry one of these illustrations (the ids of Scryfall's `illustration_id`), newest first: ONE /cards/search request, the first page only (175), at most
+// three illustrations. What the image fingerprint (recognition/fingerprint/) finds is an illustration, and a card in the hand is one of the printings that reuse it. Never throws: a request that
+// fails, or an id that is not an id, answers an empty list.
+export async function fetchPrintingsOfIllustrations(illustrationIds: string[]): Promise<ScryfallCard[]> {
+	const wanted = Array.from(new Set(illustrationIds.filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)))).slice(0, 3);
+	if (wanted.length === 0) return [];
+	const q = `${wanted.length === 1 ? `illustration_id:${wanted[0]}` : `(${wanted.map((id) => `illustration_id:${id}`).join(" or ")})`} game:paper`;
+	let res: RequestUrlResponse;
+	try {
+		res = await requestScryfall({
+			url: `https://api.scryfall.com/cards/search?q=${encodeURIComponent(q)}&unique=prints&order=released&dir=desc`,
+			headers: SCRYFALL_HEADERS,
+			throw: false,
+		});
+	} catch {
+		return [];
+	}
+	if (res.status !== 200) return [];
+	return (res.json as { data?: ScryfallCard[] }).data ?? [];
+}
+
+// The printing with this set code and collector number (English), or null: what a card's own printed "SPM 82" points at. Never throws.
+export async function fetchPrintingBySetAndNumber(set: string, collectorNumber: string): Promise<ScryfallCard | null> {
+	if (!/^[A-Za-z0-9]{2,6}$/.test(set) || !/^[0-9A-Za-z★]{1,7}$/.test(collectorNumber)) return null;
+	let res: RequestUrlResponse;
+	try {
+		res = await requestScryfall({
+			url: `https://api.scryfall.com/cards/${encodeURIComponent(set.toLowerCase())}/${encodeURIComponent(collectorNumber)}`,
+			headers: SCRYFALL_HEADERS,
+			throw: false,
+		});
+	} catch {
+		return null;
+	}
+	return res.status === 200 ? (res.json as ScryfallCard) : null;
+}
+
+/**
+ * Most pages (175 cards each) of a set's card list that are read. A bigger set (a promo bucket, Secret Lair, The List) holds so many names that
+ * looking the title up among them narrows nothing, and costs a request per page: it is not listed at all.
+ */
+export const SET_NAMES_MAX_PAGES = 4;
+
+// The answers of fetchSetCardNames, for the session: a set's card list does not change within one (a set still being spoiled gains cards over weeks).
+// A promise is kept so that two scans of the same set share one request; only a settled answer (the set exists, or it does not) stays, a failure is asked again.
+const setNamesCache = new Map<string, Promise<string[] | null | undefined>>();
+
+// For tests only.
+export function resetSetNamesCacheForTests(): void {
+	setNamesCache.clear();
+}
+
+async function readSetCardNames(code: string): Promise<string[] | null | undefined> {
+	const names = new Set<string>();
+	for (let page = 1; page <= SET_NAMES_MAX_PAGES; page++) {
+		let res: RequestUrlResponse;
+		try {
+			res = await requestScryfall({
+				url: `https://api.scryfall.com/cards/search?q=${encodeURIComponent(`e:${code}`)}&unique=cards&order=set&page=${page}`,
+				headers: SCRYFALL_HEADERS,
+				throw: false,
+			});
+		} catch {
+			return undefined;
+		}
+		if (res.status === 404) return null; // not a set code (Scryfall answers a search with no result by a 404)
+		if (res.status !== 200) return undefined;
+		let body: { data?: { name?: unknown }[]; has_more?: unknown };
+		try {
+			body = res.json as typeof body; // the getter parses the text and throws on a body that is not JSON
+		} catch {
+			return undefined;
+		}
+		for (const card of body?.data ?? []) if (typeof card?.name === "string" && card.name !== "") names.add(card.name);
+		if (body?.has_more !== true) return names.size > 0 ? Array.from(names) : null;
+	}
+	return null; // more pages than are worth reading
+}
+
+/**
+ * The English names of the cards of a set, in set order (one search per 175 cards, session-cached), for reading a title among them: the set code printed at the bottom of a
+ * modern card names the set, and a few hundred names narrow the search far more than the 35 000 of the whole game. null: the code is not a set, the set is too big
+ * (SET_NAMES_MAX_PAGES), or Scryfall could not be asked. Never throws.
+ */
+export function fetchSetCardNames(set: string): Promise<string[] | null> {
+	const code = set.toLowerCase();
+	if (!/^[a-z0-9]{3,6}$/.test(code)) return Promise.resolve(null);
+	let known = setNamesCache.get(code);
+	if (!known) {
+		const asked = readSetCardNames(code);
+		known = asked;
+		setNamesCache.set(code, asked);
+		void asked.then((names) => {
+			if (names === undefined && setNamesCache.get(code) === asked) setNamesCache.delete(code);
+		});
+	}
+	return known.then((names) => names ?? null);
 }

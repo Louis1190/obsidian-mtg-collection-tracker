@@ -15,6 +15,7 @@ import {
 } from "./api/cardbase";
 import { UsdEurRate } from "./api/frankfurter";
 import { PRICE_HISTORY_BASE_URL } from "./api/price-history";
+import { FINGERPRINT_BASE_URL, stopCardRecognition } from "./card-recognition-entry";
 import type { PriceHistoryShard } from "./core/price-history";
 import {
 	MTGCollectionSettings,
@@ -218,6 +219,8 @@ export default class MTGCollectionPlugin extends Plugin {
 	// (a confirmed 404), absent = not requested yet; a failed download is not cached, only paused
 	// (priceHistoryShardFailedUntil). `priceHistoryBaseUrl` is a field, not a setting: see PRICE_HISTORY_BASE_URL.
 	priceHistoryBaseUrl: string = PRICE_HISTORY_BASE_URL;
+	// Where the base of image fingerprints can be downloaded from (card recognition): EMPTY = nowhere. A field, not a setting: see FINGERPRINT_BASE_URL; set in memory (DevTools) to try it before the data site exists.
+	fingerprintBaseUrl: string = FINGERPRINT_BASE_URL;
 	priceHistoryShardCache: Map<string, { shard: PriceHistoryShard | null; at: number }> = new Map();
 	priceHistoryShardInFlight: Map<string, Promise<PriceHistoryShard | null | undefined>> = new Map();
 	priceHistoryShardFailedUntil: Map<string, number> = new Map();
@@ -401,6 +404,8 @@ export default class MTGCollectionPlugin extends Plugin {
 		this.flushPendingImmutableCaches();
 		// The lookup of printed names/pictures stops (the run in progress ends after its current request).
 		this.stopPrintedNameLookups();
+		// What the card recognition holds in memory (a worker of ~80 MB while it runs; nothing where the feature does not exist) ends with the plugin.
+		stopCardRecognition(this);
 		// Belt and braces with the view's register() (src/view/mobile-bars.ts): a class left on
 		// <body> would hide Obsidian's bars across the WHOLE app.
 		document.body.removeClass(HIDE_BARS_CLASS);

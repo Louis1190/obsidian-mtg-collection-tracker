@@ -49,6 +49,8 @@ export const DEVICE_LOCAL_KEYS: ReadonlySet<string> = new Set([
 	// Chrome de l'interface
 	"navCollapsed",
 	"hideObsidianMobileBars",
+	// Card recognition by photo (beta): turned on per device, see data-model.ts
+	"cardRecognitionEnabled",
 	// Bloc Market Trends de Home
 	"homeMoversPeriod",
 	"homeMoversVendor",

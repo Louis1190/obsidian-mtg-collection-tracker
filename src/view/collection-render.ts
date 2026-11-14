@@ -99,11 +99,8 @@ export function openAddCollectionCardsModal(this: MTGCollectionView, listId: str
 		// panel — see sourceKind, shared-search-ui.ts.
 		sourceKind: "collection",
 		titleText: `Add cards to "${listName}"`,
+		onClosed: () => this.render(),
 	});
-	modal.onClose = () => {
-		modal.contentEl.empty();
-		this.render();
-	};
 	modal.open();
 }
 
@@ -186,11 +183,8 @@ export function openAddCollectionCardsModalWithListPicker(this: MTGCollectionVie
 		// destination) — no need for a 2nd picker at add time, which would
 		// reintroduce exactly the forced choice that this removes.
 		listGallery: { summaries, kind: "list", defaultListId: this.plugin.settings.lists.find((l) => l.isInbox)?.id },
+		onClosed: () => this.render(),
 	});
-	modal.onClose = () => {
-		modal.contentEl.empty();
-		this.render();
-	};
 	modal.open();
 }
 

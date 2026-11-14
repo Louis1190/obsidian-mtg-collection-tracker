@@ -9,6 +9,7 @@ import { RestoreBackupConfirmModal, ClearAllDataConfirmModal } from "./modals/co
 import { RestoreBackupModal } from "./modals/restore-backup-modal";
 import { listBackups } from "./core/backup-files";
 import { backupFolderPath } from "./plugin/backup";
+import { cardRecognitionSettingRows } from "./card-recognition-entry";
 
 /* -------------------------------------------------------------------------- */
 /*  Settings tab                                                              */
@@ -332,6 +333,8 @@ export class MTGCollectionSettingTab extends PluginSettingTab {
 							);
 						},
 					},
+					// The card recognition's row(s), from the feature itself (none where it does not exist)
+					...cardRecognitionSettingRows(plugin),
 					{
 						name: "Card images",
 						desc: "For a card you marked as being in another language, show the picture of that language's printing instead of the English one. Only when Scryfall has a real scan of it: for sets that only have a stand-in picture the English picture stays. Artwork banners are the same in every language and do not change.",

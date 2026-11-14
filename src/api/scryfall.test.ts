@@ -28,6 +28,13 @@ import {
 	fetchLatestPaperPrintings,
 	searchAllPrintings,
 	fetchScryfallCollection,
+	fetchCardsByName,
+	fetchPrintingsOfIllustrations,
+	fetchPrintingsOfNames,
+	fetchPrintingBySetAndNumber,
+	fetchSetCardNames,
+	resetSetNamesCacheForTests,
+	SET_NAMES_MAX_PAGES,
 	buildCardTextInfo,
 	getDoubleFacedImages,
 	getSplitCardInfo,
@@ -1278,5 +1285,230 @@ describe("searching by a name printed in another language", () => {
 		const resolved = await run(() => resolveEnglishPrints([englishPrint, makeScryfallCard({ id: "x" })]));
 		expect(mockRequestUrl).not.toHaveBeenCalled();
 		expect(resolved).toHaveLength(2);
+	});
+});
+
+describe("fetchCardsByName", () => {
+	it("asks for the names in ONE collection request and answers a map keyed by the lower-cased name asked for", async () => {
+		mockRequestUrl.mockResolvedValueOnce({
+			status: 200,
+			json: { data: [makeScryfallCard({ id: "a", name: "Soul Burn" }), makeScryfallCard({ id: "b", name: "Scald" })], not_found: [{ name: "Nothing Here" }] },
+		} as any);
+		const map = await fetchCardsByName(["Soul Burn", "Scald", "Nothing Here", "Soul Burn", " "]);
+		expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+		const req = mockRequestUrl.mock.calls[0][0] as any;
+		expect(req.url).toBe("https://api.scryfall.com/cards/collection");
+		expect(req.method).toBe("POST");
+		expect(JSON.parse(req.body).identifiers).toEqual([{ name: "Soul Burn" }, { name: "Scald" }, { name: "Nothing Here" }]);
+		expect(map.get("soul burn")?.id).toBe("a");
+		expect(map.get("scald")?.id).toBe("b");
+		expect(map.has("nothing here")).toBe(false);
+	});
+
+	it("finds a card asked for by one face of its double name", async () => {
+		mockRequestUrl.mockResolvedValueOnce({ status: 200, json: { data: [makeScryfallCard({ id: "fi", name: "Fire // Ice" })] } } as any);
+		const map = await fetchCardsByName(["Fire"]);
+		expect(map.get("fire")?.id).toBe("fi");
+	});
+
+	it("sends nothing for no name, and answers an empty map for a refused or failed request instead of throwing", async () => {
+		expect((await fetchCardsByName([])).size).toBe(0);
+		expect((await fetchCardsByName(["", "  "])).size).toBe(0);
+		expect(mockRequestUrl).not.toHaveBeenCalled();
+		mockRequestUrl.mockResolvedValueOnce({ status: 500, json: {} } as any);
+		expect((await fetchCardsByName(["Scald"])).size).toBe(0);
+		mockRequestUrl.mockRejectedValueOnce(new Error("offline"));
+		expect((await fetchCardsByName(["Scald"])).size).toBe(0);
+	});
+});
+
+describe("fetchPrintingsOfNames", () => {
+	it("asks for every printing of the names in ONE search, newest first, and answers the cards in Scryfall's order", async () => {
+		mockRequestUrl.mockResolvedValueOnce({
+			status: 200,
+			json: { data: [makeScryfallCard({ id: "msc", set: "msc", collector_number: "807" }), makeScryfallCard({ id: "spm", set: "spm", collector_number: "82" })] },
+		} as any);
+		const cards = await fetchPrintingsOfNames(["Masked Meower"]);
+		expect(cards.map((c) => c.id)).toEqual(["msc", "spm"]);
+		expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+		const url = new URL((mockRequestUrl.mock.calls[0][0] as any).url);
+		expect(url.pathname).toBe("/cards/search");
+		expect(url.searchParams.get("q")).toBe('!"Masked Meower"');
+		expect(url.searchParams.get("unique")).toBe("prints");
+		expect(url.searchParams.get("order")).toBe("released");
+		expect(url.searchParams.get("dir")).toBe("desc");
+	});
+
+	it("joins several names with `or`, once each, drops quotes and blanks, and asks for at most five", async () => {
+		mockRequestUrl.mockResolvedValueOnce({ status: 200, json: { data: [] } } as any);
+		await fetchPrintingsOfNames(["Fire // Ice", 'Say "Hi"', "Fire // Ice", " ", "A", "B", "C", "D"]);
+		const q = new URL((mockRequestUrl.mock.calls[0][0] as any).url).searchParams.get("q");
+		expect(q).toBe('(!"Fire // Ice" or !"Say Hi" or !"A" or !"B" or !"C")');
+	});
+
+	it("sends nothing for no name, and answers an empty list for a refused, failed or empty answer", async () => {
+		expect(await fetchPrintingsOfNames([])).toEqual([]);
+		expect(await fetchPrintingsOfNames(["", " "])).toEqual([]);
+		expect(mockRequestUrl).not.toHaveBeenCalled();
+		mockRequestUrl.mockResolvedValueOnce({ status: 404, json: { object: "error" } } as any);
+		expect(await fetchPrintingsOfNames(["Nothing"])).toEqual([]);
+		mockRequestUrl.mockRejectedValueOnce(new Error("offline"));
+		expect(await fetchPrintingsOfNames(["Nothing"])).toEqual([]);
+		mockRequestUrl.mockResolvedValueOnce({ status: 200, json: {} } as any);
+		expect(await fetchPrintingsOfNames(["Nothing"])).toEqual([]);
+	});
+});
+
+describe("fetchPrintingsOfIllustrations", () => {
+	const A = "190b8aec-3286-4446-91a6-757dc2d7708d";
+	const B = "e36db1dd-2e5b-473b-953b-d768c5c73588";
+	const C = "fb2b1ca2-7440-48c2-81c8-84da0a45a626";
+	const D = "2fcca987-364c-4738-a75b-099d8a26d614";
+
+	it("asks for every paper printing of ONE illustration in one search, newest first, and answers Scryfall's order", async () => {
+		mockRequestUrl.mockResolvedValueOnce({ status: 200, json: { data: [makeScryfallCard({ id: "30a", set: "30a" }), makeScryfallCard({ id: "lea", set: "lea" })] } } as any);
+		const cards = await fetchPrintingsOfIllustrations([A]);
+		expect(cards.map((c) => c.id)).toEqual(["30a", "lea"]);
+		expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+		const url = new URL((mockRequestUrl.mock.calls[0][0] as any).url);
+		expect(url.pathname).toBe("/cards/search");
+		expect(url.searchParams.get("q")).toBe(`illustration_id:${A} game:paper`);
+		expect(url.searchParams.get("unique")).toBe("prints");
+		expect(url.searchParams.get("order")).toBe("released");
+		expect(url.searchParams.get("dir")).toBe("desc");
+	});
+
+	it("joins several illustrations with `or`, once each, and asks for at most three", async () => {
+		mockRequestUrl.mockResolvedValueOnce({ status: 200, json: { data: [] } } as any);
+		await fetchPrintingsOfIllustrations([A, B, A, C, D]);
+		expect(new URL((mockRequestUrl.mock.calls[0][0] as any).url).searchParams.get("q")).toBe(`(illustration_id:${A} or illustration_id:${B} or illustration_id:${C}) game:paper`);
+	});
+
+	it("sends nothing for an id that is not an id (it goes into a search query), and answers an empty list for a refused or failed request", async () => {
+		expect(await fetchPrintingsOfIllustrations([])).toEqual([]);
+		expect(await fetchPrintingsOfIllustrations(["", "x or name:a", `${A} or o:x`, A.toUpperCase()])).toEqual([]);
+		expect(mockRequestUrl).not.toHaveBeenCalled();
+		mockRequestUrl.mockResolvedValueOnce({ status: 404, json: { object: "error" } } as any);
+		expect(await fetchPrintingsOfIllustrations([A])).toEqual([]);
+		mockRequestUrl.mockRejectedValueOnce(new Error("offline"));
+		expect(await fetchPrintingsOfIllustrations([A])).toEqual([]);
+		mockRequestUrl.mockResolvedValueOnce({ status: 200, json: {} } as any);
+		expect(await fetchPrintingsOfIllustrations([A])).toEqual([]);
+	});
+});
+
+describe("fetchPrintingBySetAndNumber", () => {
+	it("asks for the printing by its set code (lower case) and collector number, and answers the card", async () => {
+		mockRequestUrl.mockResolvedValueOnce({ status: 200, json: makeScryfallCard({ id: "spm82", set: "spm", collector_number: "82" }) } as any);
+		const card = await fetchPrintingBySetAndNumber("SPM", "82");
+		expect(card?.id).toBe("spm82");
+		expect((mockRequestUrl.mock.calls[0][0] as any).url).toBe("https://api.scryfall.com/cards/spm/82");
+	});
+	it("answers null for an unknown printing, a failed request, and a set or number that cannot be one, without asking", async () => {
+		mockRequestUrl.mockResolvedValueOnce({ status: 404, json: { object: "error" } } as any);
+		expect(await fetchPrintingBySetAndNumber("spm", "9999")).toBeNull();
+		mockRequestUrl.mockRejectedValueOnce(new Error("offline"));
+		expect(await fetchPrintingBySetAndNumber("spm", "82")).toBeNull();
+		mockRequestUrl.mockClear();
+		expect(await fetchPrintingBySetAndNumber("s", "82")).toBeNull();
+		expect(await fetchPrintingBySetAndNumber("spm/../x", "82")).toBeNull();
+		expect(await fetchPrintingBySetAndNumber("spm", "../1")).toBeNull();
+		expect(await fetchPrintingBySetAndNumber("spm", "")).toBeNull();
+		expect(mockRequestUrl).not.toHaveBeenCalled();
+	});
+});
+
+describe("fetchSetCardNames", () => {
+	// The strict endpoints are spaced 550 ms apart: run on a fake clock.
+	async function run<T>(start: () => Promise<T>): Promise<T> {
+		vi.useFakeTimers();
+		try {
+			resetScryfallStrictGateForTests();
+			const pending = start();
+			await vi.advanceTimersByTimeAsync(20_000);
+			return await pending;
+		} finally {
+			vi.useRealTimers();
+			resetScryfallStrictGateForTests();
+		}
+	}
+	const page = (names: string[], hasMore = false) => ({ status: 200, json: { data: names.map((name) => ({ name })), has_more: hasMore } }) as any;
+	const urls = () => mockRequestUrl.mock.calls.map((c) => new URL((c[0] as any).url));
+
+	beforeEach(() => {
+		resetSetNamesCacheForTests();
+	});
+
+	it("asks for the cards of the set, one of each, in set order, and answers their names", async () => {
+		mockRequestUrl.mockResolvedValueOnce(page(["Shock", "Swamp", "Shock"]));
+		expect(await run(() => fetchSetCardNames("SPM"))).toEqual(["Shock", "Swamp"]);
+		expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+		const url = urls()[0];
+		expect(url.pathname).toBe("/cards/search");
+		expect(url.searchParams.get("q")).toBe("e:spm");
+		expect(url.searchParams.get("unique")).toBe("cards");
+		expect(url.searchParams.get("order")).toBe("set");
+		expect(url.searchParams.get("page")).toBe("1");
+	});
+
+	it("reads the next page while Scryfall says there is more, asking by page number (never a URL the answer hands out)", async () => {
+		mockRequestUrl.mockResolvedValueOnce({ status: 200, json: { data: [{ name: "A" }], has_more: true, next_page: "https://evil.example/x" } } as any);
+		mockRequestUrl.mockResolvedValueOnce(page(["B", "A"]));
+		expect(await run(() => fetchSetCardNames("hob"))).toEqual(["A", "B"]);
+		expect(urls().map((u) => [u.host, u.searchParams.get("page")])).toEqual([
+			["api.scryfall.com", "1"],
+			["api.scryfall.com", "2"],
+		]);
+	});
+
+	it("keeps the answer for the session, and two scans asking at once share one request", async () => {
+		mockRequestUrl.mockResolvedValue(page(["Shock"]));
+		const [a, b] = await run(() => Promise.all([fetchSetCardNames("spm"), fetchSetCardNames("spm")]));
+		expect(a).toEqual(["Shock"]);
+		expect(b).toEqual(["Shock"]);
+		expect(await fetchSetCardNames("spm")).toEqual(["Shock"]);
+		expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+	});
+
+	it("says null for a code that is not a set, and remembers it (a 404 is a settled answer)", async () => {
+		mockRequestUrl.mockResolvedValue({ status: 404, json: { object: "error" } } as any);
+		expect(await run(() => fetchSetCardNames("mhob"))).toBeNull();
+		expect(await fetchSetCardNames("mhob")).toBeNull();
+		expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+	});
+
+	it("says null for a failed request, a refusal or a body that is not JSON, and asks again next time (a failure is not an answer)", async () => {
+		mockRequestUrl.mockRejectedValueOnce(new Error("offline"));
+		expect(await run(() => fetchSetCardNames("spm"))).toBeNull();
+		mockRequestUrl.mockResolvedValueOnce({ status: 500, json: {} } as any);
+		expect(await run(() => fetchSetCardNames("spm"))).toBeNull();
+		mockRequestUrl.mockResolvedValueOnce({
+			status: 200,
+			get json(): never {
+				throw new SyntaxError("Unexpected token <");
+			},
+		} as any);
+		expect(await run(() => fetchSetCardNames("spm"))).toBeNull();
+		expect(mockRequestUrl).toHaveBeenCalledTimes(3);
+		mockRequestUrl.mockResolvedValueOnce(page(["Shock"]));
+		expect(await run(() => fetchSetCardNames("spm"))).toEqual(["Shock"]);
+	});
+
+	it("does not list a set of more pages than SET_NAMES_MAX_PAGES, and remembers that", async () => {
+		mockRequestUrl.mockResolvedValue(page(["Card"], true));
+		expect(await run(() => fetchSetCardNames("sld"))).toBeNull();
+		expect(mockRequestUrl).toHaveBeenCalledTimes(SET_NAMES_MAX_PAGES);
+		expect(await fetchSetCardNames("sld")).toBeNull();
+		expect(mockRequestUrl).toHaveBeenCalledTimes(SET_NAMES_MAX_PAGES);
+	});
+
+	it("sends nothing for a code that cannot be a set", async () => {
+		for (const code of ["", "sp", "spm/../x", "toolongcode", "s p", "spm\n"]) expect(await fetchSetCardNames(code)).toBeNull();
+		expect(mockRequestUrl).not.toHaveBeenCalled();
+	});
+
+	it("says null for a set with no card", async () => {
+		mockRequestUrl.mockResolvedValue(page([]));
+		expect(await run(() => fetchSetCardNames("zzz"))).toBeNull();
 	});
 });

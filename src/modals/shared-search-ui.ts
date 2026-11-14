@@ -92,6 +92,10 @@ export interface AddCardsModalOptions {
 	// isn't fixed there, it varies tile by tile).
 	destinationName?: string;
 	titleText?: string;
+	// Called when the window has closed, AFTER its own clean-up (scan cancelled, the title reader and the fingerprint base released).
+	// The callers used to REPLACE `modal.onClose` on the instance to re-render the view, which silently skipped that clean-up
+	// (found on the real phone, P4 of the fingerprint plan: the 30 MB base was never let go).
+	onClosed?: () => void;
 	// Which data this modal actually adds — explicitly requested, so that the
 	// tiles of the "Add history" panel can open
 	// ChangePrintingModal/CopyCardModal("move") on the row actually added (see
