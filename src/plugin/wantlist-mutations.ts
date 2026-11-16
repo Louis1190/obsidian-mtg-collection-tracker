@@ -470,7 +470,10 @@ export function bulkSetWantlistCardCount(this: MTGCollectionPlugin, ids: string[
 export function bulkMoveWantlistCardsToWantlist(this: MTGCollectionPlugin, ids: string[], targetWantlistId: string) {
 	const idSet = new Set(ids);
 	const now = Date.now();
-	const toMove = this.settings.wantlist.filter((c) => idSet.has(c.id));
+	// A card that is already in the target wantlist has nowhere to move to: it is left as it is. It used to be handled
+	// like the others, which added its quantity to an identical card of that wantlist and then, its listId already being
+	// the target, did not remove it: the copies were counted twice (5 became 7 in the tests of the 2026-11-15 audit).
+	const toMove = this.settings.wantlist.filter((c) => idSet.has(c.id) && c.listId !== targetWantlistId);
 
 	toMove.forEach((card) => {
 		const existing = this.settings.wantlist.find(

@@ -1,6 +1,7 @@
 import { Notice, normalizePath } from "obsidian";
 import { DEFAULT_SETTINGS, healInboxes, type MTGCollectionSettings } from "../core/data-model";
 import { DEVICE_LOCAL_KEYS, omitDeviceLocal, pickDeviceLocal } from "../core/device-settings";
+import { parseExternalJsonObject } from "../core/safe-json";
 import {
 	applySettingsInPlace,
 	mergeSettings,
@@ -98,13 +99,9 @@ function dataFilePath(plugin: MTGCollectionPlugin): string | null {
 	return folder ? normalizePath(`${folder}/${CUSTOM_DATA_FILE_NAME}`) : defaultDataPath(plugin);
 }
 
-function parseSettingsText(text: string): Obj | null {
-	try {
-		const v: unknown = JSON.parse(text);
-		return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null;
-	} catch {
-		return null;
-	}
+// The text can come from another device or from GitHub: parsed without any "__proto__" key (core/safe-json.ts).
+export function parseSettingsText(text: string): Obj | null {
+	return parseExternalJsonObject(text);
 }
 
 // A single queue for all the disk operations: the chain never rejects (any

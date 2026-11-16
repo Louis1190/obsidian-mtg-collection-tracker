@@ -42,6 +42,7 @@ import {
 	renderCopiesInListsBox,
 	renderCardNavHeader,
 	CopyTile,
+	type DetailDrawRefs,
 } from "./shared-detail-boxes";
 
 /* -------------------------------------------------------------------------- */
@@ -154,27 +155,7 @@ export class WantlistCardDetailModal extends Modal {
 		}
 
 		if (this.confirmingDelete) {
-			const confirmWrap = contentEl.createDiv({ cls: "mtg-card-detail-confirm-wrap" });
-			confirmWrap.createEl("h2", { text: "Remove this card?" });
-			confirmWrap.createEl("p", {
-				text: `Remove ${this.card.count}x "${this.card.name}" from this wantlist? This cannot be undone.`,
-				cls: "mtg-status",
-			});
-			const row = confirmWrap.createDiv({ cls: "mtg-svg-btn-row" });
-			const yesBtn = row.createEl("button", {
-				text: "Yes, remove",
-				cls: "mtg-remove-btn",
-			});
-			yesBtn.addEventListener("click", () => {
-				this.plugin.removeWantlistCard(this.card.id);
-				this.close();
-				this.view.render();
-			});
-			const noBtn = row.createEl("button", { text: "No, cancel" });
-			noBtn.addEventListener("click", () => {
-				this.confirmingDelete = false;
-				this.draw();
-			});
+			this.drawDeleteConfirmation(contentEl);
 			return;
 		}
 
@@ -188,112 +169,168 @@ export class WantlistCardDetailModal extends Modal {
 		const imageWrap = viewport.createDiv({
 			cls: isAlpha ? "mtg-card-detail-image-wrap mtg-card-detail-image-wrap-alpha" : "mtg-card-detail-image-wrap",
 		});
-		if (this.card.imageUrl) {
-			// The holographic tilt/shimmer (setupCardTilt) is set on this nested
-			// level, not directly on imageWrap: imageWrap already carries the
-			// transform of the Cover Flow carousel (animateCardNav) for previous/next
-			// navigation, and the two would fight over the same transform property if
-			// they targeted the same element. The 3D tilt itself applies to all
-			// finishes — only the color layers (foil-overlay/holo-shine/holo-sweep)
-			// remain reserved for foil/etched, since a regular card doesn't physically
-			// shimmer but can still be tilted.
-			const tilt = imageWrap.createDiv({ cls: "mtg-card-detail-tilt" });
-			const bannerImg = tilt.createEl("img", {
-				cls: "mtg-card-detail-image",
-				attr: { src: artMode ? this.card.artCropUrl : this.card.imageUrl },
-			});
-			if (artMode) holdPreviousBanner(contentEl, tilt, bannerImg, this.card.artCropUrl);
-			if (finishHasFoilLook(this.card.finish)) {
-				// Etched doesn't scatter light like foiled/surged — its ambient halo stays
-				// neutral/silvery (mtg-foil-overlay-etched) rather than the rainbow
-				// gradient shared by the other two finishes.
-				tilt.createDiv({
-					cls:
-						this.card.finish === "etched"
-							? "mtg-foil-overlay-etched"
-							: "mtg-foil-overlay mtg-foil-overlay-large",
-				});
-				// Surge Foil gets the multi-layer shine in the style of the Pokémon "V"
-				// card (see styles.css); Etched gets a glitter effect (see styles.css)
-				// rather than the simple rainbow shine used for foiled — explicitly
-				// requested, etched "doesn't scatter light" like a real holo.
-				tilt.createDiv({
-					cls:
-						this.card.finish === "surged"
-							? "mtg-card-detail-holo-shine-surge"
-							: this.card.finish === "etched"
-								? "mtg-card-detail-holo-shine-etched"
-								: "mtg-card-detail-holo-shine",
-				});
-				tilt.createDiv({ cls: "mtg-card-detail-holo-sweep" });
-			}
-			setupCardTilt(imageWrap, tilt);
-
-			// "Wanted" marker (top-left corner, white heart on accent-color
-			// background) — explicitly requested, screenshot in support, same badge as
-			// buildWantlistCardTile (view.ts). Child of `tilt` (not of imageWrap) —
-			// explicitly requested as a follow-up: unlike the "Wanted" ribbon of
-			// DeckCardDetailModal (which deliberately stays flat/pinned), this badge
-			// must follow the 3D tilt toward the cursor like the
-			// foil-overlay/holo-shine layers just above, set on this same element for
-			// the same reason. `tilt` already carries the rounded-corner clip
-			// (overflow:hidden + border-radius, see its own comment above) — the
-			// badge's 0.6em inset (styles.css) always keeps it inside this area, never
-			// cropped.
-			const wantBadge = tilt.createDiv({ cls: "mtg-wantlist-heart-badge mtg-wantlist-heart-badge-large" });
-			setIcon(wantBadge, "heart");
-
-			// Phone art mode shows the artwork alone: a square button shows the whole card. A wantlist card has no
-			// condition or language button, so the stack holds this one only, set just under the heart badge.
-			if (artMode) {
-				const imageIcons = imageColumn.createDiv({
-					cls: "mtg-card-detail-image-icons mtg-card-detail-image-icons-below-badge",
-				});
-				addFullCardButton(imageIcons, contentEl, () =>
-					resolveFullCardUrl(
-						(id) => this.plugin.getCardFaceImages(id),
-						this.card.scryfallId,
-						this.flipped,
-						this.card.imageUrl
-					),
-					{ alpha: isAlpha }
-				);
-			}
-
-			// 3D "flip" button — see CardDetailModal for the full reasoning (same
-			// shared function, same staleness guard).
-			const flipRequestedId = this.card.scryfallId;
-			void this.plugin.getCardFaceImages(flipRequestedId).then((images) => {
-				if (!images || this.card.scryfallId !== flipRequestedId) return;
-				// Art mode flips to the back face's artwork; no art for it = no button.
-				const backUrl = artMode ? images.backArt : images.back;
-				if (!backUrl) return;
-				artCredit?.setBackArtist(images.backArtist);
-				artCredit?.showFace(this.flipped);
-				setupDoubleFacedFlip(imageColumn, tilt, backUrl, this.flipped, (flipped) => {
-					this.flipped = flipped;
-					artCredit?.showFace(flipped);
-				});
-			});
-
-			// "Rotation" button — see CardDetailModal for the full reasoning.
-			const splitRequestedId = this.card.scryfallId;
-			void this.plugin.getSplitCardInfo(splitRequestedId).then((info) => {
-				// No text to turn 90° to read on the artwork: no rotation button in art mode.
-				if (!info || artMode || this.card.scryfallId !== splitRequestedId) return;
-				// Always portrait by default — see CardDetailModal.
-				if (this.splitRotated === null) this.splitRotated = false;
-				setupSplitCardRotation(imageColumn, tilt, this.splitRotated, (rotated) => {
-					this.splitRotated = rotated;
-				});
-			});
-		}
+		// The one value the pieces of draw() share (see DetailDrawRefs): the art credit, filled in below, read by the async flip callback.
+		const refs: Pick<DetailDrawRefs, "artCredit"> = { artCredit: null };
+		if (this.card.imageUrl) this.drawCardImage(imageColumn, imageWrap, contentEl, artMode, isAlpha, refs);
 
 		const panel = layout.createDiv({ cls: "mtg-card-detail-panel" });
 		if (artMode) moveNavHeaderBelowArt(contentEl, panel);
 		// Last child of the layout, so it ends the scroll (Scryfall: artist + copyright next to an artwork shown alone).
-		const artCredit = artMode ? renderArtCredit(layout, this.card.artist) : null;
+		refs.artCredit = artMode ? renderArtCredit(layout, this.card.artist) : null;
 
+		this.drawHeaderRow(panel);
+		const { copyBox } = this.drawAttributeRow(panel);
+		const wantlistBoxRow = this.drawWantlistBox(panel);
+
+		this.renderCopiesInListsBox(panel);
+		this.renderLegalFormatsBox(panel);
+		this.renderStorePricesBox(panel);
+		this.renderPriceHistoryBox(panel);
+		this.renderCardDescriptionBox(panel);
+		if (artMode) arrangePanelForArt(panel, wantlistBoxRow, [copyBox], null);
+		this.scheduleTextPrefetch();
+
+		this.drawActions(panel);
+
+		setupPanelScrollFade(panel);
+	}
+
+	// The "Remove this card?" screen: replaces the whole window until the user answers (the caller returns right after).
+	private drawDeleteConfirmation(contentEl: HTMLElement) {
+		const confirmWrap = contentEl.createDiv({ cls: "mtg-card-detail-confirm-wrap" });
+		confirmWrap.createEl("h2", { text: "Remove this card?" });
+		confirmWrap.createEl("p", {
+			text: `Remove ${this.card.count}x "${this.card.name}" from this wantlist? This cannot be undone.`,
+			cls: "mtg-status",
+		});
+		const row = confirmWrap.createDiv({ cls: "mtg-svg-btn-row" });
+		const yesBtn = row.createEl("button", {
+			text: "Yes, remove",
+			cls: "mtg-remove-btn",
+		});
+		yesBtn.addEventListener("click", () => {
+			this.plugin.removeWantlistCard(this.card.id);
+			this.close();
+			this.view.render();
+		});
+		const noBtn = row.createEl("button", { text: "No, cancel" });
+		noBtn.addEventListener("click", () => {
+			this.confirmingDelete = false;
+			this.draw();
+		});
+	}
+
+	// The card's picture (or the artwork alone in art mode) with its tilt, foil layers, heart badge, full-card button and the flip / rotate buttons.
+	private drawCardImage(
+		imageColumn: HTMLElement,
+		imageWrap: HTMLElement,
+		contentEl: HTMLElement,
+		artMode: boolean,
+		isAlpha: boolean,
+		refs: Pick<DetailDrawRefs, "artCredit">
+	) {
+		// The holographic tilt/shimmer (setupCardTilt) is set on this nested
+		// level, not directly on imageWrap: imageWrap already carries the
+		// transform of the Cover Flow carousel (animateCardNav) for previous/next
+		// navigation, and the two would fight over the same transform property if
+		// they targeted the same element. The 3D tilt itself applies to all
+		// finishes — only the color layers (foil-overlay/holo-shine/holo-sweep)
+		// remain reserved for foil/etched, since a regular card doesn't physically
+		// shimmer but can still be tilted.
+		const tilt = imageWrap.createDiv({ cls: "mtg-card-detail-tilt" });
+		const bannerImg = tilt.createEl("img", {
+			cls: "mtg-card-detail-image",
+			attr: { src: artMode ? this.card.artCropUrl : this.card.imageUrl },
+		});
+		if (artMode) holdPreviousBanner(contentEl, tilt, bannerImg, this.card.artCropUrl);
+		if (finishHasFoilLook(this.card.finish)) {
+			// Etched doesn't scatter light like foiled/surged — its ambient halo stays
+			// neutral/silvery (mtg-foil-overlay-etched) rather than the rainbow
+			// gradient shared by the other two finishes.
+			tilt.createDiv({
+				cls:
+					this.card.finish === "etched"
+						? "mtg-foil-overlay-etched"
+						: "mtg-foil-overlay mtg-foil-overlay-large",
+			});
+			// Surge Foil gets the multi-layer shine in the style of the Pokémon "V"
+			// card (see styles.css); Etched gets a glitter effect (see styles.css)
+			// rather than the simple rainbow shine used for foiled — explicitly
+			// requested, etched "doesn't scatter light" like a real holo.
+			tilt.createDiv({
+				cls:
+					this.card.finish === "surged"
+						? "mtg-card-detail-holo-shine-surge"
+						: this.card.finish === "etched"
+							? "mtg-card-detail-holo-shine-etched"
+							: "mtg-card-detail-holo-shine",
+			});
+			tilt.createDiv({ cls: "mtg-card-detail-holo-sweep" });
+		}
+		setupCardTilt(imageWrap, tilt);
+
+		// "Wanted" marker (top-left corner, white heart on accent-color
+		// background) — explicitly requested, screenshot in support, same badge as
+		// buildWantlistCardTile (view.ts). Child of `tilt` (not of imageWrap) —
+		// explicitly requested as a follow-up: unlike the "Wanted" ribbon of
+		// DeckCardDetailModal (which deliberately stays flat/pinned), this badge
+		// must follow the 3D tilt toward the cursor like the
+		// foil-overlay/holo-shine layers just above, set on this same element for
+		// the same reason. `tilt` already carries the rounded-corner clip
+		// (overflow:hidden + border-radius, see its own comment above) — the
+		// badge's 0.6em inset (styles.css) always keeps it inside this area, never
+		// cropped.
+		const wantBadge = tilt.createDiv({ cls: "mtg-wantlist-heart-badge mtg-wantlist-heart-badge-large" });
+		setIcon(wantBadge, "heart");
+
+		// Phone art mode shows the artwork alone: a square button shows the whole card. A wantlist card has no
+		// condition or language button, so the stack holds this one only, set just under the heart badge.
+		if (artMode) {
+			const imageIcons = imageColumn.createDiv({
+				cls: "mtg-card-detail-image-icons mtg-card-detail-image-icons-below-badge",
+			});
+			addFullCardButton(imageIcons, contentEl, () =>
+				resolveFullCardUrl(
+					(id) => this.plugin.getCardFaceImages(id),
+					this.card.scryfallId,
+					this.flipped,
+					this.card.imageUrl
+				),
+				{ alpha: isAlpha }
+			);
+		}
+
+		// 3D "flip" button — see CardDetailModal for the full reasoning (same
+		// shared function, same staleness guard).
+		const flipRequestedId = this.card.scryfallId;
+		void this.plugin.getCardFaceImages(flipRequestedId).then((images) => {
+			if (!images || this.card.scryfallId !== flipRequestedId) return;
+			// Art mode flips to the back face's artwork; no art for it = no button.
+			const backUrl = artMode ? images.backArt : images.back;
+			if (!backUrl) return;
+			refs.artCredit?.setBackArtist(images.backArtist);
+			refs.artCredit?.showFace(this.flipped);
+			setupDoubleFacedFlip(imageColumn, tilt, backUrl, this.flipped, (flipped) => {
+				this.flipped = flipped;
+				refs.artCredit?.showFace(flipped);
+			});
+		});
+
+		// "Rotation" button — see CardDetailModal for the full reasoning.
+		const splitRequestedId = this.card.scryfallId;
+		void this.plugin.getSplitCardInfo(splitRequestedId).then((info) => {
+			// No text to turn 90° to read on the artwork: no rotation button in art mode.
+			if (!info || artMode || this.card.scryfallId !== splitRequestedId) return;
+			// Always portrait by default — see CardDetailModal.
+			if (this.splitRotated === null) this.splitRotated = false;
+			setupSplitCardRotation(imageColumn, tilt, this.splitRotated, (rotated) => {
+				this.splitRotated = rotated;
+			});
+		});
+	}
+
+	// Set box ("View all versions") and the trash button.
+	private drawHeaderRow(panel: HTMLElement) {
 		const headerRow = panel.createDiv({ cls: "mtg-card-detail-header-row" });
 		const setBox = headerRow.createDiv({
 			cls: "mtg-card-detail-box mtg-card-detail-set-box mtg-card-detail-set-box-clickable",
@@ -338,7 +375,10 @@ export class WantlistCardDetailModal extends Modal {
 			this.confirmingDelete = true;
 			this.draw();
 		});
+	}
 
+	// Quantity stepper, finish and copy-to. Returns the copy box, which the phone's art mode moves (arrangePanelForArt).
+	private drawAttributeRow(panel: HTMLElement) {
 		const attrRow = panel.createDiv({ cls: "mtg-card-detail-box-row" });
 
 		const qtyBox = attrRow.createDiv({ cls: "mtg-card-detail-box mtg-card-detail-qty-box" });
@@ -395,36 +435,6 @@ export class WantlistCardDetailModal extends Modal {
 			}).open();
 		});
 
-		const wantlist = this.plugin.settings.wantlists.find((w) => w.id === this.card.listId);
-		const wantlistBoxRow = panel.createDiv({ cls: "mtg-card-detail-box-row" });
-		const wantlistBox = wantlistBoxRow.createDiv({
-			cls: "mtg-card-detail-box mtg-card-detail-list-box mtg-card-detail-set-box-clickable",
-		});
-		wantlistBox.setAttribute("title", "Move card to another wantlist…");
-		wantlistBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Wantlist" });
-		wantlistBox.createDiv({ cls: "mtg-card-detail-list-box-value", text: wantlist?.name ?? "" });
-		wantlistBox.addEventListener("click", () => {
-			new CopyCardModal(
-				this.app,
-				this.plugin,
-				[this.card],
-				"wantlist",
-				() => {
-					this.close();
-					this.view.render();
-				},
-				"move"
-			).open();
-		});
-
-		this.renderCopiesInListsBox(panel);
-		this.renderLegalFormatsBox(panel);
-		this.renderStorePricesBox(panel);
-		this.renderPriceHistoryBox(panel);
-		this.renderCardDescriptionBox(panel);
-		if (artMode) arrangePanelForArt(panel, wantlistBoxRow, [copyBox], null);
-		this.scheduleTextPrefetch();
-
 		const refreshQuantityAndPrice = () => {
 			valueEl.setText(String(this.card.count));
 			if (this.copiesActiveTileMetaEl) {
@@ -448,6 +458,37 @@ export class WantlistCardDetailModal extends Modal {
 			});
 		});
 
+		return { copyBox };
+	}
+
+	// The "Wantlist" box: which wantlist the card is in, and the shortcut to move it.
+	private drawWantlistBox(panel: HTMLElement): HTMLElement {
+		const wantlist = this.plugin.settings.wantlists.find((w) => w.id === this.card.listId);
+		const wantlistBoxRow = panel.createDiv({ cls: "mtg-card-detail-box-row" });
+		const wantlistBox = wantlistBoxRow.createDiv({
+			cls: "mtg-card-detail-box mtg-card-detail-list-box mtg-card-detail-set-box-clickable",
+		});
+		wantlistBox.setAttribute("title", "Move card to another wantlist…");
+		wantlistBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Wantlist" });
+		wantlistBox.createDiv({ cls: "mtg-card-detail-list-box-value", text: wantlist?.name ?? "" });
+		wantlistBox.addEventListener("click", () => {
+			new CopyCardModal(
+				this.app,
+				this.plugin,
+				[this.card],
+				"wantlist",
+				() => {
+					this.close();
+					this.view.render();
+				},
+				"move"
+			).open();
+		});
+		return wantlistBoxRow;
+	}
+
+	// The "Mark as acquired" button.
+	private drawActions(panel: HTMLElement) {
 		const actions = panel.createDiv({ cls: "mtg-card-detail-actions" });
 		const acquiredBtn = actions.createEl("button", {
 			text: "✓ Mark as acquired",
@@ -461,8 +502,6 @@ export class WantlistCardDetailModal extends Modal {
 			new MarkAsAcquiredModal(this.app, this.plugin, this.view, [this.card.id]).open();
 			this.close();
 		});
-
-		setupPanelScrollFade(panel);
 	}
 
 	// Same principle as CardDetailModal.renderCopiesInListsBox — cross-section

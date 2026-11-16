@@ -29,7 +29,15 @@ import type MTGCollectionPlugin from "../plugin";
     Split out of plugin.ts on 2026-09-10.  */
 /* -------------------------------------------------------------------------- */
 
-export async function importDecklistToDeck(this: MTGCollectionPlugin, 
+// A cell of a CSV row, trimmed; "" when the column does not exist OR when the row is shorter than the header (parseCsv
+// does not pad a short row). A missing cell is an empty cell, as in any spreadsheet: it used to be `undefined`, and
+// `(scry?.set ?? row.setCode).toLowerCase()` then aborted the whole import half way for a card Scryfall did not answer
+// for (found by the tests of the 2026-11-15 audit).
+function cell(row: string[], index: number): string {
+	return index === -1 ? "" : (row[index]?.trim() ?? "");
+}
+
+export async function importDecklistToDeck(this: MTGCollectionPlugin,
 	deckId: string,
 	text: string,
 	onProgress: (msg: string) => void
@@ -248,16 +256,16 @@ export async function importDeckCsv(this: MTGCollectionPlugin,
 		pending.push({
 			scryfallId: scryfallIdIdx !== -1 ? row[scryfallIdIdx]?.trim() : undefined,
 			name,
-			setCode: setCodeIdx !== -1 ? row[setCodeIdx]?.trim() : "",
-			setName: setNameIdx !== -1 ? row[setNameIdx]?.trim() : "",
-			number: numberIdx !== -1 ? row[numberIdx]?.trim() : "",
-			rarity: rarityIdx !== -1 ? row[rarityIdx]?.trim() : "",
-			typeLine: typeLineIdx !== -1 ? row[typeLineIdx]?.trim() : "",
-			manaCost: manaCostIdx !== -1 ? row[manaCostIdx]?.trim() : "",
+			setCode: cell(row, setCodeIdx),
+			setName: cell(row, setNameIdx),
+			number: cell(row, numberIdx),
+			rarity: cell(row, rarityIdx),
+			typeLine: cell(row, typeLineIdx),
+			manaCost: cell(row, manaCostIdx),
 			qty,
 			finish: parseFinishValue(finishRaw),
 			language: LANGUAGES.some((l) => l.code === langRaw) ? langRaw : "",
-			condition: conditionIdx !== -1 ? row[conditionIdx]?.trim() : "",
+			condition: cell(row, conditionIdx),
 			gradingCompany,
 			gradingGrade,
 			gradingLabel,
@@ -712,12 +720,12 @@ export async function importCsv(this: MTGCollectionPlugin,
 			scryfallId:
 				scryfallIdIdx !== -1 ? row[scryfallIdIdx]?.trim() : undefined,
 			name,
-			setCode: setCodeIdx !== -1 ? row[setCodeIdx]?.trim() : "",
-			setName: setNameIdx !== -1 ? row[setNameIdx]?.trim() : "",
-			number: numberIdx !== -1 ? row[numberIdx]?.trim() : "",
-			rarity: rarityIdx !== -1 ? row[rarityIdx]?.trim() : "",
-			typeLine: typeLineIdx !== -1 ? row[typeLineIdx]?.trim() : "",
-			manaCost: manaCostIdx !== -1 ? row[manaCostIdx]?.trim() : "",
+			setCode: cell(row, setCodeIdx),
+			setName: cell(row, setNameIdx),
+			number: cell(row, numberIdx),
+			rarity: cell(row, rarityIdx),
+			typeLine: cell(row, typeLineIdx),
+			manaCost: cell(row, manaCostIdx),
 			qty,
 			finish: parseFinishValue(finishRaw),
 			// A missing/empty Language column (langRaw === "") or an unrecognized
@@ -725,7 +733,7 @@ export async function importCsv(this: MTGCollectionPlugin,
 			// language chosen, see getLanguage/types.ts) rather than an arbitrary
 			// English.
 			language: LANGUAGES.some((l) => l.code === langRaw) ? langRaw : "",
-			condition: conditionIdx !== -1 ? row[conditionIdx]?.trim() : "",
+			condition: cell(row, conditionIdx),
 			gradingCompany,
 			gradingGrade,
 			gradingLabel,
@@ -916,12 +924,12 @@ export async function importWantlistCsv(this: MTGCollectionPlugin,
 			scryfallId:
 				scryfallIdIdx !== -1 ? row[scryfallIdIdx]?.trim() : undefined,
 			name,
-			setCode: setCodeIdx !== -1 ? row[setCodeIdx]?.trim() : "",
-			setName: setNameIdx !== -1 ? row[setNameIdx]?.trim() : "",
-			number: numberIdx !== -1 ? row[numberIdx]?.trim() : "",
-			rarity: rarityIdx !== -1 ? row[rarityIdx]?.trim() : "",
-			typeLine: typeLineIdx !== -1 ? row[typeLineIdx]?.trim() : "",
-			manaCost: manaCostIdx !== -1 ? row[manaCostIdx]?.trim() : "",
+			setCode: cell(row, setCodeIdx),
+			setName: cell(row, setNameIdx),
+			number: cell(row, numberIdx),
+			rarity: cell(row, rarityIdx),
+			typeLine: cell(row, typeLineIdx),
+			manaCost: cell(row, manaCostIdx),
 			qty,
 			finish: parseFinishValue(finishRaw),
 		});

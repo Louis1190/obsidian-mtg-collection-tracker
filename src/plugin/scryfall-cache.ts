@@ -1,7 +1,6 @@
 import {
 	ScryfallSetSummary,
 	SCRYFALL_HEADERS,
-	sanitizeSvg,
 	sleep,
 	fetchScryfallCollection,
 	CardTextInfo,
@@ -14,6 +13,7 @@ import {
 	ScryfallCard,
 	ScryfallImmutableSnapshot,
 } from "../api/scryfall";
+import { pruneUnusedExpired, scryfallIdsInUse } from "../core/cache-prune";
 import {
 	VIEW_TYPE_MTG_COLLECTION,
 } from "../core/data-model";
@@ -112,7 +112,7 @@ export async function fetchSetIconSvg(this: MTGCollectionPlugin, setCode: string
 		if (svgRes.status !== 200) {
 			return null;
 		}
-		const svg = sanitizeSvg(svgRes.text);
+		const svg = svgRes.text;
 		this.setIconCache.set(setCode, svg);
 		this.scheduleMapCachePersist(ICON_CACHE_FILENAME, this.setIconCache);
 		return svg;
@@ -210,9 +210,22 @@ export async function loadPersistedLegalitiesCache(this: MTGCollectionPlugin): P
 			this.legalitiesCache.set(scryfallId, entry.legalities);
 			this.legalitiesFetchedAt.set(scryfallId, entry.fetchedAt);
 		}
+		// The settings are loaded before this runs (onload), so what is held is known. A file that had a lot to forget
+		// is rewritten soon, so it shrinks at once instead of at the next refresh.
+		if (this.pruneLegalitiesCache() > 0) this.scheduleLegalitiesPersist();
 	} catch {
 		// Silent by design — see the method's comment.
 	}
+}
+
+// Forgets the legalities nobody needs: entries of cards held in no list, wantlist or deck whose data is older than the TTL
+// (core/cache-prune.ts has the rule and why). It never touches the entry of a held card, even an expired one: those are
+// served at once while the refresh runs (see isLegalitiesFresh). Called when the file is read and before it is written,
+// because Obsidian can stay open for weeks and the in-memory cache would otherwise only ever grow. Returns how many it
+// removed.
+
+export function pruneLegalitiesCache(this: MTGCollectionPlugin): number {
+	return pruneUnusedExpired(this.legalitiesCache, this.legalitiesFetchedAt, scryfallIdsInUse(this.settings), Date.now(), LEGALITIES_CACHE_TTL_MS);
 }
 
 // Deferred write (see LEGALITIES_PERSIST_DEBOUNCE_MS) triggered by any
@@ -233,6 +246,7 @@ export function scheduleLegalitiesPersist(this: MTGCollectionPlugin) {
 export async function flushLegalitiesPersist(this: MTGCollectionPlugin): Promise<void> {
 	const path = this.legalitiesCacheFilePath();
 	if (!path) return;
+	this.pruneLegalitiesCache();
 	const out: Record<string, { legalities: Record<string, string>; fetchedAt: number }> = {};
 	this.legalitiesCache.forEach((legalities, scryfallId) => {
 		const fetchedAt = this.legalitiesFetchedAt.get(scryfallId);
@@ -833,7 +847,7 @@ export async function fetchManaSymbolSvg(this: MTGCollectionPlugin, colorLetter:
 		if (svgRes.status !== 200) {
 			return null;
 		}
-		const svg = sanitizeSvg(svgRes.text);
+		const svg = svgRes.text;
 		this.setIconCache.set(cacheKey, svg);
 		this.scheduleMapCachePersist(ICON_CACHE_FILENAME, this.setIconCache);
 		return svg;

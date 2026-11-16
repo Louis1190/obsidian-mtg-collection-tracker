@@ -239,16 +239,31 @@ function tombstonesOf(settings: Obj): Tombstones {
 	return t !== null && typeof t === "object" && !Array.isArray(t) ? (t as Tombstones) : {};
 }
 
+// Names that are never a collection name nor an entity key (ids are generated or Scryfall's), and that reach a
+// built-in when used as a key on a plain object. The tombstones come from files other devices wrote and from GitHub,
+// so a hostile one can carry them: `out["__proto__"] ??= {}` hands back Object.prototype itself (not nullish), and
+// the write that follows then lands on it, i.e. on every object of Obsidian and of every other plugin.
+const UNSAFE_KEYS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
+
+const hasOwn = (o: object, key: string): boolean => Object.prototype.hasOwnProperty.call(o, key);
+
 function mergeTombstones(a: Tombstones, b: Tombstones): Tombstones {
 	const out: Tombstones = {};
 	for (const src of [a, b]) {
 		for (const coll of Object.keys(src)) {
+			if (UNSAFE_KEYS.has(coll)) continue;
 			const entries = src[coll];
 			if (entries === null || typeof entries !== "object") continue;
-			const dst = (out[coll] ??= {});
+			// Own property only: an inherited name ("toString") is a function, not an empty slot to fill.
+			let dst = hasOwn(out, coll) ? out[coll] : undefined;
+			if (dst === undefined) {
+				dst = {};
+				out[coll] = dst;
+			}
 			for (const key of Object.keys(entries)) {
+				if (UNSAFE_KEYS.has(key)) continue;
 				const ts = entries[key];
-				if (typeof ts === "number" && (dst[key] === undefined || ts > dst[key])) dst[key] = ts;
+				if (typeof ts === "number" && (!hasOwn(dst, key) || ts > dst[key])) dst[key] = ts;
 			}
 		}
 	}

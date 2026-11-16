@@ -62,6 +62,8 @@ export interface ScryfallCard {
 		loyalty?: string;
 		// Each face of a double-faced card names its own illustrator (the two sides can differ).
 		artist?: string;
+		/** on a double-faced card Scryfall gives the illustration to each face, not to the card */
+		illustration_id?: string;
 		image_uris?: { normal?: string; small?: string; art_crop?: string };
 	}[];
 	prices?: {
@@ -772,43 +774,14 @@ export function getSetGroupLabel(setType: string): string {
 // same fallback as above.
 export const SET_GROUP_ORDER: string[] = [...SET_TYPE_GROUPS.map((g) => g.label), "Other"];
 
-// Minimal SVG cleanup before it is cached / inserted into the DOM — used both for the
-// ribbon's customizable icon (customIconSvg, free input) and for the set/symbol SVGs
-// fetched from Scryfall (fetchSetIconSvg/fetchManaSymbolSvg, plugin.ts). Removes:
-// - <script> tags;
-// - event-handler attributes (onclick, onload…);
-// - javascript:/data: URIs in href/xlink:href (e.g. <a href="javascript:...">, <use
-//   href="data:image/svg+xml;base64,...">) — a <script>-less SVG can still execute code
-//   through these attributes;
-// - <foreignObject> (can embed arbitrary HTML/JS in an SVG context) and the SMIL
-//   animation tags (<animate>/<set>/<animateTransform>/<animateMotion>), a historical
-//   SVG XSS vector through their values/to/from attributes.
-// It remains a regex cleanup, not a guarantee: the real barrier is setSvgMarkup
-// (ui/svg-markup.ts), which rebuilds the DOM from an allow-list and therefore lets
-// through no <script>, no on* attribute, no href, whatever this cleanup left behind. It
-// remains useful upstream: what is cached on disk is already clean.
-//
-// Two things CodeQL (js/bad-tag-filter, js/incomplete-multi-character-sanitization) reported, fixed the way
-// its help recommends. (1) The passes are repeated until the text stops changing: removing a fragment can
-// assemble a new forbidden one out of what sat on both sides of it (`<scr<script></script>ipt>`,
-// `o onclick="x"nload="y"`), which a single pass leaves behind. Every pass only shortens the string, so the
-// loop always ends. (2) An end tag is any `</script` followed by a space, a slash or `>` up to the next `>`:
-// browsers accept `</script >` and `</script foo="bar">`, and so does the HTML parser behind setSvgMarkup.
-export function sanitizeSvg(svg: string): string {
-	let clean = svg;
-	let previous: string;
-	do {
-		previous = clean;
-		clean = clean.replace(/<script[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi, "");
-		clean = clean.replace(/\son\w+\s*=\s*"[^"]*"/gi, "");
-		clean = clean.replace(/\son\w+\s*=\s*'[^']*'/gi, "");
-		clean = clean.replace(/\s(?:xlink:)?href\s*=\s*"\s*(?:javascript|data):[^"]*"/gi, "");
-		clean = clean.replace(/\s(?:xlink:)?href\s*=\s*'\s*(?:javascript|data):[^']*'/gi, "");
-		clean = clean.replace(/<foreignObject[\s\S]*?<\/foreignObject(?:[\s/][^>]*)?>/gi, "");
-		clean = clean.replace(/<(animate|animatetransform|animatemotion|set)\b[^>]*\/?>(?:[\s\S]*?<\/\1>)?/gi, "");
-	} while (clean !== previous);
-	return clean;
-}
+// There is no SVG cleanup function here on purpose (a regex one, `sanitizeSvg`, was removed): every SVG that reaches
+// the DOM — Scryfall's set/symbol icons, the ribbon's customizable icon (customIconSvg, free input), logos, charts —
+// goes through setSvgMarkup (ui/svg-markup.ts), which parses it in an inert document and REBUILDS it from an
+// allow-list of elements and attributes. That is the one barrier; a regex layer in front of it added nothing the
+// allow-list does not already do (measured on the real icon cache: it changed none of 692 icons, and the rendered
+// DOM was identical with and without it) and CodeQL kept flagging it as incomplete (the loop of 1.0.561 did not
+// satisfy it). A new place that shows an SVG calls setSvgMarkup; src/__tests__/no-html-injection.test.ts fails on
+// any innerHTML-style assignment.
 
 // Minimal "RFC 4180" CSV parser: handles quoted fields containing commas, line
 // breaks and escaped quotes (""). Needed because Delver exports contain

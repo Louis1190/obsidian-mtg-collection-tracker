@@ -115,6 +115,42 @@ describe("setSvgMarkup: what it refuses", () => {
 		expect(describeTree(el)).toEqual(["svg:svg[]", "svg:path[d,fill]", "svg:path[d]", "svg:path[d,stroke]", "svg:path[d]", "svg:path[d]"]);
 	});
 
+	// The regex cleanup that used to sit in front of this function (sanitizeSvg) is gone: the allow-list is the only
+	// barrier now, so the shapes that cleanup was written against (and that CodeQL reported bypasses of) are checked
+	// here, against the allow-list alone.
+	it("leaves nothing of the shapes a regex cleanup is known to miss", () => {
+		const hostile = [
+			"<svg><script>alert(1)</script ><circle r='1'/></svg>",
+			'<svg><script>alert(1)</script foo="bar"><circle r="1"/></svg>',
+			"<svg><script>alert(1)</script/><circle r='1'/></svg>",
+			"<svg><scr<script></script>ipt>alert(1)</script><circle r='1'/></svg>",
+			'<svg o onclick="x"nload="alert(1)"><circle r="1"/></svg>',
+			"<svg o onclick='x'nload='alert(1)'><circle r='1'/></svg>",
+			'<svg><a hr href="javascript:x"ef="javascript:alert(1)">x</a></svg>',
+			"<svg><a hr href='data:x'ef='javascript:alert(1)'>x</a></svg>",
+			'<svg><a href=" javascript:alert(1)"><text>x</text></a></svg>',
+			'<svg><use href="data:image/svg+xml;base64,PHN2Zz48c2NyaXB0PmFsZXJ0KDEpPC9zY3JpcHQ+PC9zdmc+#x"/></svg>',
+			"<svg><foreignObject><p>hi</p></foreignObject ><circle r='1'/></svg>",
+			'<svg><foreignObject><iframe srcdoc="<script>alert(1)</script>"></iframe></foreignObject x="y"></svg>',
+			'<svg><anim<set x="1"/>ate attributeName="x" to="1"/><circle r="1"/></svg>',
+			'<svg><animate attributeName="href" values="javascript:alert(1)"/><set attributeName="onmouseover" to="alert(1)"/></svg>',
+			"<svg><style>*{background:url(javascript:alert(1))}</style><circle r='1'/></svg>",
+			'<svg><title><img src=x onerror=alert(1)></title></svg>',
+			"<math><mtext><table><mglyph><style><img src onerror=alert(1)>",
+			'<svg><script/xlink:href="data:text/javascript,alert(1)"></script></svg>',
+			"<!-- <svg onload=alert(1)> --><svg><circle r='1'/></svg>",
+			'<svg><circle r="1" style="background:url(javascript:alert(1))"/></svg>',
+		];
+		for (const source of hostile) {
+			const tree = describeTree(inject(source));
+			const html = inject(source).innerHTML;
+			expect(tree.every((line) => line.startsWith("svg:")), source).toBe(true);
+			expect(tree.some((line) => /[[,](on\w+|href|xlink:href|style|src|srcdoc)[\],]/i.test(line)), source).toBe(false);
+			expect(html, source).not.toMatch(/<(script|style|iframe|img|foreignObject|animate|set|use|a)\b/i);
+			expect(html, source).not.toMatch(/\son\w+\s*=|javascript:/i);
+		}
+	});
+
 	it("survives garbage without throwing", () => {
 		for (const junk of ["", "   ", "<", "<svg", "<<<>>>", "<svg><path d='", "\u0000<svg>\u0000", "<svg><svg><svg>".repeat(200), "<svg a:b='1' data-a:b='2' data-=\"3\"/>"]) {
 			expect(() => inject(junk)).not.toThrow();

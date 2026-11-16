@@ -1057,7 +1057,7 @@ export function renderPriceHistorySourceFooter(box: HTMLElement, source: PriceHi
 	const footer = box.createDiv({ cls: "mtg-price-history-source" });
 	footer.setText(`Source: ${PRICE_HISTORY_SOURCES[source].label}`);
 	footerUrls.set(footer, PRICE_HISTORY_SOURCES[source].url);
-	footer.addEventListener("click", () => window.open(footerUrls.get(footer), "_blank"));
+	footer.addEventListener("click", () => openExternalUrl(footerUrls.get(footer)));
 	return footer;
 }
 

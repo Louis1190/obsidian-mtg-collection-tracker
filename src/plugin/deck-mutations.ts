@@ -340,6 +340,7 @@ export function addCollectionCardToDeck(this: MTGCollectionPlugin, card: DeckSou
 	if (existing) {
 		existing.count += 1;
 		existing.owned = true;
+		existing.dateModified = Date.now();
 	} else {
 		const now = Date.now();
 		deck.cards.push({
@@ -396,6 +397,7 @@ export function addWantlistCardToDeck(this: MTGCollectionPlugin, card: DeckSourc
 	const existing = deck.cards.find((c) => c.scryfallId === card.scryfallId);
 	if (existing) {
 		existing.count += 1;
+		existing.dateModified = Date.now();
 	} else {
 		const now = Date.now();
 		deck.cards.push({
@@ -448,6 +450,10 @@ export function changeDeckCardCount(this: MTGCollectionPlugin,
 	const card = deck.cards.find((c) => c.scryfallId === scryfallId);
 	if (!card) return;
 	card.count = Math.max(0, card.count + delta);
+	// A deck card is settled by its own dateModified when two devices merge (core/settings-merge.ts): a change that
+	// leaves it alone can be undone by an older copy when there is no common ancestor (a decrement went back from 1
+	// to 3 in the tests of the 2026-11-15 audit).
+	card.dateModified = Date.now();
 	void this.saveSettings();
 	onDone();
 }
@@ -688,14 +694,27 @@ export async function copyDeckCardToList(this: MTGCollectionPlugin,
 }
 
 
-export async function moveDeckCardToList(this: MTGCollectionPlugin, 
+// Takes out of a deck the ONE row that a move has just copied elsewhere: the first row of that card on that board, the
+// very lookup the copy functions use. A move used to call removeDeckCard, which removes EVERY row of the card whatever
+// its board, so moving the mainboard copy also deleted a sideboard copy that was never moved (found by the tests of the
+// 2026-11-15 audit). removeDeckCard itself stays as it is for an explicit "remove this card".
+function removeMovedDeckRow(plugin: MTGCollectionPlugin, deckId: string, scryfallId: string, category: DeckCardCategory) {
+	const deck = plugin.settings.decks.find((d) => d.id === deckId);
+	if (!deck) return;
+	const row = deck.cards.find((c) => c.scryfallId === scryfallId && getDeckCardCategory(c) === category);
+	if (!row) return;
+	deck.cards = deck.cards.filter((c) => c !== row);
+	void plugin.saveSettings();
+}
+
+export async function moveDeckCardToList(this: MTGCollectionPlugin,
 	deckId: string,
 	scryfallId: string,
 	category: DeckCardCategory,
 	targetListId: string
 ): Promise<void> {
 	const copied = await this.copyDeckCardToList(deckId, scryfallId, category, targetListId);
-	if (copied) this.removeDeckCard(deckId, scryfallId);
+	if (copied) removeMovedDeckRow(this, deckId, scryfallId, category);
 }
 
 // See copyDeckCardToList above — same reasoning (Scryfall round trip,
@@ -772,7 +791,7 @@ export async function moveDeckCardToWantlist(this: MTGCollectionPlugin,
 	targetWantlistId: string
 ): Promise<void> {
 	const copied = await this.copyDeckCardToWantlist(deckId, scryfallId, category, targetWantlistId);
-	if (copied) this.removeDeckCard(deckId, scryfallId);
+	if (copied) removeMovedDeckRow(this, deckId, scryfallId, category);
 }
 
 // Deck → deck, unlike the 2 pairs above: source AND destination are
@@ -784,13 +803,15 @@ export async function moveDeckCardToWantlist(this: MTGCollectionPlugin,
 // itself in the same array, double its counter then delete it — a loss of
 // card, not a no-op.
 
-export function copyDeckCardToDeck(this: MTGCollectionPlugin, fromDeckId: string, scryfallId: string, category: DeckCardCategory, toDeckId: string) {
-	if (fromDeckId === toDeckId) return;
+// Answers whether a card really landed in the other deck, like copyDeckCardToList/copyDeckCardToWantlist: a move only
+// takes the card out of the source when it did, so it never makes a card vanish without it arriving anywhere.
+export function copyDeckCardToDeck(this: MTGCollectionPlugin, fromDeckId: string, scryfallId: string, category: DeckCardCategory, toDeckId: string): boolean {
+	if (fromDeckId === toDeckId) return false;
 	const fromDeck = this.settings.decks.find((d) => d.id === fromDeckId);
 	const toDeck = this.settings.decks.find((d) => d.id === toDeckId);
-	if (!fromDeck || !toDeck) return;
+	if (!fromDeck || !toDeck) return false;
 	const card = fromDeck.cards.find((c) => c.scryfallId === scryfallId && getDeckCardCategory(c) === category);
-	if (!card) return;
+	if (!card) return false;
 	// + Commander status (see isDeckCommander) on the destination merge — same
 	// reasoning as mergeDeckDuplicates/changeDeckCardPrinting: category alone
 	// is no longer enough to tell a Commander from an ordinary mainboard card
@@ -807,13 +828,15 @@ export function copyDeckCardToDeck(this: MTGCollectionPlugin, fromDeckId: string
 		toDeck.cards.push({ ...card, dateAdded: now, dateModified: now });
 	}
 	void this.saveSettings();
+	return true;
 }
 
 
 export function moveDeckCardToDeck(this: MTGCollectionPlugin, fromDeckId: string, scryfallId: string, category: DeckCardCategory, toDeckId: string) {
 	if (fromDeckId === toDeckId) return;
-	this.copyDeckCardToDeck(fromDeckId, scryfallId, category, toDeckId);
-	this.removeDeckCard(fromDeckId, scryfallId);
+	if (this.copyDeckCardToDeck(fromDeckId, scryfallId, category, toDeckId)) {
+		removeMovedDeckRow(this, fromDeckId, scryfallId, category);
+	}
 }
 
 // "Bulk" versions of the grouped actions: a single disk write for the

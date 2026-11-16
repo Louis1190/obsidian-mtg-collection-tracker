@@ -68,6 +68,7 @@ import {
 	updateCardImage,
 	updateCardNavName,
 	CopyTile,
+	type DetailDrawRefs,
 } from "./shared-detail-boxes";
 
 /* -------------------------------------------------------------------------- */
@@ -215,27 +216,7 @@ export class DeckCardDetailModal extends Modal {
 		}
 
 		if (this.confirmingDelete) {
-			const confirmWrap = contentEl.createDiv({ cls: "mtg-card-detail-confirm-wrap" });
-			confirmWrap.createEl("h2", { text: "Remove this card?" });
-			confirmWrap.createEl("p", {
-				text: `Remove ${this.card.count}x "${this.card.name}" from "${this.deck.name}"? This cannot be undone.`,
-				cls: "mtg-status",
-			});
-			const row = confirmWrap.createDiv({ cls: "mtg-svg-btn-row" });
-			const yesBtn = row.createEl("button", {
-				text: "Yes, remove",
-				cls: "mtg-remove-btn",
-			});
-			yesBtn.addEventListener("click", () => {
-				this.plugin.removeDeckCard(this.deck.id, this.card.scryfallId);
-				this.close();
-				this.view.render();
-			});
-			const noBtn = row.createEl("button", { text: "No, cancel" });
-			noBtn.addEventListener("click", () => {
-				this.confirmingDelete = false;
-				this.draw();
-			});
+			this.drawDeleteConfirmation(contentEl);
 			return;
 		}
 
@@ -246,209 +227,275 @@ export class DeckCardDetailModal extends Modal {
 		const isAlpha = isAlphaSet(this.card.setCode);
 		const imageColumn = layout.createDiv({ cls: "mtg-card-detail-image-column" });
 
-		// Condition/language displayed in two places (icons above the image +
-		// panel boxes in the collapsible section) — see CardDetailModal.draw for
-		// the full reasoning, identical here. My Decks/My Collection
-		// harmonization, 2026-08-25: DeckCard now carries condition/language (see
-		// data-model.ts), found here via deck.id + scryfallId
-		// (setDeckCardCondition/setDeckCardLanguage) rather than an id of its own,
-		// like changeDeckCardCount further down.
-		let condGlyphImageEl: HTMLElement | null = null;
-		let condBtnImageEl: HTMLElement | null = null;
-		let langFlagImageEl: HTMLElement | null = null;
-		let langBtnImageEl: HTMLElement | null = null;
-		let condValuePanelEl: HTMLElement | null = null;
-		let langValuePanelEl: HTMLElement | null = null;
-
-		const conditionPickerItems = () =>
-			CONDITIONS.map((c) => ({
-				render: (el: HTMLElement) => {
-					createConditionIcon(el, c.value, "mtg-picker-condition-glyph");
-					el.createSpan({ text: c.label });
-				},
-				onSelect: () => applyCondition(c.value),
-			}));
-
-		const applyCondition = (value: string) => {
-			this.plugin.setDeckCardCondition(this.deck.id, this.card.scryfallId, value);
-			this.card.condition = value;
-			if (condBtnImageEl && condGlyphImageEl) {
-				condGlyphImageEl.remove();
-				condGlyphImageEl = createConditionIcon(
-					condBtnImageEl,
-					value,
-					"mtg-card-detail-image-icon-glyph"
-				);
-				condBtnImageEl.setAttribute("title", getCondition(value).label);
-			}
-			if (condValuePanelEl) {
-				condValuePanelEl.setText(getCondition(value).label);
-			}
-			this.view.render();
+		// The elements and values the pieces of draw() share (see DetailDrawRefs): only filled in by the piece that creates them.
+		const refs: DetailDrawRefs = {
+			condGlyphImageEl: null,
+			condBtnImageEl: null,
+			langFlagImageEl: null,
+			langBtnImageEl: null,
+			condValuePanelEl: null,
+			langValuePanelEl: null,
+			gradingWrapperEl: null,
+			artCredit: null,
 		};
 
-		const openLanguagePickerFrom = (
-			anchor: HTMLElement,
-			menuOptions?: { matchAnchorWidth?: boolean; menuClass?: string }
-		) => {
-			void this.plugin
-				.getAvailableLanguages(this.card.setCode, this.card.collectorNumber)
-				.then((availableCodes) => {
-					const options = languagePickerOptions(availableCodes);
-					openPickerMenu(
-						anchor,
-						options.map((l) => ({
-							render: (el: HTMLElement) => {
-								createFlagImg(el, l.flag, "mtg-flag-img mtg-flag-img-inline");
-								el.createSpan({ text: l.label });
-							},
-							onSelect: () => applyLanguage(l.code),
-						})),
-						menuOptions
-					);
-				});
-		};
-
-		const applyLanguage = (code: string) => {
-			this.plugin.setDeckCardLanguage(this.deck.id, this.card.scryfallId, code);
-			this.card.language = code;
-			this.refreshNavName();
-			const lang = getLanguage(code);
-			if (langBtnImageEl && langFlagImageEl) {
-				langFlagImageEl.remove();
-				langFlagImageEl = createLanguageIcon(
-					langBtnImageEl,
-					code,
-					"mtg-card-detail-image-icon-flag",
-					"mtg-card-detail-image-icon-glyph"
-				);
-				langBtnImageEl.setAttribute("title", languageTooltip(code));
-			}
-			if (langValuePanelEl) {
-				langValuePanelEl.setText(lang.label);
-			}
-			this.view.render();
-		};
-
-		if (this.card.imageUrl) {
-			const imageIcons = imageColumn.createDiv({ cls: "mtg-card-detail-image-icons" });
-
-			const condBtn = imageIcons.createDiv({ cls: "mtg-card-detail-image-icon-btn" });
-			condGlyphImageEl = createConditionIcon(
-				condBtn,
-				getDeckCardCondition(this.card),
-				"mtg-card-detail-image-icon-glyph"
-			);
-			condBtn.setAttribute("title", getCondition(getDeckCardCondition(this.card)).label);
-			condBtn.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				openPickerMenu(condBtn, conditionPickerItems());
-			});
-			condBtnImageEl = condBtn;
-
-			const langBtn = imageIcons.createDiv({ cls: "mtg-card-detail-image-icon-btn" });
-			langFlagImageEl = createLanguageIcon(
-				langBtn,
-				getDeckCardLanguage(this.card),
-				"mtg-card-detail-image-icon-flag",
-				"mtg-card-detail-image-icon-glyph"
-			);
-			langBtn.setAttribute("title", languageTooltip(getDeckCardLanguage(this.card)));
-			langBtn.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				openLanguagePickerFrom(langBtn);
-			});
-			langBtnImageEl = langBtn;
-
-			// Phone art mode shows the artwork alone: a third square button, under these two, shows the whole card.
-			if (artMode) {
-				addFullCardButton(imageIcons, contentEl, () =>
-					resolveFullCardUrl(
-						(id) => this.plugin.getCardFaceImages(id),
-						this.card.scryfallId,
-						this.flipped,
-						this.plugin.cardDisplayImage(this.card)
-					),
-					{ alpha: isAlpha }
-				);
-			}
-		}
+		if (this.card.imageUrl) this.drawImageIcons(imageColumn, contentEl, artMode, isAlpha, refs);
 
 		const viewport = imageColumn.createDiv({ cls: "mtg-card-detail-nav-viewport" });
 		const imageWrap = viewport.createDiv({
 			cls: isAlpha ? "mtg-card-detail-image-wrap mtg-card-detail-image-wrap-alpha" : "mtg-card-detail-image-wrap",
 		});
-		if (this.card.imageUrl) {
-			const finish = getDeckCardFinish(this.card);
-			const tilt = imageWrap.createDiv({ cls: "mtg-card-detail-tilt" });
-			const bannerImg = tilt.createEl("img", {
-				cls: "mtg-card-detail-image",
-				attr: { src: artMode ? this.card.artCropUrl : this.plugin.cardDisplayImage(this.card) },
-			});
-			if (artMode) holdPreviousBanner(contentEl, tilt, bannerImg, this.card.artCropUrl);
-			// Foil/holo color layers — see CardDetailModal for the full reasoning,
-			// identical here since DeckCard carries a finish (harmonization
-			// 2026-08-25).
-			if (finishHasFoilLook(finish)) {
-				tilt.createDiv({
-					cls: finish === "etched" ? "mtg-foil-overlay-etched" : "mtg-foil-overlay mtg-foil-overlay-large",
-				});
-				tilt.createDiv({
-					cls:
-						finish === "surged"
-							? "mtg-card-detail-holo-shine-surge"
-							: finish === "etched"
-								? "mtg-card-detail-holo-shine-etched"
-								: "mtg-card-detail-holo-shine",
-				});
-				tilt.createDiv({ cls: "mtg-card-detail-holo-sweep" });
-			}
-			setupCardTilt(imageWrap, tilt);
-
-			// 3D "flip" button — see CardDetailModal for the full reasoning (same
-			// shared function, same staleness guard). Only needs scryfallId, hence
-			// available here like for Price History/Card Text (and, since 2026-09-02,
-			// the TCGplayer Store Prices column — DeckCard now carries its own cached
-			// Scryfall price, see renderStorePricesBox further down).
-			const flipRequestedId = this.card.scryfallId;
-			void this.plugin.getCardFaceImages(flipRequestedId).then((images) => {
-				if (!images || this.card.scryfallId !== flipRequestedId) return;
-				// Art mode flips to the back face's artwork; no art for it = no button.
-				const backUrl = artMode ? images.backArt : images.back;
-				if (!backUrl) return;
-				artCredit?.setBackArtist(images.backArtist);
-				artCredit?.showFace(this.flipped);
-				setupDoubleFacedFlip(imageColumn, tilt, backUrl, this.flipped, (flipped) => {
-					this.flipped = flipped;
-					artCredit?.showFace(flipped);
-				});
-			});
-
-			// "Rotation" button — see CardDetailModal for the full reasoning. Only
-			// needs scryfallId, available here like for Price History/Card Text/the
-			// flip above.
-			const splitRequestedId = this.card.scryfallId;
-			void this.plugin.getSplitCardInfo(splitRequestedId).then((info) => {
-				// No text to turn 90° to read on the artwork: no rotation button in art mode.
-				if (!info || artMode || this.card.scryfallId !== splitRequestedId) return;
-				// Always portrait by default — see CardDetailModal.
-				if (this.splitRotated === null) this.splitRotated = false;
-				setupSplitCardRotation(imageColumn, tilt, this.splitRotated, (rotated) => {
-					this.splitRotated = rotated;
-				});
-			});
-			// Ribbon outside `tilt` (not a child): stays flat, pinned to the corner of
-			// the wrap, rather than pivoting with the card in 3D.
-			if (!isDeckCardOwned(this.card)) {
-				imageWrap.createDiv({ cls: "mtg-thumb-wanted-ribbon", text: "Wanted" });
-			}
-		}
+		if (this.card.imageUrl) this.drawCardImage(imageColumn, imageWrap, contentEl, artMode, refs);
 
 		const panel = layout.createDiv({ cls: "mtg-card-detail-panel" });
 		if (artMode) moveNavHeaderBelowArt(contentEl, panel);
 		// Last child of the layout, so it ends the scroll (Scryfall: artist + copyright next to an artwork shown alone).
-		const artCredit = artMode ? renderArtCredit(layout, this.card.artist) : null;
+		refs.artCredit = artMode ? renderArtCredit(layout, this.card.artist) : null;
 
+		this.drawHeaderRow(panel);
+		const { copyBox, gradingToggleBox } = this.drawAttributeRow(panel, refs);
+		if (this.gradingExpanded) this.drawGradingBlock(panel, refs);
+		const deckBoxRow = this.drawDeckBox(panel);
+		this.drawBoardAndFunctionRow(panel);
+
+		this.renderCopiesInListsBox(panel);
+		this.renderLegalFormatsBox(panel);
+		this.renderStorePricesBox(panel);
+		this.renderPriceHistoryBox(panel);
+		this.renderCardDescriptionBox(panel);
+		if (artMode) arrangePanelForArt(panel, deckBoxRow, [copyBox, gradingToggleBox], refs.gradingWrapperEl);
+		this.scheduleTextPrefetch();
+
+		setupPanelScrollFade(panel);
+	}
+
+	// The "Remove this card?" screen: replaces the whole window until the user answers (the caller returns right after).
+	private drawDeleteConfirmation(contentEl: HTMLElement) {
+		const confirmWrap = contentEl.createDiv({ cls: "mtg-card-detail-confirm-wrap" });
+		confirmWrap.createEl("h2", { text: "Remove this card?" });
+		confirmWrap.createEl("p", {
+			text: `Remove ${this.card.count}x "${this.card.name}" from "${this.deck.name}"? This cannot be undone.`,
+			cls: "mtg-status",
+		});
+		const row = confirmWrap.createDiv({ cls: "mtg-svg-btn-row" });
+		const yesBtn = row.createEl("button", {
+			text: "Yes, remove",
+			cls: "mtg-remove-btn",
+		});
+		yesBtn.addEventListener("click", () => {
+			this.plugin.removeDeckCard(this.deck.id, this.card.scryfallId);
+			this.close();
+			this.view.render();
+		});
+		const noBtn = row.createEl("button", { text: "No, cancel" });
+		noBtn.addEventListener("click", () => {
+			this.confirmingDelete = false;
+			this.draw();
+		});
+	}
+
+	// Condition/language displayed in two places (icons above the image + panel boxes in the collapsible section) — see CardDetailModal for the full
+	// reasoning, identical here. My Decks/My Collection harmonization, 2026-08-25: DeckCard now carries condition/language (see data-model.ts), found
+	// here via deck.id + scryfallId (setDeckCardCondition/setDeckCardLanguage) rather than an id of its own, like changeDeckCardCount. The references
+	// the pieces share (`refs`, see DetailDrawRefs) are only filled in if the corresponding element was actually created.
+	private conditionPickerItems(refs: DetailDrawRefs) {
+		return CONDITIONS.map((c) => ({
+			render: (el: HTMLElement) => {
+				createConditionIcon(el, c.value, "mtg-picker-condition-glyph");
+				el.createSpan({ text: c.label });
+			},
+			onSelect: () => this.applyCondition(refs, c.value),
+		}));
+	}
+
+	private applyCondition(refs: DetailDrawRefs, value: string) {
+		this.plugin.setDeckCardCondition(this.deck.id, this.card.scryfallId, value);
+		this.card.condition = value;
+		if (refs.condBtnImageEl && refs.condGlyphImageEl) {
+			refs.condGlyphImageEl.remove();
+			refs.condGlyphImageEl = createConditionIcon(
+				refs.condBtnImageEl,
+				value,
+				"mtg-card-detail-image-icon-glyph"
+			);
+			refs.condBtnImageEl.setAttribute("title", getCondition(value).label);
+		}
+		if (refs.condValuePanelEl) {
+			refs.condValuePanelEl.setText(getCondition(value).label);
+		}
+		this.view.render();
+	}
+
+	private openLanguagePickerFrom(
+		refs: DetailDrawRefs,
+		anchor: HTMLElement,
+		menuOptions?: { matchAnchorWidth?: boolean; menuClass?: string }
+	) {
+		void this.plugin
+			.getAvailableLanguages(this.card.setCode, this.card.collectorNumber)
+			.then((availableCodes) => {
+				const options = languagePickerOptions(availableCodes);
+				openPickerMenu(
+					anchor,
+					options.map((l) => ({
+						render: (el: HTMLElement) => {
+							createFlagImg(el, l.flag, "mtg-flag-img mtg-flag-img-inline");
+							el.createSpan({ text: l.label });
+						},
+						onSelect: () => this.applyLanguage(refs, l.code),
+					})),
+					menuOptions
+				);
+			});
+	}
+
+	private applyLanguage(refs: DetailDrawRefs, code: string) {
+		this.plugin.setDeckCardLanguage(this.deck.id, this.card.scryfallId, code);
+		this.card.language = code;
+		this.refreshNavName();
+		const lang = getLanguage(code);
+		if (refs.langBtnImageEl && refs.langFlagImageEl) {
+			refs.langFlagImageEl.remove();
+			refs.langFlagImageEl = createLanguageIcon(
+				refs.langBtnImageEl,
+				code,
+				"mtg-card-detail-image-icon-flag",
+				"mtg-card-detail-image-icon-glyph"
+			);
+			refs.langBtnImageEl.setAttribute("title", languageTooltip(code));
+		}
+		if (refs.langValuePanelEl) {
+			refs.langValuePanelEl.setText(lang.label);
+		}
+		this.view.render();
+	}
+
+	// Condition/language above the image (the first two square buttons of the stack; a third one, the whole card, on a phone).
+	private drawImageIcons(
+		imageColumn: HTMLElement,
+		contentEl: HTMLElement,
+		artMode: boolean,
+		isAlpha: boolean,
+		refs: DetailDrawRefs
+	) {
+		const imageIcons = imageColumn.createDiv({ cls: "mtg-card-detail-image-icons" });
+
+		const condBtn = imageIcons.createDiv({ cls: "mtg-card-detail-image-icon-btn" });
+		refs.condGlyphImageEl = createConditionIcon(
+			condBtn,
+			getDeckCardCondition(this.card),
+			"mtg-card-detail-image-icon-glyph"
+		);
+		condBtn.setAttribute("title", getCondition(getDeckCardCondition(this.card)).label);
+		condBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			openPickerMenu(condBtn, this.conditionPickerItems(refs));
+		});
+		refs.condBtnImageEl = condBtn;
+
+		const langBtn = imageIcons.createDiv({ cls: "mtg-card-detail-image-icon-btn" });
+		refs.langFlagImageEl = createLanguageIcon(
+			langBtn,
+			getDeckCardLanguage(this.card),
+			"mtg-card-detail-image-icon-flag",
+			"mtg-card-detail-image-icon-glyph"
+		);
+		langBtn.setAttribute("title", languageTooltip(getDeckCardLanguage(this.card)));
+		langBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.openLanguagePickerFrom(refs, langBtn);
+		});
+		refs.langBtnImageEl = langBtn;
+
+		// Phone art mode shows the artwork alone: a third square button, under these two, shows the whole card.
+		if (artMode) {
+			addFullCardButton(imageIcons, contentEl, () =>
+				resolveFullCardUrl(
+					(id) => this.plugin.getCardFaceImages(id),
+					this.card.scryfallId,
+					this.flipped,
+					this.plugin.cardDisplayImage(this.card)
+				),
+				{ alpha: isAlpha }
+			);
+		}
+	}
+
+	// The card's picture (or the artwork alone in art mode) with its tilt, foil layers, flip / rotate buttons and the "Wanted" ribbon.
+	private drawCardImage(
+		imageColumn: HTMLElement,
+		imageWrap: HTMLElement,
+		contentEl: HTMLElement,
+		artMode: boolean,
+		refs: DetailDrawRefs
+	) {
+		const finish = getDeckCardFinish(this.card);
+		const tilt = imageWrap.createDiv({ cls: "mtg-card-detail-tilt" });
+		const bannerImg = tilt.createEl("img", {
+			cls: "mtg-card-detail-image",
+			attr: { src: artMode ? this.card.artCropUrl : this.plugin.cardDisplayImage(this.card) },
+		});
+		if (artMode) holdPreviousBanner(contentEl, tilt, bannerImg, this.card.artCropUrl);
+		// Foil/holo color layers — see CardDetailModal for the full reasoning,
+		// identical here since DeckCard carries a finish (harmonization
+		// 2026-08-25).
+		if (finishHasFoilLook(finish)) {
+			tilt.createDiv({
+				cls: finish === "etched" ? "mtg-foil-overlay-etched" : "mtg-foil-overlay mtg-foil-overlay-large",
+			});
+			tilt.createDiv({
+				cls:
+					finish === "surged"
+						? "mtg-card-detail-holo-shine-surge"
+						: finish === "etched"
+							? "mtg-card-detail-holo-shine-etched"
+							: "mtg-card-detail-holo-shine",
+			});
+			tilt.createDiv({ cls: "mtg-card-detail-holo-sweep" });
+		}
+		setupCardTilt(imageWrap, tilt);
+
+		// 3D "flip" button — see CardDetailModal for the full reasoning (same
+		// shared function, same staleness guard). Only needs scryfallId, hence
+		// available here like for Price History/Card Text (and, since 2026-09-02,
+		// the TCGplayer Store Prices column — DeckCard now carries its own cached
+		// Scryfall price, see renderStorePricesBox further down).
+		const flipRequestedId = this.card.scryfallId;
+		void this.plugin.getCardFaceImages(flipRequestedId).then((images) => {
+			if (!images || this.card.scryfallId !== flipRequestedId) return;
+			// Art mode flips to the back face's artwork; no art for it = no button.
+			const backUrl = artMode ? images.backArt : images.back;
+			if (!backUrl) return;
+			refs.artCredit?.setBackArtist(images.backArtist);
+			refs.artCredit?.showFace(this.flipped);
+			setupDoubleFacedFlip(imageColumn, tilt, backUrl, this.flipped, (flipped) => {
+				this.flipped = flipped;
+				refs.artCredit?.showFace(flipped);
+			});
+		});
+
+		// "Rotation" button — see CardDetailModal for the full reasoning. Only
+		// needs scryfallId, available here like for Price History/Card Text/the
+		// flip above.
+		const splitRequestedId = this.card.scryfallId;
+		void this.plugin.getSplitCardInfo(splitRequestedId).then((info) => {
+			// No text to turn 90° to read on the artwork: no rotation button in art mode.
+			if (!info || artMode || this.card.scryfallId !== splitRequestedId) return;
+			// Always portrait by default — see CardDetailModal.
+			if (this.splitRotated === null) this.splitRotated = false;
+			setupSplitCardRotation(imageColumn, tilt, this.splitRotated, (rotated) => {
+				this.splitRotated = rotated;
+			});
+		});
+		// Ribbon outside `tilt` (not a child): stays flat, pinned to the corner of
+		// the wrap, rather than pivoting with the card in 3D.
+		if (!isDeckCardOwned(this.card)) {
+			imageWrap.createDiv({ cls: "mtg-thumb-wanted-ribbon", text: "Wanted" });
+		}
+	}
+
+	// Set box ("View all versions") and the trash button.
+	private drawHeaderRow(panel: HTMLElement) {
 		const headerRow = panel.createDiv({ cls: "mtg-card-detail-header-row" });
 		// Same clickable box → ChangePrintingModal as
 		// CardDetailModal/WantlistCardDetailModal (mtg-card-detail-set-box-clickable, "View
@@ -501,7 +548,10 @@ export class DeckCardDetailModal extends Modal {
 			this.confirmingDelete = true;
 			this.draw();
 		});
+	}
 
+	// Quantity stepper, finish, copy-to and the grading toggle. Returns the two boxes the phone's art mode moves (arrangePanelForArt).
+	private drawAttributeRow(panel: HTMLElement, refs: DetailDrawRefs) {
 		const attrRow = panel.createDiv({ cls: "mtg-card-detail-box-row" });
 		const qtyBox = attrRow.createDiv({ cls: "mtg-card-detail-box mtg-card-detail-qty-box" });
 		qtyBox.createDiv({ cls: "mtg-card-detail-qty-label", text: "Quantity" });
@@ -611,19 +661,18 @@ export class DeckCardDetailModal extends Modal {
 		});
 		setIcon(gradingToggleBox, this.gradingExpanded ? "chevron-up" : "chevron-down");
 		gradingToggleBox.setAttribute("title", "Grading & custom price");
-		let gradingWrapperEl: HTMLElement | null = null;
 		gradingToggleBox.addEventListener("click", () => {
 			if (this.gradingExpanded) {
 				this.gradingExpanded = false;
 				setIcon(gradingToggleBox, "chevron-down");
-				if (gradingWrapperEl) {
-					const currentHeight = gradingWrapperEl.getBoundingClientRect().height;
-					gradingWrapperEl.style.height = `${currentHeight}px`;
-					void gradingWrapperEl.offsetHeight;
-					gradingWrapperEl.removeClass("is-expanded");
+				if (refs.gradingWrapperEl) {
+					const currentHeight = refs.gradingWrapperEl.getBoundingClientRect().height;
+					refs.gradingWrapperEl.style.height = `${currentHeight}px`;
+					void refs.gradingWrapperEl.offsetHeight;
+					refs.gradingWrapperEl.removeClass("is-expanded");
 					// No more inline height: the base class has height:0 (styles.css), the transition starts from
 					// the pixel value set just above.
-					gradingWrapperEl.style.removeProperty("height");
+					refs.gradingWrapperEl.style.removeProperty("height");
 					window.setTimeout(() => {
 						if (!this.gradingExpanded) this.draw();
 					}, 300);
@@ -638,119 +687,141 @@ export class DeckCardDetailModal extends Modal {
 			}
 		});
 
-		if (this.gradingExpanded) {
-			const gradingWrapper = panel.createDiv({ cls: "mtg-card-detail-grading-wrapper" });
-			gradingWrapperEl = gradingWrapper;
-			const gradingContent = gradingWrapper.createDiv({ cls: "mtg-card-detail-grading-content" });
+		return { copyBox, gradingToggleBox };
+	}
 
-			const conditionLanguageRow = gradingContent.createDiv({ cls: "mtg-card-detail-box-row" });
+	// The collapsible grading block (condition / language / graded / custom price), drawn only when gradingExpanded.
+	private drawGradingBlock(panel: HTMLElement, refs: DetailDrawRefs) {
+		const gradingWrapper = panel.createDiv({ cls: "mtg-card-detail-grading-wrapper" });
+		refs.gradingWrapperEl = gradingWrapper;
+		const gradingContent = gradingWrapper.createDiv({ cls: "mtg-card-detail-grading-content" });
 
-			const condBox = conditionLanguageRow.createDiv({
-				cls: "mtg-card-detail-box mtg-card-detail-finish-box",
-			});
-			condBox.setAttribute("title", "Change condition");
-			condBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Condition" });
-			const condValueRow = condBox.createDiv({ cls: "mtg-card-detail-finish-value-row" });
-			condValueRow.createSpan();
-			condValuePanelEl = condValueRow.createSpan({
-				cls: "mtg-card-detail-finish-value",
-				text: getCondition(getDeckCardCondition(this.card)).label,
-			});
-			setIcon(condValueRow.createSpan({ cls: "mtg-card-detail-finish-caret" }), "chevron-down");
-			condBox.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				openPickerMenu(condBox, conditionPickerItems(), {
-					matchAnchorWidth: true,
-					menuClass: "mtg-finish-picker-menu",
-				});
-			});
+		this.drawConditionLanguageRow(gradingContent, refs);
 
-			const langBox = conditionLanguageRow.createDiv({
-				cls: "mtg-card-detail-box mtg-card-detail-finish-box",
-			});
-			langBox.setAttribute("title", "Change language");
-			langBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Language" });
-			const langValueRow = langBox.createDiv({ cls: "mtg-card-detail-finish-value-row" });
-			langValueRow.createSpan();
-			langValuePanelEl = langValueRow.createSpan({
-				cls: "mtg-card-detail-finish-value",
-				text: getLanguage(getDeckCardLanguage(this.card)).label,
-			});
-			setIcon(langValueRow.createSpan({ cls: "mtg-card-detail-finish-caret" }), "chevron-down");
-			langBox.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				openLanguagePickerFrom(langBox, { matchAnchorWidth: true, menuClass: "mtg-finish-picker-menu" });
-			});
+		this.drawGradingRow(gradingContent);
 
-			const gradingRow = gradingContent.createDiv({ cls: "mtg-card-detail-box-row" });
+		this.animateGradingBlock(gradingWrapper);
+	}
 
-			const gradedBox = gradingRow.createDiv({
-				cls: "mtg-card-detail-box mtg-card-detail-finish-box",
-			});
-			gradedBox.setAttribute("title", "Set grading");
-			gradedBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Graded" });
-			const gradedValueRow = gradedBox.createDiv({
-				cls: "mtg-card-detail-finish-value-row mtg-card-detail-finish-value-row-no-caret",
-			});
-			gradedValueRow.createSpan({
-				cls: "mtg-card-detail-finish-value",
-				text:
-					this.card.gradingGrade != null || this.card.gradingLabel
-						? `${this.card.gradingCompany ?? ""} ${this.card.gradingGrade ?? ""} ${
-								this.card.gradingLabel ?? ""
-						  }`
-								.replace(/\s+/g, " ")
-								.trim()
-						: "Not graded",
-			});
-			gradedBox.addEventListener("click", () => {
-				new GradingModal(
-					this.app,
-					this.plugin,
-					this.card,
-					() => {
-						this.view.render();
-						this.draw();
-					},
-					"deck",
-					{ deckId: this.deck.id, scryfallId: this.card.scryfallId }
-				).open();
-			});
+	// Condition and language boxes of the grading block (the same two values as the icons above the image, see applyCondition).
+	private drawConditionLanguageRow(gradingContent: HTMLElement, refs: DetailDrawRefs) {
+		const conditionLanguageRow = gradingContent.createDiv({ cls: "mtg-card-detail-box-row" });
 
-			const customPriceBox = gradingRow.createDiv({
-				cls: "mtg-card-detail-box mtg-card-detail-finish-box mtg-card-detail-customprice-box",
+		const condBox = conditionLanguageRow.createDiv({
+			cls: "mtg-card-detail-box mtg-card-detail-finish-box",
+		});
+		condBox.setAttribute("title", "Change condition");
+		condBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Condition" });
+		const condValueRow = condBox.createDiv({ cls: "mtg-card-detail-finish-value-row" });
+		condValueRow.createSpan();
+		refs.condValuePanelEl = condValueRow.createSpan({
+			cls: "mtg-card-detail-finish-value",
+			text: getCondition(getDeckCardCondition(this.card)).label,
+		});
+		setIcon(condValueRow.createSpan({ cls: "mtg-card-detail-finish-caret" }), "chevron-down");
+		condBox.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			openPickerMenu(condBox, this.conditionPickerItems(refs), {
+				matchAnchorWidth: true,
+				menuClass: "mtg-finish-picker-menu",
 			});
-			customPriceBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Custom price" });
-			const priceInput = customPriceBox.createEl("input", {
-				cls: "mtg-card-detail-customprice-input",
-				type: "text",
-			});
-			priceInput.value = this.card.customPrice ?? "";
-			priceInput.setAttribute("placeholder", "For example, $45");
-			const commitCustomPrice = () => {
-				this.plugin.setDeckCardCustomPrice(this.deck.id, this.card.scryfallId, priceInput.value);
-			};
-			priceInput.addEventListener("blur", commitCustomPrice);
-			priceInput.addEventListener("keydown", (evt) => {
-				if (evt.key === "Enter") priceInput.blur();
-			});
+		});
 
-			if (this.gradingJustOpened) {
-				this.gradingJustOpened = false;
-				const targetHeight = gradingWrapper.scrollHeight;
-				window.requestAnimationFrame(() => {
-					gradingWrapper.addClass("is-expanded");
-					gradingWrapper.style.height = `${targetHeight}px`;
-				});
-				window.setTimeout(() => {
-					// "auto" is that of .is-expanded (see card-detail-modal.ts).
-					gradingWrapper.style.removeProperty("height");
-				}, 300);
-			} else {
+		const langBox = conditionLanguageRow.createDiv({
+			cls: "mtg-card-detail-box mtg-card-detail-finish-box",
+		});
+		langBox.setAttribute("title", "Change language");
+		langBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Language" });
+		const langValueRow = langBox.createDiv({ cls: "mtg-card-detail-finish-value-row" });
+		langValueRow.createSpan();
+		refs.langValuePanelEl = langValueRow.createSpan({
+			cls: "mtg-card-detail-finish-value",
+			text: getLanguage(getDeckCardLanguage(this.card)).label,
+		});
+		setIcon(langValueRow.createSpan({ cls: "mtg-card-detail-finish-caret" }), "chevron-down");
+		langBox.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.openLanguagePickerFrom(refs, langBox, { matchAnchorWidth: true, menuClass: "mtg-finish-picker-menu" });
+		});
+	}
+
+	// Graded box (opens GradingModal) and the custom price input.
+	private drawGradingRow(gradingContent: HTMLElement) {
+		const gradingRow = gradingContent.createDiv({ cls: "mtg-card-detail-box-row" });
+
+		const gradedBox = gradingRow.createDiv({
+			cls: "mtg-card-detail-box mtg-card-detail-finish-box",
+		});
+		gradedBox.setAttribute("title", "Set grading");
+		gradedBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Graded" });
+		const gradedValueRow = gradedBox.createDiv({
+			cls: "mtg-card-detail-finish-value-row mtg-card-detail-finish-value-row-no-caret",
+		});
+		gradedValueRow.createSpan({
+			cls: "mtg-card-detail-finish-value",
+			text:
+				this.card.gradingGrade != null || this.card.gradingLabel
+					? `${this.card.gradingCompany ?? ""} ${this.card.gradingGrade ?? ""} ${
+							this.card.gradingLabel ?? ""
+					  }`
+							.replace(/\s+/g, " ")
+							.trim()
+					: "Not graded",
+		});
+		gradedBox.addEventListener("click", () => {
+			new GradingModal(
+				this.app,
+				this.plugin,
+				this.card,
+				() => {
+					this.view.render();
+					this.draw();
+				},
+				"deck",
+				{ deckId: this.deck.id, scryfallId: this.card.scryfallId }
+			).open();
+		});
+
+		const customPriceBox = gradingRow.createDiv({
+			cls: "mtg-card-detail-box mtg-card-detail-finish-box mtg-card-detail-customprice-box",
+		});
+		customPriceBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Custom price" });
+		const priceInput = customPriceBox.createEl("input", {
+			cls: "mtg-card-detail-customprice-input",
+			type: "text",
+		});
+		priceInput.value = this.card.customPrice ?? "";
+		priceInput.setAttribute("placeholder", "For example, $45");
+		const commitCustomPrice = () => {
+			this.plugin.setDeckCardCustomPrice(this.deck.id, this.card.scryfallId, priceInput.value);
+		};
+		priceInput.addEventListener("blur", commitCustomPrice);
+		priceInput.addEventListener("keydown", (evt) => {
+			if (evt.key === "Enter") priceInput.blur();
+		});
+	}
+
+	// First opening: the block starts collapsed and expands one frame later, so the CSS transition has a state change to animate; a redraw while
+	// it is already open jumps to the final state.
+	private animateGradingBlock(gradingWrapper: HTMLElement) {
+		if (this.gradingJustOpened) {
+			this.gradingJustOpened = false;
+			const targetHeight = gradingWrapper.scrollHeight;
+			window.requestAnimationFrame(() => {
 				gradingWrapper.addClass("is-expanded");
-			}
+				gradingWrapper.style.height = `${targetHeight}px`;
+			});
+			window.setTimeout(() => {
+				// "auto" is that of .is-expanded (see card-detail-modal.ts).
+				gradingWrapper.style.removeProperty("height");
+			}, 300);
+		} else {
+			gradingWrapper.addClass("is-expanded");
 		}
+	}
 
+	// The "Deck" box: which deck the card is in, and the shortcut to move it.
+	private drawDeckBox(panel: HTMLElement): HTMLElement {
 		// Same clickable "List"/"Wantlist" box → CopyCardModal ("move" mode) as
 		// CardDetailModal/WantlistCardDetailModal — only existed here in its
 		// non-clickable form until now ("a deck has no notion of moving this
@@ -781,7 +852,11 @@ export class DeckCardDetailModal extends Modal {
 				{ deckId: this.deck.id }
 			).open();
 		});
+		return deckBoxRow;
+	}
 
+	// The "Board" and "Function" pickers, on one row right after "Deck" (each choice redraws the window).
+	private drawBoardAndFunctionRow(panel: HTMLElement) {
 		// "Board"/"Function" — right after "Deck", not in the collapsible
 		// Condition/Language/Graded drawer (2026-09-02, explicitly requested with
 		// a screenshot in support, after a first version where "Function" lived in
@@ -868,16 +943,6 @@ export class DeckCardDetailModal extends Modal {
 			];
 			openPickerMenu(funcBox, items, { matchAnchorWidth: true, menuClass: "mtg-finish-picker-menu" });
 		});
-
-		this.renderCopiesInListsBox(panel);
-		this.renderLegalFormatsBox(panel);
-		this.renderStorePricesBox(panel);
-		this.renderPriceHistoryBox(panel);
-		this.renderCardDescriptionBox(panel);
-		if (artMode) arrangePanelForArt(panel, deckBoxRow, [copyBox, gradingToggleBox], gradingWrapperEl);
-		this.scheduleTextPrefetch();
-
-		setupPanelScrollFade(panel);
 	}
 
 	// Same principle as CardDetailModal.renderCopiesInListsBox — cross-section

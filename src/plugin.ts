@@ -2,7 +2,6 @@ import { addIcon, Plugin } from "obsidian";
 import { ONE_COLUMN_ICON_SVG } from "./ui/brand-assets";
 import {
 	ScryfallSetSummary,
-	sanitizeSvg,
 	ScryfallImmutableSnapshot,
 } from "./api/scryfall";
 import type { EntityPrints, KeySnapshot } from "./core/settings-merge";
@@ -26,6 +25,7 @@ import { MTGCollectionSettingTab } from "./setting-tab";
 import { MTGCollectionView } from "./view";
 import { HIDE_BARS_CLASS } from "./view/mobile-bars";
 import * as scryfallCache from "./plugin/scryfall-cache";
+import * as cacheHygiene from "./plugin/cache-hygiene";
 import * as neighborPrefetch from "./plugin/neighbor-prefetch";
 import * as printedNames from "./plugin/printed-names";
 import * as storePrices from "./plugin/store-prices";
@@ -338,6 +338,11 @@ export default class MTGCollectionPlugin extends Plugin {
 
 		this.addSettingTab(new MTGCollectionSettingTab(this.app, this));
 
+		// The copies Syncthing keeps of the plugin's caches when two devices rewrite them at once (91 MB had piled up on a
+		// real vault: see src/plugin/cache-hygiene.ts). Silent, once per start, after the workspace is ready so it never
+		// competes with the loading, and never awaited: it cannot fail the load.
+		this.app.workspace.onLayoutReady(() => void this.cleanCacheConflictCopies());
+
 		// Watches data.json outside of writes (another device via Syncthing) — see
 		// src/plugin/settings-sync.ts. After loadSettings(), which primes the starting
 		// state.
@@ -425,7 +430,7 @@ export default class MTGCollectionPlugin extends Plugin {
 		const svg = this.settings.customIconSvg?.trim();
 		if (svg) {
 			el.empty();
-			setSvgMarkup(el, sanitizeSvg(svg));
+			setSvgMarkup(el, svg);
 			const svgEl = el.querySelector("svg");
 			if (svgEl) {
 				svgEl.setAttribute("width", "18");
@@ -514,6 +519,8 @@ export default class MTGCollectionPlugin extends Plugin {
 	isLegalitiesFresh = scryfallCache.isLegalitiesFresh;
 	legalitiesCacheFilePath = scryfallCache.legalitiesCacheFilePath;
 	loadPersistedLegalitiesCache = scryfallCache.loadPersistedLegalitiesCache;
+	pruneLegalitiesCache = scryfallCache.pruneLegalitiesCache;
+	cleanCacheConflictCopies = cacheHygiene.cleanCacheConflictCopies;
 	scheduleLegalitiesPersist = scryfallCache.scheduleLegalitiesPersist;
 	flushLegalitiesPersist = scryfallCache.flushLegalitiesPersist;
 	immutableCacheFilePath = scryfallCache.immutableCacheFilePath;

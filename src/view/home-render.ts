@@ -20,7 +20,7 @@ import {
 import type { MoverConvert } from "../core/market-movers";
 import { computeColorBreakdown, computeRarityBreakdown, getDeckSizeStatus } from "../core/deck-stats";
 import { renderColorPieChart } from "../ui/deck-stats-fx";
-import { PRICE_HISTORY_SOURCES } from "../ui/card-detail-fx";
+import { PRICE_HISTORY_SOURCES, openExternalUrl } from "../ui/card-detail-fx";
 import { NewDeckModal, NewWantlistModal } from "../modals/new-entity-modals";
 import { CardPreviewModal } from "../modals/card-preview-modal";
 import { setupPinnedCarousel } from "./pinned-carousel";
@@ -629,7 +629,7 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 				cls: "mtg-price-history-source",
 				text: `Source: ${source.label} · Data as of ${data.asOf}`,
 			});
-			footer.addEventListener("click", () => window.open(source.url, "_blank"));
+			footer.addEventListener("click", () => openExternalUrl(source.url));
 		}
 	};
 

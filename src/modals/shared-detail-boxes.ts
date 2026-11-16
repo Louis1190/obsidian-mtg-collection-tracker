@@ -24,6 +24,7 @@ import {
 	openExternalUrl,
 	renderLegalityColorLegend,
 } from "../ui/card-detail-fx";
+import type { ArtCredit } from "../ui/card-detail-fx";
 import {
 	CARD_KINGDOM_LOGO_SVG,
 	TCGPLAYER_LOGO_SVG,
@@ -32,6 +33,22 @@ import {
 } from "../ui/brand-assets";
 import { setSvgMarkup } from "../ui/svg-markup";
 import { registerCardSwipeNav } from "../ui/card-swipe-nav";
+
+// What the pieces of a detail window's draw() share (audit 2026-11-15, lot 5). draw() is split into drawXxx methods; what used to be `let`s of one big
+// closure and is read or re-assigned from another place (a click handler, an async callback) lives here, one object per draw(): condition/language are
+// shown both on the image icons and in the grading block's boxes, and the grading toggle closes the block it finds in gradingWrapperEl. Every field is
+// null until the piece that creates the element has run. Used by CardDetailModal and DeckCardDetailModal (the wantlist window has no condition/language).
+export interface DetailDrawRefs {
+	condGlyphImageEl: HTMLElement | null;
+	condBtnImageEl: HTMLElement | null;
+	langFlagImageEl: HTMLElement | null;
+	langBtnImageEl: HTMLElement | null;
+	condValuePanelEl: HTMLElement | null;
+	langValuePanelEl: HTMLElement | null;
+	gradingWrapperEl: HTMLElement | null;
+	// Art mode only. Read by the async flip callback, which runs after draw() has assigned it.
+	artCredit: ArtCredit | null;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Boxes common to the three card detail windows (CardDetailModal / */
@@ -637,6 +654,9 @@ export function renderStorePricesBox(host: DetailBoxHost, panel: HTMLElement, ca
 			"title",
 			"Opens a Cardmarket search for this card name — not necessarily this exact printing."
 		);
+		// A literal https address on purpose (only the encoded name is interpolated): it stays visible to the
+		// directory's scanner, which is how the README's "Links that open in your browser" row is meant to be
+		// checked (docs/obsidian-compliance.md, "Disclosures"). Nothing external can reach this destination.
 		cmCol.addEventListener("click", () =>
 			window.open(
 				`https://www.cardmarket.com/en/Magic/Products/Search?searchString=${encodeURIComponent(card.name)}`,

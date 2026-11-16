@@ -45,6 +45,9 @@ export interface CardRecognitionSettingRow {
 	name: string;
 	desc?: string;
 	aliases?: string[];
+	/** false = not offered by the settings search; a function is read at each search (a row that exists only on some devices is neither drawn nor found on the others). */
+	searchable?: boolean | (() => boolean);
+	visible?: () => boolean;
 	render?: (setting: Setting) => void | (() => void);
 }
 

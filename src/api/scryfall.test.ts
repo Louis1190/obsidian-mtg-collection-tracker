@@ -10,7 +10,6 @@ import {
 	getImageUrl,
 	getArtCropUrl,
 	getRarityColor,
-	sanitizeSvg,
 	parseCsv,
 	toCsvField,
 	requestScryfall,
@@ -128,85 +127,6 @@ describe("getRarityColor", () => {
 
 	it("defaults to white for an unknown rarity", () => {
 		expect(getRarityColor("bogus")).toBe("#ffffff");
-	});
-});
-
-describe("sanitizeSvg", () => {
-	it("strips script tags", () => {
-		const svg = `<svg><script>alert(1)</script><circle /></svg>`;
-		expect(sanitizeSvg(svg)).toBe("<svg><circle /></svg>");
-	});
-
-	it("strips inline event handler attributes with either quote style", () => {
-		const svg = `<svg onload="evil()"><circle onclick='evil()' /></svg>`;
-		expect(sanitizeSvg(svg)).toBe(`<svg><circle /></svg>`);
-	});
-
-	it("leaves a clean svg untouched", () => {
-		const svg = `<svg><path fill="#fff" /></svg>`;
-		expect(sanitizeSvg(svg)).toBe(svg);
-	});
-
-	it("strips javascript: and data: href/xlink:href attributes", () => {
-		const svg = `<svg><a href="javascript:alert(1)">x</a><use xlink:href="data:image/svg+xml;base64,x" /><path fill="#fff" /></svg>`;
-		expect(sanitizeSvg(svg)).toBe(`<svg><a>x</a><use /><path fill="#fff" /></svg>`);
-	});
-
-	it("leaves a normal http(s) href untouched", () => {
-		const svg = `<svg><a href="https://example.com">x</a></svg>`;
-		expect(sanitizeSvg(svg)).toBe(svg);
-	});
-
-	it("strips foreignObject blocks entirely, including any nested markup", () => {
-		const svg = `<svg><foreignObject><body onload="evil()">hi</body></foreignObject><circle /></svg>`;
-		expect(sanitizeSvg(svg)).toBe("<svg><circle /></svg>");
-	});
-
-	it("strips SMIL animation tags (animate/animateTransform/animateMotion/set)", () => {
-		const svg =
-			`<svg><animate attributeName="x" to="1" /><animateTransform attributeName="transform" values="javascript:alert(1)" />` +
-			`<animateMotion path="M0 0" /><set attributeName="x" to="1" /><circle /></svg>`;
-		expect(sanitizeSvg(svg)).toBe("<svg><circle /></svg>");
-	});
-
-	// Bypasses CodeQL reports (js/bad-tag-filter, js/incomplete-multi-character-sanitization): the browser's
-	// HTML parser accepts end tags the regexes did not know, and a single pass lets a removal assemble a new
-	// forbidden fragment out of the text on both sides of it.
-	it("strips a script whose end tag has a space or attributes (browsers accept both)", () => {
-		expect(sanitizeSvg(`<svg><script>alert(1)</script ><circle /></svg>`)).toBe("<svg><circle /></svg>");
-		expect(sanitizeSvg(`<svg><script>alert(1)</script foo="bar"><circle /></svg>`)).toBe("<svg><circle /></svg>");
-		expect(sanitizeSvg(`<svg><script>alert(1)</script/><circle /></svg>`)).toBe("<svg><circle /></svg>");
-	});
-
-	it("strips a foreignObject whose end tag has a space or attributes", () => {
-		expect(sanitizeSvg(`<svg><foreignObject><p>hi</p></foreignObject ><circle /></svg>`)).toBe("<svg><circle /></svg>");
-		expect(sanitizeSvg(`<svg><foreignObject><p>hi</p></foreignObject x="y"><circle /></svg>`)).toBe(
-			"<svg><circle /></svg>",
-		);
-	});
-
-	it("does not leave a script behind when removing one assembles another", () => {
-		expect(sanitizeSvg(`<svg><scr<script></script>ipt>alert(1)</script><circle /></svg>`)).toBe(
-			"<svg><circle /></svg>",
-		);
-	});
-
-	it("does not leave an event handler behind when removing one assembles another", () => {
-		expect(sanitizeSvg(`<svg o onclick="x"nload="y"><circle /></svg>`)).toBe("<svg><circle /></svg>");
-		expect(sanitizeSvg(`<svg o onclick='x'nload='y'><circle /></svg>`)).toBe("<svg><circle /></svg>");
-	});
-
-	it("does not leave a javascript: href behind when removing one assembles another", () => {
-		expect(sanitizeSvg(`<svg><a hr href="javascript:x"ef="javascript:alert(1)">x</a></svg>`)).toBe(
-			"<svg><a>x</a></svg>",
-		);
-		expect(sanitizeSvg(`<svg><a hr href='data:x'ef='javascript:alert(1)'>x</a></svg>`)).toBe("<svg><a>x</a></svg>");
-	});
-
-	it("does not leave an animation tag behind when removing one assembles another", () => {
-		expect(sanitizeSvg(`<svg><anim<set x="1"/>ate attributeName="x" to="1"/><circle /></svg>`)).toBe(
-			"<svg><circle /></svg>",
-		);
 	});
 });
 

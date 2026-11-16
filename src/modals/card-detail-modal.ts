@@ -51,6 +51,7 @@ import {
 	updateCardImage,
 	updateCardNavName,
 	CopyTile,
+	type DetailDrawRefs,
 } from "./shared-detail-boxes";
 
 /* -------------------------------------------------------------------------- */
@@ -245,27 +246,7 @@ export class CardDetailModal extends Modal {
 		}
 
 		if (this.confirmingDelete) {
-			const confirmWrap = contentEl.createDiv({ cls: "mtg-card-detail-confirm-wrap" });
-			confirmWrap.createEl("h2", { text: "Remove this card?" });
-			confirmWrap.createEl("p", {
-				text: `Remove ${this.card.count}x "${this.card.name}" from this list? This cannot be undone.`,
-				cls: "mtg-status",
-			});
-			const row = confirmWrap.createDiv({ cls: "mtg-svg-btn-row" });
-			const yesBtn = row.createEl("button", {
-				text: "Yes, remove",
-				cls: "mtg-remove-btn",
-			});
-			yesBtn.addEventListener("click", () => {
-				this.plugin.removeCollectionCard(this.card.id);
-				this.close();
-				this.view.render();
-			});
-			const noBtn = row.createEl("button", { text: "No, cancel" });
-			noBtn.addEventListener("click", () => {
-				this.confirmingDelete = false;
-				this.draw();
-			});
+			this.drawDeleteConfirmation(contentEl);
 			return;
 		}
 
@@ -276,233 +257,293 @@ export class CardDetailModal extends Modal {
 		const isAlpha = isAlphaSet(this.card.setCode);
 		const imageColumn = layout.createDiv({ cls: "mtg-card-detail-image-column" });
 
-		// Condition/language are displayed in two places — the icons above the
-		// image, and the panel's boxes (in the collapsible section, see
-		// gradingExpanded further down) — choosing a value in one of the two must
-		// update the other. applyCondition/applyLanguage centralize the mutation +
-		// the refresh of both locations; the references below are only filled in
-		// if the corresponding element was actually created (the image only if
-		// this.card.imageUrl is defined; the panel boxes only if gradingExpanded
-		// is true). HTMLElement, nothing more precise:
-		// condGlyphImageEl/langFlagImageEl hold either a badge/flag (real value),
-		// or the fallback Lucide icon "no value chosen"
-		// (createConditionIcon/createLanguageIcon, types.ts) — two different DOM
-		// shapes (text span vs span+injected svg), never interchangeable by a
-		// simple in-place .setText()/.style.color. applyCondition/applyLanguage
-		// below therefore systematically rebuild the element (remove + recreate)
-		// instead of mutating it, unlike the old code from before this fallback
-		// was added.
-		let condGlyphImageEl: HTMLElement | null = null;
-		let condBtnImageEl: HTMLElement | null = null;
-		let langFlagImageEl: HTMLElement | null = null;
-		let langBtnImageEl: HTMLElement | null = null;
-		let condValuePanelEl: HTMLElement | null = null;
-		let langValuePanelEl: HTMLElement | null = null;
-
-		const conditionPickerItems = () =>
-			CONDITIONS.map((c) => ({
-				render: (el: HTMLElement) => {
-					createConditionIcon(el, c.value, "mtg-picker-condition-glyph");
-					el.createSpan({ text: c.label });
-				},
-				onSelect: () => applyCondition(c.value),
-			}));
-
-		const applyCondition = (value: string) => {
-			this.plugin.setCollectionCardCondition(this.card.id, value);
-			this.card.condition = value;
-			if (condBtnImageEl && condGlyphImageEl) {
-				condGlyphImageEl.remove();
-				condGlyphImageEl = createConditionIcon(
-					condBtnImageEl,
-					value,
-					"mtg-card-detail-image-icon-glyph"
-				);
-				condBtnImageEl.setAttribute("title", getCondition(value).label);
-			}
-			if (condValuePanelEl) {
-				condValuePanelEl.setText(getCondition(value).label);
-			}
-			this.view.render();
+		// The elements and values the pieces of draw() share (see DetailDrawRefs): only filled in by the piece that creates them.
+		const refs: DetailDrawRefs = {
+			condGlyphImageEl: null,
+			condBtnImageEl: null,
+			langFlagImageEl: null,
+			langBtnImageEl: null,
+			condValuePanelEl: null,
+			langValuePanelEl: null,
+			gradingWrapperEl: null,
+			artCredit: null,
 		};
 
-		const openLanguagePickerFrom = (
-			anchor: HTMLElement,
-			menuOptions?: { matchAnchorWidth?: boolean; menuClass?: string }
-		) => {
-			void this.plugin
-				.getAvailableLanguages(this.card.setCode, this.card.collectorNumber)
-				.then((availableCodes) => {
-					const options = languagePickerOptions(availableCodes);
-					openPickerMenu(
-						anchor,
-						options.map((l) => ({
-							render: (el: HTMLElement) => {
-								createFlagImg(el, l.flag, "mtg-flag-img mtg-flag-img-inline");
-								el.createSpan({ text: l.label });
-							},
-							onSelect: () => applyLanguage(l.code),
-						})),
-						menuOptions
-					);
-				});
-		};
-
-		const applyLanguage = (code: string) => {
-			this.plugin.setCollectionCardLanguage(this.card.id, code);
-			this.card.language = code;
-			this.refreshNavName();
-			const lang = getLanguage(code);
-			if (langBtnImageEl && langFlagImageEl) {
-				langFlagImageEl.remove();
-				langFlagImageEl = createLanguageIcon(
-					langBtnImageEl,
-					code,
-					"mtg-card-detail-image-icon-flag",
-					"mtg-card-detail-image-icon-glyph"
-				);
-				langBtnImageEl.setAttribute("title", languageTooltip(code));
-			}
-			if (langValuePanelEl) {
-				langValuePanelEl.setText(lang.label);
-			}
-			this.view.render();
-		};
-
-		if (this.card.imageUrl) {
-			// Condition/language above the image (not overlaid): they are attributes
-			// of the physical copy, just like the foil already overlaid on the image,
-			// but placed alongside rather than on top so as never to hide the artwork.
-			const imageIcons = imageColumn.createDiv({ cls: "mtg-card-detail-image-icons" });
-
-			const condBtn = imageIcons.createDiv({ cls: "mtg-card-detail-image-icon-btn" });
-			condGlyphImageEl = createConditionIcon(
-				condBtn,
-				this.card.condition,
-				"mtg-card-detail-image-icon-glyph"
-			);
-			condBtn.setAttribute("title", getCondition(this.card.condition).label);
-			condBtn.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				openPickerMenu(condBtn, conditionPickerItems());
-			});
-			condBtnImageEl = condBtn;
-
-			const langBtn = imageIcons.createDiv({ cls: "mtg-card-detail-image-icon-btn" });
-			langFlagImageEl = createLanguageIcon(
-				langBtn,
-				this.card.language,
-				"mtg-card-detail-image-icon-flag",
-				"mtg-card-detail-image-icon-glyph"
-			);
-			langBtn.setAttribute("title", languageTooltip(this.card.language));
-			langBtn.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				openLanguagePickerFrom(langBtn);
-			});
-			langBtnImageEl = langBtn;
-
-			// Phone art mode shows the artwork alone: a third square button, under these two, shows the whole card.
-			if (artMode) {
-				addFullCardButton(imageIcons, contentEl, () =>
-					resolveFullCardUrl(
-						(id) => this.plugin.getCardFaceImages(id),
-						this.card.scryfallId,
-						this.flipped,
-						this.plugin.cardDisplayImage(this.card)
-					),
-					{ alpha: isAlpha }
-				);
-			}
-		}
+		if (this.card.imageUrl) this.drawImageIcons(imageColumn, contentEl, artMode, isAlpha, refs);
 
 		const viewport = imageColumn.createDiv({ cls: "mtg-card-detail-nav-viewport" });
 		const imageWrap = viewport.createDiv({
 			cls: isAlpha ? "mtg-card-detail-image-wrap mtg-card-detail-image-wrap-alpha" : "mtg-card-detail-image-wrap",
 		});
-		if (this.card.imageUrl) {
-			// The holographic tilt/shimmer (setupCardTilt) is set on this nested
-			// level, not directly on imageWrap: imageWrap already carries the
-			// transform of the Cover Flow carousel (animateCardNav) for previous/next
-			// navigation, and the two would fight over the same transform property if
-			// they targeted the same element. The 3D tilt itself applies to all
-			// finishes — only the color layers (foil-overlay/holo-shine/holo-sweep)
-			// remain reserved for foil/etched, since a regular card doesn't physically
-			// shimmer but can still be tilted.
-			const tilt = imageWrap.createDiv({ cls: "mtg-card-detail-tilt" });
-			const bannerImg = tilt.createEl("img", {
-				cls: "mtg-card-detail-image",
-				attr: { src: artMode ? this.card.artCropUrl : this.plugin.cardDisplayImage(this.card) },
-			});
-			if (artMode) holdPreviousBanner(contentEl, tilt, bannerImg, this.card.artCropUrl);
-			if (finishHasFoilLook(this.card.finish)) {
-				// Etched doesn't scatter light like foiled/surged — its ambient halo stays
-				// neutral/silvery (mtg-foil-overlay-etched) rather than the rainbow
-				// gradient shared by the other two finishes.
-				tilt.createDiv({
-					cls:
-						this.card.finish === "etched"
-							? "mtg-foil-overlay-etched"
-							: "mtg-foil-overlay mtg-foil-overlay-large",
-				});
-				// Surge Foil gets the multi-layer shine in the style of the Pokémon "V"
-				// card (see styles.css); Etched gets a glitter effect (see styles.css)
-				// rather than the simple rainbow shine used for foiled — explicitly
-				// requested, etched "doesn't scatter light" like a real holo.
-				tilt.createDiv({
-					cls:
-						this.card.finish === "surged"
-							? "mtg-card-detail-holo-shine-surge"
-							: this.card.finish === "etched"
-								? "mtg-card-detail-holo-shine-etched"
-								: "mtg-card-detail-holo-shine",
-				});
-				tilt.createDiv({ cls: "mtg-card-detail-holo-sweep" });
-			}
-			setupCardTilt(imageWrap, tilt);
-
-			// 3D "flip" button — only for a real physical double-faced card
-			// (transform/modal_dfc), see getDoubleFacedImages (scryfall.ts). The
-			// staleness guard follows the same convention as the other boxes of this
-			// panel that depend on a Scryfall round trip (Legal Formats, Store Prices,
-			// Price History further down): requestedId captured at launch, compared to
-			// this.card.scryfallId once the promise has resolved, to ignore a response
-			// that arrived after a prev/next navigation to another card.
-			const flipRequestedId = this.card.scryfallId;
-			void this.plugin.getCardFaceImages(flipRequestedId).then((images) => {
-				if (!images || this.card.scryfallId !== flipRequestedId) return;
-				// Art mode flips to the back face's artwork; no art for it = no button.
-				const backUrl = artMode ? images.backArt : images.back;
-				if (!backUrl) return;
-				artCredit?.setBackArtist(images.backArtist);
-				artCredit?.showFace(this.flipped);
-				setupDoubleFacedFlip(imageColumn, tilt, backUrl, this.flipped, (flipped) => {
-					this.flipped = flipped;
-					artCredit?.showFace(flipped);
-				});
-			});
-
-			// "Rotation" button — only for a split layout (Fire // Ice, Never //
-			// Return...), see getSplitCardInfo (scryfall.ts). Mutually exclusive with
-			// the flip above (a card is either a real double-faced card or split,
-			// never both — see getDoubleFacedImages/getSplitCardInfo), same staleness
-			// guard as it.
-			const splitRequestedId = this.card.scryfallId;
-			void this.plugin.getSplitCardInfo(splitRequestedId).then((info) => {
-				// The artwork has no text to turn 90° to read: no rotation button in art mode.
-				if (!info || artMode || this.card.scryfallId !== splitRequestedId) return;
-				if (this.splitRotated === null) this.splitRotated = false;
-				setupSplitCardRotation(imageColumn, tilt, this.splitRotated, (rotated) => {
-					this.splitRotated = rotated;
-				});
-			});
-		}
+		if (this.card.imageUrl) this.drawCardImage(imageColumn, imageWrap, contentEl, artMode, refs);
 
 		const panel = layout.createDiv({ cls: "mtg-card-detail-panel" });
 		if (artMode) moveNavHeaderBelowArt(contentEl, panel);
 		// Last child of the layout, so it ends the scroll (Scryfall: artist + copyright next to an artwork shown alone).
-		const artCredit = artMode ? renderArtCredit(layout, this.card.artist) : null;
+		refs.artCredit = artMode ? renderArtCredit(layout, this.card.artist) : null;
 
+		this.drawHeaderRow(panel);
+		const { copyBox, gradingToggleBox } = this.drawAttributeRow(panel, refs);
+		if (this.gradingExpanded) this.drawGradingBlock(panel, refs);
+		const listBoxRow = this.drawListBox(panel);
+
+		this.renderCopiesInListsBox(panel);
+		this.renderLegalFormatsBox(panel);
+		this.renderStorePricesBox(panel);
+		this.renderPriceHistoryBox(panel);
+		this.renderCardDescriptionBox(panel);
+		if (artMode) arrangePanelForArt(panel, listBoxRow, [copyBox, gradingToggleBox], refs.gradingWrapperEl);
+		this.scheduleTextPrefetch();
+
+		setupPanelScrollFade(panel);
+	}
+
+	// The "Remove this card?" screen: replaces the whole window until the user answers (the caller returns right after).
+	private drawDeleteConfirmation(contentEl: HTMLElement) {
+		const confirmWrap = contentEl.createDiv({ cls: "mtg-card-detail-confirm-wrap" });
+		confirmWrap.createEl("h2", { text: "Remove this card?" });
+		confirmWrap.createEl("p", {
+			text: `Remove ${this.card.count}x "${this.card.name}" from this list? This cannot be undone.`,
+			cls: "mtg-status",
+		});
+		const row = confirmWrap.createDiv({ cls: "mtg-svg-btn-row" });
+		const yesBtn = row.createEl("button", {
+			text: "Yes, remove",
+			cls: "mtg-remove-btn",
+		});
+		yesBtn.addEventListener("click", () => {
+			this.plugin.removeCollectionCard(this.card.id);
+			this.close();
+			this.view.render();
+		});
+		const noBtn = row.createEl("button", { text: "No, cancel" });
+		noBtn.addEventListener("click", () => {
+			this.confirmingDelete = false;
+			this.draw();
+		});
+	}
+
+	// Condition/language are displayed in two places — the icons above the image, and the panel's boxes (in the collapsible section, see
+	// gradingExpanded) — choosing a value in one of the two must update the other. applyCondition/applyLanguage centralize the mutation + the
+	// refresh of both locations; the references they use (`refs`, see DetailDrawRefs) are only filled in if the corresponding element was actually
+	// created (the image icons only if this.card.imageUrl is defined; the panel boxes only if gradingExpanded is true).
+	// condGlyphImageEl/langFlagImageEl hold either a badge/flag (real value), or the fallback Lucide icon "no value chosen"
+	// (createConditionIcon/createLanguageIcon, types.ts) — two different DOM shapes (text span vs span+injected svg), never interchangeable by a
+	// simple in-place .setText()/.style.color. applyCondition/applyLanguage therefore systematically rebuild the element (remove + recreate)
+	// instead of mutating it, unlike the old code from before this fallback was added.
+	private conditionPickerItems(refs: DetailDrawRefs) {
+		return CONDITIONS.map((c) => ({
+			render: (el: HTMLElement) => {
+				createConditionIcon(el, c.value, "mtg-picker-condition-glyph");
+				el.createSpan({ text: c.label });
+			},
+			onSelect: () => this.applyCondition(refs, c.value),
+		}));
+	}
+
+	private applyCondition(refs: DetailDrawRefs, value: string) {
+		this.plugin.setCollectionCardCondition(this.card.id, value);
+		this.card.condition = value;
+		if (refs.condBtnImageEl && refs.condGlyphImageEl) {
+			refs.condGlyphImageEl.remove();
+			refs.condGlyphImageEl = createConditionIcon(
+				refs.condBtnImageEl,
+				value,
+				"mtg-card-detail-image-icon-glyph"
+			);
+			refs.condBtnImageEl.setAttribute("title", getCondition(value).label);
+		}
+		if (refs.condValuePanelEl) {
+			refs.condValuePanelEl.setText(getCondition(value).label);
+		}
+		this.view.render();
+	}
+
+	private openLanguagePickerFrom(
+		refs: DetailDrawRefs,
+		anchor: HTMLElement,
+		menuOptions?: { matchAnchorWidth?: boolean; menuClass?: string }
+	) {
+		void this.plugin
+			.getAvailableLanguages(this.card.setCode, this.card.collectorNumber)
+			.then((availableCodes) => {
+				const options = languagePickerOptions(availableCodes);
+				openPickerMenu(
+					anchor,
+					options.map((l) => ({
+						render: (el: HTMLElement) => {
+							createFlagImg(el, l.flag, "mtg-flag-img mtg-flag-img-inline");
+							el.createSpan({ text: l.label });
+						},
+						onSelect: () => this.applyLanguage(refs, l.code),
+					})),
+					menuOptions
+				);
+			});
+	}
+
+	private applyLanguage(refs: DetailDrawRefs, code: string) {
+		this.plugin.setCollectionCardLanguage(this.card.id, code);
+		this.card.language = code;
+		this.refreshNavName();
+		const lang = getLanguage(code);
+		if (refs.langBtnImageEl && refs.langFlagImageEl) {
+			refs.langFlagImageEl.remove();
+			refs.langFlagImageEl = createLanguageIcon(
+				refs.langBtnImageEl,
+				code,
+				"mtg-card-detail-image-icon-flag",
+				"mtg-card-detail-image-icon-glyph"
+			);
+			refs.langBtnImageEl.setAttribute("title", languageTooltip(code));
+		}
+		if (refs.langValuePanelEl) {
+			refs.langValuePanelEl.setText(lang.label);
+		}
+		this.view.render();
+	}
+
+	// Condition/language above the image (the first two square buttons of the stack; a third one, the whole card, on a phone).
+	private drawImageIcons(
+		imageColumn: HTMLElement,
+		contentEl: HTMLElement,
+		artMode: boolean,
+		isAlpha: boolean,
+		refs: DetailDrawRefs
+	) {
+		// Condition/language above the image (not overlaid): they are attributes
+		// of the physical copy, just like the foil already overlaid on the image,
+		// but placed alongside rather than on top so as never to hide the artwork.
+		const imageIcons = imageColumn.createDiv({ cls: "mtg-card-detail-image-icons" });
+
+		const condBtn = imageIcons.createDiv({ cls: "mtg-card-detail-image-icon-btn" });
+		refs.condGlyphImageEl = createConditionIcon(
+			condBtn,
+			this.card.condition,
+			"mtg-card-detail-image-icon-glyph"
+		);
+		condBtn.setAttribute("title", getCondition(this.card.condition).label);
+		condBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			openPickerMenu(condBtn, this.conditionPickerItems(refs));
+		});
+		refs.condBtnImageEl = condBtn;
+
+		const langBtn = imageIcons.createDiv({ cls: "mtg-card-detail-image-icon-btn" });
+		refs.langFlagImageEl = createLanguageIcon(
+			langBtn,
+			this.card.language,
+			"mtg-card-detail-image-icon-flag",
+			"mtg-card-detail-image-icon-glyph"
+		);
+		langBtn.setAttribute("title", languageTooltip(this.card.language));
+		langBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.openLanguagePickerFrom(refs, langBtn);
+		});
+		refs.langBtnImageEl = langBtn;
+
+		// Phone art mode shows the artwork alone: a third square button, under these two, shows the whole card.
+		if (artMode) {
+			addFullCardButton(imageIcons, contentEl, () =>
+				resolveFullCardUrl(
+					(id) => this.plugin.getCardFaceImages(id),
+					this.card.scryfallId,
+					this.flipped,
+					this.plugin.cardDisplayImage(this.card)
+				),
+				{ alpha: isAlpha }
+			);
+		}
+	}
+
+	// The card's picture (or the artwork alone in art mode) with its tilt, foil layers, and the flip / rotate buttons.
+	private drawCardImage(
+		imageColumn: HTMLElement,
+		imageWrap: HTMLElement,
+		contentEl: HTMLElement,
+		artMode: boolean,
+		refs: DetailDrawRefs
+	) {
+		// The holographic tilt/shimmer (setupCardTilt) is set on this nested
+		// level, not directly on imageWrap: imageWrap already carries the
+		// transform of the Cover Flow carousel (animateCardNav) for previous/next
+		// navigation, and the two would fight over the same transform property if
+		// they targeted the same element. The 3D tilt itself applies to all
+		// finishes — only the color layers (foil-overlay/holo-shine/holo-sweep)
+		// remain reserved for foil/etched, since a regular card doesn't physically
+		// shimmer but can still be tilted.
+		const tilt = imageWrap.createDiv({ cls: "mtg-card-detail-tilt" });
+		const bannerImg = tilt.createEl("img", {
+			cls: "mtg-card-detail-image",
+			attr: { src: artMode ? this.card.artCropUrl : this.plugin.cardDisplayImage(this.card) },
+		});
+		if (artMode) holdPreviousBanner(contentEl, tilt, bannerImg, this.card.artCropUrl);
+		if (finishHasFoilLook(this.card.finish)) {
+			// Etched doesn't scatter light like foiled/surged — its ambient halo stays
+			// neutral/silvery (mtg-foil-overlay-etched) rather than the rainbow
+			// gradient shared by the other two finishes.
+			tilt.createDiv({
+				cls:
+					this.card.finish === "etched"
+						? "mtg-foil-overlay-etched"
+						: "mtg-foil-overlay mtg-foil-overlay-large",
+			});
+			// Surge Foil gets the multi-layer shine in the style of the Pokémon "V"
+			// card (see styles.css); Etched gets a glitter effect (see styles.css)
+			// rather than the simple rainbow shine used for foiled — explicitly
+			// requested, etched "doesn't scatter light" like a real holo.
+			tilt.createDiv({
+				cls:
+					this.card.finish === "surged"
+						? "mtg-card-detail-holo-shine-surge"
+						: this.card.finish === "etched"
+							? "mtg-card-detail-holo-shine-etched"
+							: "mtg-card-detail-holo-shine",
+			});
+			tilt.createDiv({ cls: "mtg-card-detail-holo-sweep" });
+		}
+		setupCardTilt(imageWrap, tilt);
+
+		// 3D "flip" button — only for a real physical double-faced card
+		// (transform/modal_dfc), see getDoubleFacedImages (scryfall.ts). The
+		// staleness guard follows the same convention as the other boxes of this
+		// panel that depend on a Scryfall round trip (Legal Formats, Store Prices,
+		// Price History further down): requestedId captured at launch, compared to
+		// this.card.scryfallId once the promise has resolved, to ignore a response
+		// that arrived after a prev/next navigation to another card.
+		const flipRequestedId = this.card.scryfallId;
+		void this.plugin.getCardFaceImages(flipRequestedId).then((images) => {
+			if (!images || this.card.scryfallId !== flipRequestedId) return;
+			// Art mode flips to the back face's artwork; no art for it = no button.
+			const backUrl = artMode ? images.backArt : images.back;
+			if (!backUrl) return;
+			refs.artCredit?.setBackArtist(images.backArtist);
+			refs.artCredit?.showFace(this.flipped);
+			setupDoubleFacedFlip(imageColumn, tilt, backUrl, this.flipped, (flipped) => {
+				this.flipped = flipped;
+				refs.artCredit?.showFace(flipped);
+			});
+		});
+
+		// "Rotation" button — only for a split layout (Fire // Ice, Never //
+		// Return...), see getSplitCardInfo (scryfall.ts). Mutually exclusive with
+		// the flip above (a card is either a real double-faced card or split,
+		// never both — see getDoubleFacedImages/getSplitCardInfo), same staleness
+		// guard as it.
+		const splitRequestedId = this.card.scryfallId;
+		void this.plugin.getSplitCardInfo(splitRequestedId).then((info) => {
+			// The artwork has no text to turn 90° to read: no rotation button in art mode.
+			if (!info || artMode || this.card.scryfallId !== splitRequestedId) return;
+			if (this.splitRotated === null) this.splitRotated = false;
+			setupSplitCardRotation(imageColumn, tilt, this.splitRotated, (rotated) => {
+				this.splitRotated = rotated;
+			});
+		});
+	}
+
+	// Set box ("View all versions") and the trash button.
+	private drawHeaderRow(panel: HTMLElement) {
 		const headerRow = panel.createDiv({ cls: "mtg-card-detail-header-row" });
 		const setBox = headerRow.createDiv({
 			cls: "mtg-card-detail-box mtg-card-detail-set-box mtg-card-detail-set-box-clickable",
@@ -541,7 +582,10 @@ export class CardDetailModal extends Modal {
 			this.confirmingDelete = true;
 			this.draw();
 		});
+	}
 
+	// Quantity stepper, finish, copy-to and the grading toggle. Returns the two boxes the phone's art mode moves (arrangePanelForArt).
+	private drawAttributeRow(panel: HTMLElement, refs: DetailDrawRefs) {
 		const attrRow = panel.createDiv({ cls: "mtg-card-detail-box-row" });
 
 		const qtyBox = attrRow.createDiv({ cls: "mtg-card-detail-box mtg-card-detail-qty-box" });
@@ -609,16 +653,15 @@ export class CardDetailModal extends Modal {
 		// already true at this point of draw()) — closing relies on it directly
 		// (removing is-expanded triggers the CSS transition) without going back
 		// through draw(), so this closure must see the up-to-date value at click
-		// time, not only at creation. It works: gradingWrapperEl is assigned
+		// time, not only at creation. It works: refs.gradingWrapperEl is assigned
 		// further down in this same synchronous call to draw(), so by the time a
 		// click can actually arrive, it already points to the right element (or
 		// stays null if the block wasn't open).
-		let gradingWrapperEl: HTMLElement | null = null;
 		gradingToggleBox.addEventListener("click", () => {
 			if (this.gradingExpanded) {
 				this.gradingExpanded = false;
 				setIcon(gradingToggleBox, "chevron-down");
-				if (gradingWrapperEl) {
+				if (refs.gradingWrapperEl) {
 					// Animates the closing on the existing element (already painted), without
 					// waiting for a complete draw() — then, once the transition has finished,
 					// a delayed draw() removes the block from the DOM for good (same 300ms
@@ -629,13 +672,13 @@ export class CardDetailModal extends Modal {
 					// to apply this value BEFORE the next change (without which the two merge
 					// into a single operation and the transition never sees the starting
 					// state).
-					const currentHeight = gradingWrapperEl.getBoundingClientRect().height;
-					gradingWrapperEl.style.height = `${currentHeight}px`;
-					void gradingWrapperEl.offsetHeight;
-					gradingWrapperEl.removeClass("is-expanded");
+					const currentHeight = refs.gradingWrapperEl.getBoundingClientRect().height;
+					refs.gradingWrapperEl.style.height = `${currentHeight}px`;
+					void refs.gradingWrapperEl.offsetHeight;
+					refs.gradingWrapperEl.removeClass("is-expanded");
 					// No more inline height: the base class has height:0 (styles.css), the transition starts from
 					// the pixel value set just above.
-					gradingWrapperEl.style.removeProperty("height");
+					refs.gradingWrapperEl.style.removeProperty("height");
 					window.setTimeout(() => {
 						if (!this.gradingExpanded) this.draw();
 					}, 300);
@@ -649,188 +692,6 @@ export class CardDetailModal extends Modal {
 				this.draw();
 			}
 		});
-
-		if (this.gradingExpanded) {
-			const gradingWrapper = panel.createDiv({ cls: "mtg-card-detail-grading-wrapper" });
-			gradingWrapperEl = gradingWrapper;
-			// Visually groups everything the toggle reveals (Condition/Language +
-			// Graded/Custom Price) in a single dotted outline, so that it's understood
-			// at a glance that these boxes form a separate block rather than simply
-			// continuing the list of always-visible boxes above. Purely cosmetic —
-			// since the switch to a measured pixel height (see below and styles.css),
-			// gradingWrapper no longer needs a single child to animate, unlike the old
-			// grid-template-rows technique.
-			const gradingContent = gradingWrapper.createDiv({ cls: "mtg-card-detail-grading-content" });
-
-			const conditionLanguageRow = gradingContent.createDiv({ cls: "mtg-card-detail-box-row" });
-
-			const condBox = conditionLanguageRow.createDiv({
-				cls: "mtg-card-detail-box mtg-card-detail-finish-box",
-			});
-			condBox.setAttribute("title", "Change condition");
-			condBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Condition" });
-			const condValueRow = condBox.createDiv({ cls: "mtg-card-detail-finish-value-row" });
-			condValueRow.createSpan();
-			condValuePanelEl = condValueRow.createSpan({
-				cls: "mtg-card-detail-finish-value",
-				text: getCondition(this.card.condition).label,
-			});
-			setIcon(condValueRow.createSpan({ cls: "mtg-card-detail-finish-caret" }), "chevron-down");
-			condBox.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				openPickerMenu(condBox, conditionPickerItems(), {
-					matchAnchorWidth: true,
-					menuClass: "mtg-finish-picker-menu",
-				});
-			});
-
-			const langBox = conditionLanguageRow.createDiv({
-				cls: "mtg-card-detail-box mtg-card-detail-finish-box",
-			});
-			langBox.setAttribute("title", "Change language");
-			langBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Language" });
-			const langValueRow = langBox.createDiv({ cls: "mtg-card-detail-finish-value-row" });
-			langValueRow.createSpan();
-			langValuePanelEl = langValueRow.createSpan({
-				cls: "mtg-card-detail-finish-value",
-				text: getLanguage(this.card.language).label,
-			});
-			setIcon(langValueRow.createSpan({ cls: "mtg-card-detail-finish-caret" }), "chevron-down");
-			langBox.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				openLanguagePickerFrom(langBox, { matchAnchorWidth: true, menuClass: "mtg-finish-picker-menu" });
-			});
-
-			const gradingRow = gradingContent.createDiv({ cls: "mtg-card-detail-box-row" });
-
-			const gradedBox = gradingRow.createDiv({
-				cls: "mtg-card-detail-box mtg-card-detail-finish-box",
-			});
-			gradedBox.setAttribute("title", "Set grading");
-			gradedBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Graded" });
-			// No arrow here (unlike Condition/Language/Finish): explicitly requested —
-			// "Graded" opens GradingModal as a shortcut, it's not an inline picker, so
-			// no 1em/auto gutter to balance (see
-			// mtg-card-detail-finish-value-row-no-caret in CSS for the single-column
-			// re-centering this implies).
-			const gradedValueRow = gradedBox.createDiv({
-				cls: "mtg-card-detail-finish-value-row mtg-card-detail-finish-value-row-no-caret",
-			});
-			gradedValueRow.createSpan({
-				cls: "mtg-card-detail-finish-value",
-				// gradingCompany alone is no longer enough to say "graded" (see
-				// gradingExpanded above) — GradingModal preselects PSA by default and
-				// saves it even with no grade/condition entered.
-				text:
-					this.card.gradingGrade != null || this.card.gradingLabel
-						? `${this.card.gradingCompany ?? ""} ${this.card.gradingGrade ?? ""} ${
-								this.card.gradingLabel ?? ""
-						  }`
-								.replace(/\s+/g, " ")
-								.trim()
-						: "Not graded",
-			});
-			gradedBox.addEventListener("click", () => {
-				new GradingModal(this.app, this.plugin, this.card, () => {
-					this.view.render();
-					this.draw();
-				}).open();
-			});
-
-			// No modal here (unlike gradedBox): the user types their price directly in the
-			// box, saved via setCollectionCardCustomPrice on blur/Enter. Never call
-			// this.draw()/this.view.render() from these handlers — a redraw in the middle of
-			// typing would cut the focus (same risk as the pendingFocusRestore documented
-			// elsewhere in this file), and nothing else in the panel displays customPrice
-			// that would need updating in return.
-			const customPriceBox = gradingRow.createDiv({
-				cls: "mtg-card-detail-box mtg-card-detail-finish-box mtg-card-detail-customprice-box",
-			});
-			customPriceBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Custom price" });
-			const priceInput = customPriceBox.createEl("input", {
-				cls: "mtg-card-detail-customprice-input",
-				type: "text",
-			});
-			priceInput.value = this.card.customPrice ?? "";
-			priceInput.setAttribute("placeholder", "For example, $45");
-			const commitCustomPrice = () => {
-				this.plugin.setCollectionCardCustomPrice(this.card.id, priceInput.value);
-			};
-			priceInput.addEventListener("blur", commitCustomPrice);
-			priceInput.addEventListener("keydown", (evt) => {
-				if (evt.key === "Enter") priceInput.blur();
-			});
-
-			// The very first opening starts from the collapsed state (see the base
-			// class in styles.css) then switches to is-expanded one frame later, so
-			// that the CSS transition has a real state change to animate — without the
-			// rAF, the element would appear already in its final state from its first
-			// paint, with no visible transition. A draw() that falls through here for
-			// a completely different reason (block already open) jumps straight to the
-			// final state, without replaying the entrance animation.
-			if (this.gradingJustOpened) {
-				this.gradingJustOpened = false;
-				// scrollHeight measures the natural height of the content already built
-				// above DESPITE the current height:0/overflow:hidden (set by the base
-				// class in CSS) — which is precisely what scrollHeight is made to report.
-				// Set at the same time as is-expanded, in the same rAF callback, so that
-				// height/margin-bottom/opacity all three start their transition from the
-				// same painted state, at the same instant (see styles.css for why this
-				// replaces the old grid-template-rows technique, which didn't keep these
-				// properties perfectly in phase despite an identical declared
-				// duration/curve).
-				const targetHeight = gradingWrapper.scrollHeight;
-				window.requestAnimationFrame(() => {
-					gradingWrapper.addClass("is-expanded");
-					gradingWrapper.style.height = `${targetHeight}px`;
-				});
-				window.setTimeout(() => {
-					// Goes back to "auto" once the transition is over: a value frozen in
-					// pixels would stay wrong if the content later changes height (e.g.
-					// selecting a longer grade label in Graded) without going back through
-					// this opening path. "auto" is that of .is-expanded (styles.css): we
-					// remove the pixel value. On a block closed in the meantime (it no longer
-					// has is-expanded) the height therefore stays 0 — the old code would
-					// reopen it abruptly by setting an inline "auto".
-					gradingWrapper.style.removeProperty("height");
-				}, 300);
-			} else {
-				// Redraw while the block is already open (changing the finish, saving the
-				// grading…): no animation to replay, the height directly follows the
-				// content (height:auto of .is-expanded).
-				gradingWrapper.addClass("is-expanded");
-			}
-		}
-
-		const list = this.plugin.settings.lists.find((l) => l.id === this.card.listId);
-		const listBoxRow = panel.createDiv({ cls: "mtg-card-detail-box-row" });
-		const listBox = listBoxRow.createDiv({
-			cls: "mtg-card-detail-box mtg-card-detail-list-box mtg-card-detail-set-box-clickable",
-		});
-		listBox.setAttribute("title", "Move card to another list…");
-		listBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "List" });
-		listBox.createDiv({ cls: "mtg-card-detail-list-box-value", text: list?.name ?? "" });
-		listBox.addEventListener("click", () => {
-			new CopyCardModal(
-				this.app,
-				this.plugin,
-				[this.card],
-				"collection",
-				() => {
-					this.close();
-					this.view.render();
-				},
-				"move"
-			).open();
-		});
-
-		this.renderCopiesInListsBox(panel);
-		this.renderLegalFormatsBox(panel);
-		this.renderStorePricesBox(panel);
-		this.renderPriceHistoryBox(panel);
-		this.renderCardDescriptionBox(panel);
-		if (artMode) arrangePanelForArt(panel, listBoxRow, [copyBox, gradingToggleBox], gradingWrapperEl);
-		this.scheduleTextPrefetch();
 
 		const refreshQuantityAndPrice = () => {
 			valueEl.setText(String(this.card.count));
@@ -855,7 +716,202 @@ export class CardDetailModal extends Modal {
 			});
 		});
 
-		setupPanelScrollFade(panel);
+		return { copyBox, gradingToggleBox };
+	}
+
+	// The collapsible grading block (condition / language / graded / custom price), drawn only when gradingExpanded.
+	private drawGradingBlock(panel: HTMLElement, refs: DetailDrawRefs) {
+		const gradingWrapper = panel.createDiv({ cls: "mtg-card-detail-grading-wrapper" });
+		refs.gradingWrapperEl = gradingWrapper;
+		// Visually groups everything the toggle reveals (Condition/Language +
+		// Graded/Custom Price) in a single dotted outline, so that it's understood
+		// at a glance that these boxes form a separate block rather than simply
+		// continuing the list of always-visible boxes above. Purely cosmetic —
+		// since the switch to a measured pixel height (see below and styles.css),
+		// gradingWrapper no longer needs a single child to animate, unlike the old
+		// grid-template-rows technique.
+		const gradingContent = gradingWrapper.createDiv({ cls: "mtg-card-detail-grading-content" });
+
+		this.drawConditionLanguageRow(gradingContent, refs);
+
+		this.drawGradingRow(gradingContent);
+
+		// The very first opening starts from the collapsed state (see the base
+		// class in styles.css) then switches to is-expanded one frame later, so
+		// that the CSS transition has a real state change to animate — without the
+		// rAF, the element would appear already in its final state from its first
+		// paint, with no visible transition. A draw() that falls through here for
+		// a completely different reason (block already open) jumps straight to the
+		// final state, without replaying the entrance animation.
+		this.animateGradingBlock(gradingWrapper);
+	}
+
+	// Condition and language boxes of the grading block (the same two values as the icons above the image, see applyCondition).
+	private drawConditionLanguageRow(gradingContent: HTMLElement, refs: DetailDrawRefs) {
+		const conditionLanguageRow = gradingContent.createDiv({ cls: "mtg-card-detail-box-row" });
+
+		const condBox = conditionLanguageRow.createDiv({
+			cls: "mtg-card-detail-box mtg-card-detail-finish-box",
+		});
+		condBox.setAttribute("title", "Change condition");
+		condBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Condition" });
+		const condValueRow = condBox.createDiv({ cls: "mtg-card-detail-finish-value-row" });
+		condValueRow.createSpan();
+		refs.condValuePanelEl = condValueRow.createSpan({
+			cls: "mtg-card-detail-finish-value",
+			text: getCondition(this.card.condition).label,
+		});
+		setIcon(condValueRow.createSpan({ cls: "mtg-card-detail-finish-caret" }), "chevron-down");
+		condBox.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			openPickerMenu(condBox, this.conditionPickerItems(refs), {
+				matchAnchorWidth: true,
+				menuClass: "mtg-finish-picker-menu",
+			});
+		});
+
+		const langBox = conditionLanguageRow.createDiv({
+			cls: "mtg-card-detail-box mtg-card-detail-finish-box",
+		});
+		langBox.setAttribute("title", "Change language");
+		langBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Language" });
+		const langValueRow = langBox.createDiv({ cls: "mtg-card-detail-finish-value-row" });
+		langValueRow.createSpan();
+		refs.langValuePanelEl = langValueRow.createSpan({
+			cls: "mtg-card-detail-finish-value",
+			text: getLanguage(this.card.language).label,
+		});
+		setIcon(langValueRow.createSpan({ cls: "mtg-card-detail-finish-caret" }), "chevron-down");
+		langBox.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.openLanguagePickerFrom(refs, langBox, { matchAnchorWidth: true, menuClass: "mtg-finish-picker-menu" });
+		});
+	}
+
+	// Graded box (opens GradingModal) and the custom price input.
+	private drawGradingRow(gradingContent: HTMLElement) {
+		const gradingRow = gradingContent.createDiv({ cls: "mtg-card-detail-box-row" });
+
+		const gradedBox = gradingRow.createDiv({
+			cls: "mtg-card-detail-box mtg-card-detail-finish-box",
+		});
+		gradedBox.setAttribute("title", "Set grading");
+		gradedBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Graded" });
+		// No arrow here (unlike Condition/Language/Finish): explicitly requested —
+		// "Graded" opens GradingModal as a shortcut, it's not an inline picker, so
+		// no 1em/auto gutter to balance (see
+		// mtg-card-detail-finish-value-row-no-caret in CSS for the single-column
+		// re-centering this implies).
+		const gradedValueRow = gradedBox.createDiv({
+			cls: "mtg-card-detail-finish-value-row mtg-card-detail-finish-value-row-no-caret",
+		});
+		gradedValueRow.createSpan({
+			cls: "mtg-card-detail-finish-value",
+			// gradingCompany alone is no longer enough to say "graded" (see
+			// gradingExpanded above) — GradingModal preselects PSA by default and
+			// saves it even with no grade/condition entered.
+			text:
+				this.card.gradingGrade != null || this.card.gradingLabel
+					? `${this.card.gradingCompany ?? ""} ${this.card.gradingGrade ?? ""} ${
+							this.card.gradingLabel ?? ""
+					  }`
+							.replace(/\s+/g, " ")
+							.trim()
+					: "Not graded",
+		});
+		gradedBox.addEventListener("click", () => {
+			new GradingModal(this.app, this.plugin, this.card, () => {
+				this.view.render();
+				this.draw();
+			}).open();
+		});
+
+		// No modal here (unlike gradedBox): the user types their price directly in the
+		// box, saved via setCollectionCardCustomPrice on blur/Enter. Never call
+		// this.draw()/this.view.render() from these handlers — a redraw in the middle of
+		// typing would cut the focus (same risk as the pendingFocusRestore documented
+		// elsewhere in this file), and nothing else in the panel displays customPrice
+		// that would need updating in return.
+		const customPriceBox = gradingRow.createDiv({
+			cls: "mtg-card-detail-box mtg-card-detail-finish-box mtg-card-detail-customprice-box",
+		});
+		customPriceBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "Custom price" });
+		const priceInput = customPriceBox.createEl("input", {
+			cls: "mtg-card-detail-customprice-input",
+			type: "text",
+		});
+		priceInput.value = this.card.customPrice ?? "";
+		priceInput.setAttribute("placeholder", "For example, $45");
+		const commitCustomPrice = () => {
+			this.plugin.setCollectionCardCustomPrice(this.card.id, priceInput.value);
+		};
+		priceInput.addEventListener("blur", commitCustomPrice);
+		priceInput.addEventListener("keydown", (evt) => {
+			if (evt.key === "Enter") priceInput.blur();
+		});
+	}
+
+	// First opening: the block starts collapsed and expands one frame later, so the CSS transition has a state change to animate; a redraw while
+	// it is already open jumps to the final state.
+	private animateGradingBlock(gradingWrapper: HTMLElement) {
+		if (this.gradingJustOpened) {
+			this.gradingJustOpened = false;
+			// scrollHeight measures the natural height of the content already built
+			// above DESPITE the current height:0/overflow:hidden (set by the base
+			// class in CSS) — which is precisely what scrollHeight is made to report.
+			// Set at the same time as is-expanded, in the same rAF callback, so that
+			// height/margin-bottom/opacity all three start their transition from the
+			// same painted state, at the same instant (see styles.css for why this
+			// replaces the old grid-template-rows technique, which didn't keep these
+			// properties perfectly in phase despite an identical declared
+			// duration/curve).
+			const targetHeight = gradingWrapper.scrollHeight;
+			window.requestAnimationFrame(() => {
+				gradingWrapper.addClass("is-expanded");
+				gradingWrapper.style.height = `${targetHeight}px`;
+			});
+			window.setTimeout(() => {
+				// Goes back to "auto" once the transition is over: a value frozen in
+				// pixels would stay wrong if the content later changes height (e.g.
+				// selecting a longer grade label in Graded) without going back through
+				// this opening path. "auto" is that of .is-expanded (styles.css): we
+				// remove the pixel value. On a block closed in the meantime (it no longer
+				// has is-expanded) the height therefore stays 0 — the old code would
+				// reopen it abruptly by setting an inline "auto".
+				gradingWrapper.style.removeProperty("height");
+			}, 300);
+		} else {
+			// Redraw while the block is already open (changing the finish, saving the
+			// grading…): no animation to replay, the height directly follows the
+			// content (height:auto of .is-expanded).
+			gradingWrapper.addClass("is-expanded");
+		}
+	}
+
+	// The "List" box: which list the card is in, and the shortcut to move it.
+	private drawListBox(panel: HTMLElement): HTMLElement {
+		const list = this.plugin.settings.lists.find((l) => l.id === this.card.listId);
+		const listBoxRow = panel.createDiv({ cls: "mtg-card-detail-box-row" });
+		const listBox = listBoxRow.createDiv({
+			cls: "mtg-card-detail-box mtg-card-detail-list-box mtg-card-detail-set-box-clickable",
+		});
+		listBox.setAttribute("title", "Move card to another list…");
+		listBox.createDiv({ cls: "mtg-card-detail-finish-label", text: "List" });
+		listBox.createDiv({ cls: "mtg-card-detail-list-box-value", text: list?.name ?? "" });
+		listBox.addEventListener("click", () => {
+			new CopyCardModal(
+				this.app,
+				this.plugin,
+				[this.card],
+				"collection",
+				() => {
+					this.close();
+					this.view.render();
+				},
+				"move"
+			).open();
+		});
+		return listBoxRow;
 	}
 
 	private renderCopiesInListsBox(panel: HTMLElement) {

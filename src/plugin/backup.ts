@@ -1,6 +1,7 @@
 import { normalizePath, TFile, TFolder } from "obsidian";
 import { MTGCollectionSettings, BackupSummary, DEFAULT_SETTINGS } from "../core/data-model";
 import type { BackupFileInfo } from "../core/backup-files";
+import { parseExternalJson } from "../core/safe-json";
 import type MTGCollectionPlugin from "../plugin";
 
 export const BACKUP_FORMAT_MARKER = "mtg-collection-tracker-backup";
@@ -31,7 +32,8 @@ export function exportBackup(this: MTGCollectionPlugin): string {
 export function parseBackupFile(this: MTGCollectionPlugin, text: string): { settings: Partial<MTGCollectionSettings>; summary: BackupSummary } | { error: string } {
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(text);
+		// A backup file can come from someone else: no "__proto__" key gets into the settings (core/safe-json.ts).
+		parsed = parseExternalJson(text);
 	} catch {
 		return { error: "This file isn't valid JSON." };
 	}

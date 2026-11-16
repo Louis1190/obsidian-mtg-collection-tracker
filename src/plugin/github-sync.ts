@@ -17,6 +17,7 @@ import { CORE_SHARD, SHARD_FORMAT, assembleShards, encodeShards, isShardFileName
 import type { ShardObj } from "../core/github-shards";
 import { githubHomeStatus as homeStatusOf } from "../core/github-status";
 import type { GithubHomeStatus } from "../core/github-status";
+import { parseExternalJsonObject } from "../core/safe-json";
 import { omitKeys } from "../core/settings-merge";
 import { mergeForeignText, prepareLocal } from "./settings-sync";
 import type MTGCollectionPlugin from "../plugin";
@@ -293,13 +294,9 @@ const NOT_JSON: GithubFailure = {
 // on the same branch refuse each other).
 const DOWNLOAD_CONCURRENCY = 4;
 
-function parseShard(text: string): ShardObj | null {
-	try {
-		const o: unknown = JSON.parse(text);
-		return o !== null && typeof o === "object" && !Array.isArray(o) ? (o as ShardObj) : null;
-	} catch {
-		return null;
-	}
+// A shard is a file in a repository that other devices (or anyone with the token) write: no "__proto__" key gets in.
+export function parseShard(text: string): ShardObj | null {
+	return parseExternalJsonObject(text);
 }
 
 // Downloads `names`. Returns the shards read, or the first error (nothing is then applied: a shard read but not
