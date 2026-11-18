@@ -574,6 +574,19 @@ describe("display preferences stay on each device", () => {
 		expect(dev.settings.accentColor).toBe(""); // shared setting: not taken from the device storage
 	});
 
+	it("card recognition is on for a device with nothing stored, and a device that stored its own choice keeps it", async () => {
+		const fresh = makeDevice(new FakeFs());
+		await boot(fresh);
+		expect(fresh.settings.cardRecognitionEnabled).toBe(true);
+		expect(stored(fresh)).toMatchObject({ cardRecognitionEnabled: true });
+
+		const chose = makeDevice(new FakeFs());
+		chose.store.set(DEVICE_SETTINGS_STORAGE_KEY, { cardRecognitionEnabled: false });
+		await boot(chose);
+		expect(chose.settings.cardRecognitionEnabled).toBe(false);
+		expect(stored(chose)).toMatchObject({ cardRecognitionEnabled: false });
+	});
+
 	it("an old-version file that still carries preferences neither changes nor triggers anything", async () => {
 		const mac = await seededDevice([card("a")], 1000);
 		mac.settings.collectionViewMode = "card";

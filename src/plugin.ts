@@ -14,7 +14,7 @@ import {
 } from "./api/cardbase";
 import { UsdEurRate } from "./api/frankfurter";
 import { PRICE_HISTORY_BASE_URL } from "./api/price-history";
-import { FINGERPRINT_BASE_URL, stopCardRecognition } from "./card-recognition-entry";
+import { FINGERPRINT_BASE_URL, startCardRecognition, stopCardRecognition } from "./card-recognition-entry";
 import type { PriceHistoryShard } from "./core/price-history";
 import {
 	MTGCollectionSettings,
@@ -342,6 +342,10 @@ export default class MTGCollectionPlugin extends Plugin {
 		// real vault: see src/plugin/cache-hygiene.ts). Silent, once per start, after the workspace is ready so it never
 		// competes with the loading, and never awaited: it cannot fail the load.
 		this.app.workspace.onLayoutReady(() => void this.cleanCacheConflictCopies());
+
+		// Card recognition (beta): a computer's webcam is looked for once the workspace is ready (a device list, no permission asked, no camera switched on) and again when a camera is
+		// plugged in or out; the watching ends with the plugin. Nothing where the feature does not exist (the public build's stub).
+		this.app.workspace.onLayoutReady(() => startCardRecognition(this));
 
 		// Watches data.json outside of writes (another device via Syncthing) — see
 		// src/plugin/settings-sync.ts. After loadSettings(), which primes the starting

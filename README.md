@@ -24,6 +24,9 @@ Everything is stored in your own files, on your own devices. There is no account
 - **Copy, move, merge**: move or copy cards between lists, decks and wantlists, merge lists, merge duplicate cards.
 - **Import and export**: CSV and plain-text decklists (Moxfield, Archidekt, MTGO, Arena), export to CSV or text, or to
   the clipboard, one ZIP for several lists at once.
+- **Recognise a card from a photo** (beta): in *Add cards*, take or choose a photo of a card and the plugin
+  proposes up to three cards to pick from. The photo is read on your device and is never uploaded; nothing is added by itself.
+  See [Recognising a card from a photo](#recognising-a-card-from-a-photo-beta).
 - **Backups** you can restore, taken automatically into a vault folder, and **sync between devices** (see below).
 - **Phones and tablets**: the layout adapts to the width of the pane, with a bottom navigation bar on a phone.
 
@@ -52,6 +55,36 @@ repository: `gh attestation verify <file> --repo Louis1190/obsidian-mtg-collecti
 CSV import reads a header row; it recognises `Quantity`, `Name`, `Set code`, `Collector number`, `Finish`, `Condition`,
 `Language`, `Scryfall ID`, the grading columns and `Custom price`, so the plugin's own CSV export can be imported back.
 Cards that Scryfall cannot resolve are reported, not silently dropped.
+
+## Recognising a card from a photo (beta)
+
+It is on by default on a new install; an install that existed before keeps what it had, which was off. Either way, **Settings → MTG Collection Tracker → Interface → Card recognition (beta)**
+turns it on or off, on each device separately. Nothing is loaded or downloaded until you tap the photo button for the first time. It is available on phones and tablets, and on computers where a webcam is found (the setting is not shown otherwise).
+
+While it is on, a photo button appears in *Add cards*. On a phone or tablet it opens the camera; on a computer it opens a small window
+with the live webcam image, and *Take photo* grabs one frame. The webcam is on only while that window is open and goes off as
+soon as you take the photo or close it. Photograph one card, laid flat on a plain, well-lit surface and filling most of the frame.
+
+The plugin finds the card, compares its artwork with a compact index of about 52,000 artworks and, when that is not enough,
+reads the card's name and the set code and number printed at its bottom left. It then shows up to three proposals: you
+choose, and nothing is added without you.
+
+- **The photo stays on your device.** It is processed in memory, never uploaded, and the plugin lets go of it as soon as it
+  has been read. The plugin never writes it to a file. On a phone or tablet, the camera app may keep its own copy in your
+  gallery, like any photo you take; the plugin cannot remove it. What goes to Scryfall is a search for the card it was
+  recognised as (an artwork id, or a name, set code and number), never a picture.
+- **First use.** The artwork index (about 10.6 MB; ids and numbers, no picture, no name) is downloaded once from
+  `louis1190.github.io` into the plugin's folder. On a device that asks to save data and reports it, it is not downloaded:
+  the plugin reads the card's name from the photo instead (English and French names).
+- **Size.** The plugin file grows from about 0.65 MB to about 6 MB: the text-reading engine
+  ([Tesseract](https://github.com/tesseract-ocr/tesseract)) and its English model are included, so nothing else is
+  downloaded or installed. It only starts when you use the feature.
+- **Limits.** It can be wrong, which is why it proposes and never decides. Cards from before 2003 are harder; for an old card
+  printed many times you get a list of printings to choose from. Reading a card's name needs WebAssembly SIMD: a device whose browser engine lacks it
+  uses the artwork index only, and the plugin says so when that is not enough. Camera access
+  has only been tried on Linux so far. **Something wrong?**
+  [Report a problem](https://github.com/Louis1190/obsidian-mtg-collection-tracker/issues/new/choose). Please do not paste your
+  `data.json`, a backup or a token: the page is public.
 
 ## Prices
 
@@ -98,10 +131,10 @@ and it never sends your collection anywhere except to the GitHub repository you 
 
 | Service | What for | When |
 | --- | --- | --- |
-| `api.scryfall.com`, and the images served by `*.scryfall.io` | Card search, card data, prices, format legalities, set and mana symbols, card images | When you search, open or import cards (a name typed in another language that finds nothing is searched again in every language, and the English printing of each match is looked up to give its price); in the background, for each card you mark as being in another language, the name printed on it (one small request per card, then kept on your device; the same answer also says where the picture printed in that language is, used only if you choose to show printed pictures); in the background to keep the prices and legalities of your cards up to date; and, while a card's detail window is open, for the few cards just before and after the one shown (their text, artwork and images, so they appear at once when you move to them) |
+| `api.scryfall.com`, and the images served by `*.scryfall.io` | Card search, card data, prices, format legalities, set and mana symbols, card images, and, when you scan a card, a search for the card it was recognised as, plus the small pictures of a few candidate printings | When you search, open or import cards (a name typed in another language that finds nothing is searched again in every language, and the English printing of each match is looked up to give its price); in the background, for each card you mark as being in another language, the name printed on it (one small request per card, then kept on your device; the same answer also says where the picture printed in that language is, used only if you choose to show printed pictures); in the background to keep the prices and legalities of your cards up to date; and, while a card's detail window is open, for the few cards just before and after the one shown (their text, artwork and images, so they appear at once when you move to them); and when you scan a card (card recognition can be turned off in the settings) |
 | `api.cardkingdom.com` | Card Kingdom prices | The first time a card is opened in a session (read as a stream on a phone or tablet, to spare its memory) |
 | `manapool.com` | Mana Pool prices (its whole price list) | The first time a card is opened in a session, **computers only** |
-| `louis1190.github.io` | Price history and the Cardmarket price: one small file per card, named after the first three characters of its Scryfall id (1 of 4,096 files, ~10-40 KB, shared by about 27 cards). Nothing about you or your collection is in the request. A tiny file next to them, `site.json`, is read first (about once per session) and says where the price files are: normally right there, but it can name another `https` address if the files ever have to move, and the plugin then asks that address instead. The last address that worked is kept on your device. The same site also serves the market movers of Home: twelve small lists (about 8 KB each; one per period and vendor choice), the same for everyone, and, **on a phone or tablet only**, the Mana Pool price: a second set of small files with the same names (1 of 4,096, about 1-6 KB) | When a card is opened (and, in the background, for the few cards next to it in the detail window), and when Home shows its market trends |
+| `louis1190.github.io` | Price history and the Cardmarket price: one small file per card, named after the first three characters of its Scryfall id (1 of 4,096 files, ~10-40 KB, shared by about 27 cards). Nothing about you or your collection is in the request. A tiny file next to them, `site.json`, is read first (about once per session) and says where the price files are: normally right there, but it can name another `https` address if the files ever have to move, and the plugin then asks that address instead. The last address that worked is kept on your device. The same site also serves the market movers of Home: twelve small lists (about 8 KB each; one per period and vendor choice), the same for everyone, and, **on a phone or tablet only**, the Mana Pool price: a second set of small files with the same names (1 of 4,096, about 1-6 KB). For card recognition, **only when you first tap the photo button** (nothing is requested before): `mtg-card-fingerprints/fp/` holds the artwork index, one small `index.json` and 9 files of about 1.3 MB (10.6 MB in all), downloaded once and kept in the plugin's folder. Nothing about you, your collection or your photos is in the request. If these files ever move to another address, `index.json` names it and the plugin asks there instead (it keeps that address in this device's own storage); this table will then name the new host. | When a card is opened (and, in the background, for the few cards next to it in the detail window), and when Home shows its market trends |
 | `api.frankfurter.dev` | USD/EUR exchange rate | Once per session, when a price needs converting |
 | `api.github.com` | Syncing your data with **your own** private repository | **Only if you turn GitHub storage on** |
 
@@ -121,7 +154,7 @@ itself sends nothing to these sites, and nothing is opened in the background.
 
 ## Files outside your vault
 
-Everything the plugin keeps lives inside your vault: its own folder (`data.json`, caches, safety copies), the data folder you
+Everything the plugin keeps lives inside your vault: its own folder (`data.json`, caches, safety copies and, if you use card recognition, its artwork index: `fp-*` files, 10.6 MB), the data folder you
 may choose, the backup folder and the export folder. The exceptions are a few per-device preferences and the GitHub token,
 which Obsidian keeps in its own storage on the device. The plugin reaches outside the vault in these cases only, each one
 started by an action of yours:
@@ -133,12 +166,13 @@ started by an action of yours:
 - **Saving an export on a phone or tablet.** The export window writes into a vault folder (`MTG Exports` by default), and its
   **Share…** button hands that file to the system's share sheet or default app. On **Android**, **Device folder…** lets you pick
   a folder of the device with Obsidian's own folder picker and writes the file there; it never overwrites an existing file.
+- **Taking a photo.** The photo button of *Add cards* opens the system's camera on a phone or tablet, or a small window with the live image of the webcam on a computer that has one; the plugin reads that one photo in memory and lets go of it once read. It never saves it; the camera app of a phone or tablet may keep its own copy.
 
 ## Clipboard and device storage
 
 - **Clipboard.** The plugin only ever *writes* to it, when you click *Copy to clipboard* (or *Copy list* after an import).
   It never reads what you copied elsewhere.
-- **Device storage.** A few per-device preferences (the view mode of each section, the last export folder…) are kept in
+- **Device storage.** A few per-device preferences (the view mode of each section, the last export folder… and, only if the card index files ever move to another address, the address the plugin learned) are kept in
   Obsidian's per-device local storage (its own `saveLocalStorage`, never the browser's directly), never in `data.json`, so they are neither synced nor backed up. If you turn GitHub storage on, its
   access token goes to Obsidian's secret storage when your version has one, otherwise to the same device storage.
 
@@ -163,6 +197,13 @@ npm run build       # type check, then bundle to main.js
 - Card Kingdom, Mana Pool, TCGplayer, Cardmarket, PSA, BGS and CGC names and logos belong to their owners and are used only
   to say where a price or a grade comes from. This plugin is not affiliated with any of them.
 - The small language flags are flat icons from a royalty-free icon set.
+- Card recognition reads a card's name with [Tesseract.js](https://github.com/naptha/tesseract.js) and
+  [Tesseract OCR](https://github.com/tesseract-ocr/tesseract), with the English model from
+  [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) (all Apache License 2.0), included in the plugin file; the card names it
+  looks up in English and French come from [MTGJSON](https://mtgjson.com) (MIT License). The artwork index it downloads is computed from
+  card pictures provided by Scryfall and contains no picture. The text-reading engine also compiles Leptonica, libjpeg, libpng, LibTIFF, libwebp,
+  giflib, zlib and OpenLibm. **This software is based in part on the work of the Independent JPEG Group.** See
+  [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
 ## License
 

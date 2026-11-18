@@ -1,0 +1,57 @@
+name: Card recognition problem
+description: The photo button of "Add cards" proposed a wrong card, found nothing, was slow or did not work.
+title: "Card recognition: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting. **This page is public**: please do not paste your `data.json`, a backup, an access token or anything
+        personal. A photo of the card is welcome but optional (the plugin never uploads a photo by itself).
+  - type: input
+    id: versions
+    attributes:
+      label: Plugin version and Obsidian version
+      description: "Settings, Community plugins, MTG Collection Tracker shows the plugin version; Settings, About shows Obsidian's."
+      placeholder: "Plugin 1.0.xxx, Obsidian 1.x.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - Android phone
+        - Android tablet
+        - iPhone
+        - iPad
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: what
+    attributes:
+      label: What happened?
+      options:
+        - A wrong card was proposed first
+        - The right card was not among the three proposals
+        - "Nothing was found (No card found)"
+        - It took very long
+        - An error message appeared
+        - Obsidian reloaded or froze
+        - The first download of the card index failed
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: card
+    attributes:
+      label: The card you scanned
+      description: Its name, and its set if you know it.
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: The exact message if there was one, what the card was lying on, the light, a sleeve, the language of the card, anything unusual.

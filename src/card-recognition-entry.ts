@@ -1,10 +1,5 @@
-// The PUBLIC build's card-recognition entry: the feature does not exist there (it is private, see docs/history/public-stubs-plan.md). tools/publish-public.mjs copies THIS file
-// over src/card-recognition-entry.ts in the public copy and leaves the real one and src/recognition/ out, so nothing in the public bundle can reach the private code.
-// It sits in src/ (not in tools/) so that `tsc` checks it at every build and its relative import is the same wherever it ends up.
+// The card-recognition entry: the one door from the rest of the plugin into src/recognition/ (docs/history/public-stubs-plan.md). Nothing outside that folder
+// may import it any other way (src/__tests__/recognition-seam.test.ts fails otherwise). Until 2026-11-18 the public copy replaced this file with card-recognition-entry.stub.ts; it no longer does.
+// The names are listed one by one (never `export *`) so that an export cannot become reachable by accident: the stub (kept in case the feature has to be held back again) must offer every name used here.
 
-import type { CardRecognitionEntry } from "./card-recognition-types";
-
-export const createAddCardsScan: CardRecognitionEntry["createAddCardsScan"] = () => null;
-export const cardRecognitionSettingRows: CardRecognitionEntry["cardRecognitionSettingRows"] = () => [];
-export const stopCardRecognition: CardRecognitionEntry["stopCardRecognition"] = () => {};
-export const FINGERPRINT_BASE_URL: CardRecognitionEntry["FINGERPRINT_BASE_URL"] = "";
+export { createAddCardsScan, cardRecognitionSettingRows, startCardRecognition, stopCardRecognition, FINGERPRINT_BASE_URL } from "./recognition/entry";

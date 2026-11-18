@@ -56,6 +56,8 @@ export interface CardRecognitionEntry {
 	createAddCardsScan(host: AddCardsScanHost): AddCardsScan | null;
 	/** The settings rows of the feature (none where it does not exist). */
 	cardRecognitionSettingRows(plugin: MTGCollectionPlugin): CardRecognitionSettingRow[];
+	/** The plugin has loaded: the feature looks for what it needs of this device (a computer's webcam) and stops looking when the plugin unloads. Nothing is asked of the person. */
+	startCardRecognition(plugin: MTGCollectionPlugin): void;
 	/** The setting went off or the plugin unloads: whatever the feature keeps in memory is let go. */
 	stopCardRecognition(plugin: MTGCollectionPlugin): void;
 	/** Where the base of image fingerprints can be downloaded from; empty = nowhere. */

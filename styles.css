@@ -1058,6 +1058,28 @@
 	font-weight: 600;
 }
 
+/* The window that shows a computer's webcam for the camera button (recognition/ui/webcam-capture.ts, computers only: a phone hands over to the system's camera). The width is on the
+   modal itself, prefixed with `.modal` so it beats Obsidian's own rule without `!important`. The video has a floor height so the window does not collapse before the camera answers. */
+.modal.mtg-scan-webcam-modal {
+	width: 640px;
+	max-width: 92vw;
+}
+
+.mtg-scan-webcam .mtg-scan-webcam-video {
+	display: block;
+	width: 100%;
+	height: auto;
+	min-height: 12em;
+	max-height: 60vh;
+	background: #000;
+	border-radius: var(--radius-m);
+	object-fit: contain;
+}
+
+.mtg-scan-webcam .mtg-scan-webcam-status.is-error {
+	color: var(--text-error);
+}
+
 .mtg-scan-queue {
 	display: flex;
 	flex-direction: column;
@@ -11950,4 +11972,15 @@ body.is-phone {
 	top: -1000px;
 	left: -1000px;
 	opacity: 0;
+}
+
+/* Obsidian 1.15 paints a snapshot of the last session in an <iframe srcdoc> while the real window
+   loads (up to ~1.5 s), and copies EVERY style rule of the page into it, this file included. That
+   document has a Content-Security-Policy of `img-src app: data:`, so each remote picture (Scryfall's
+   thumbnails) is blocked and shows the broken-image icon until the snapshot is removed. Its <body> is
+   `inert` and the live one never is, which tells the two apart: inside the snapshot only, hide the
+   remote pictures so the empty card slots show instead of broken icons. Local (app: / data:) pictures
+   are not touched. */
+body[inert] .mtg-collection-view img[src^="http"] {
+	visibility: hidden;
 }

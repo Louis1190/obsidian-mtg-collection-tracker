@@ -138,6 +138,10 @@ describe("DEFAULT_SETTINGS", () => {
 		expect(DEFAULT_SETTINGS.wantlistViewMode).toBe("list");
 	});
 
+	it("turns the card recognition on by default (a per-device setting, see device-settings.ts)", () => {
+		expect(DEFAULT_SETTINGS.cardRecognitionEnabled).toBe(true);
+	});
+
 	it("defaults the Home Market trends choices to 24h and all vendors", () => {
 		// "" (not undefined) for "all vendors": must survive the JSON serialization of data.json.
 		expect(DEFAULT_SETTINGS.homeMoversPeriod).toBe("1d");

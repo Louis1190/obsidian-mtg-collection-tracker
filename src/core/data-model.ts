@@ -336,7 +336,7 @@ export interface MTGCollectionSettings {
 	customIconColor: string;
 	navCollapsed: boolean;
 	hideObsidianMobileBars: boolean;
-	// Adding a card from a photo (src/recognition/, src/recognition/ui/card-scan.ts) — beta, PRIVATE for now, off by default. Per device (DEVICE_LOCAL_KEYS): the
+	// Adding a card from a photo (src/recognition/, src/recognition/ui/card-scan.ts) — beta, ON by default (2026-11-18). Per device (DEVICE_LOCAL_KEYS): the
 	// engine runs on the device that takes the photo and holds ~80 MB while it works, so turning it on for the phone must not turn it on elsewhere.
 	cardRecognitionEnabled: boolean;
 	accentColor: string;
@@ -436,7 +436,7 @@ export const DEFAULT_SETTINGS: MTGCollectionSettings = {
 	customIconColor: "",
 	navCollapsed: false,
 	hideObsidianMobileBars: true,
-	cardRecognitionEnabled: false,
+	cardRecognitionEnabled: true,
 	accentColor: "",
 	suggestionCountThreshold: 5000,
 	priceRefreshIntervalHours: 24,
