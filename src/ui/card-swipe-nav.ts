@@ -44,7 +44,7 @@ function attach(contentEl: HTMLElement): void {
 		(evt) => {
 			start = null;
 			// Read at each touch, like usesArtHeader: Obsidian flips `is-phone` live with the window size.
-			if (!document.body.classList.contains("is-phone")) return;
+			if (!activeDocument.body.classList.contains("is-phone")) return;
 			// No nav header = the "Remove this card?" screen, where nothing is displayed to move away from.
 			if (evt.touches.length !== 1 || !contentEl.querySelector(".mtg-card-detail-nav-header")) return;
 			const touch = evt.touches[0];

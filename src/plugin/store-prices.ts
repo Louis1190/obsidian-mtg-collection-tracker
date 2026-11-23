@@ -1,6 +1,6 @@
 import { Platform } from "obsidian";
-import { CardKingdomPriceEntry, fetchCardKingdomPricelist, cardKingdomKey } from "../api/card-kingdom";
-import { ManaPoolCardPrices, fetchManaPoolPricelist, manaPoolCardUrl, manaPoolPricesSupported, ManaPoolPriceResult, pickManaPoolPrice, toManaPoolSeriesFinish } from "../api/manapool";
+import { CardKingdomPriceEntry, CardKingdomPricelist, fetchCardKingdomPricelist } from "../api/card-kingdom";
+import { ManaPoolPricelist, fetchManaPoolPricelist, manaPoolCardUrl, manaPoolPricesSupported, ManaPoolPriceResult, pickManaPoolPrice, toManaPoolSeriesFinish } from "../api/manapool";
 import { Finish } from "../core/card-model";
 import type MTGCollectionPlugin from "../plugin";
 
@@ -10,24 +10,24 @@ import type MTGCollectionPlugin from "../plugin";
 
 // Loads (once per session) the whole Card Kingdom pricelist — a single file for
 // the entire catalog (~67 MB), not a per-card endpoint like Scryfall (see
-// card-kingdom.ts). Only writes the cache on a confirmed success (non-empty map):
+// card-kingdom.ts), kept as a compact table (~12 MB, not ~56 MB). Only writes the cache on a confirmed success (non-empty pricelist):
 // a transient failure must not freeze an empty table, which would then deprive
 // EVERY card of a Card Kingdom price for the rest of the session — same logic as
 // loadSymbology (scryfall-cache.ts). fetchCardKingdomPricelist already returns an
-// empty Map (never an exception) on a network/HTTP failure, same convention as
+// empty pricelist (never an exception) on a network/HTTP failure, same convention as
 // fetchScryfallCollection elsewhere in this plugin.
 
-export async function loadCardKingdomPrices(this: MTGCollectionPlugin): Promise<Map<string, CardKingdomPriceEntry>> {
+export async function loadCardKingdomPrices(this: MTGCollectionPlugin): Promise<CardKingdomPricelist> {
 	if (this.cardKingdomPricesCache) return this.cardKingdomPricesCache;
 	if (!this.cardKingdomPricesFetchPromise) {
 		// Mobile: stream reading (a 65 MB pricelist via requestUrl would crash the app there, see fetchCardKingdomPricelist).
-		this.cardKingdomPricesFetchPromise = fetchCardKingdomPricelist({ stream: Platform.isMobileApp }).then((map) => {
-			if (map.size === 0) {
+		this.cardKingdomPricesFetchPromise = fetchCardKingdomPricelist({ stream: Platform.isMobileApp }).then((pricelist) => {
+			if (pricelist.size === 0) {
 				this.cardKingdomPricesFetchPromise = null;
-				return map;
+				return pricelist;
 			}
-			this.cardKingdomPricesCache = map;
-			return map;
+			this.cardKingdomPricesCache = pricelist;
+			return pricelist;
 		});
 	}
 	return this.cardKingdomPricesFetchPromise;
@@ -37,23 +37,23 @@ export async function loadCardKingdomPrices(this: MTGCollectionPlugin): Promise<
 // sell/has never sold this card in this finish.
 
 export async function getCardKingdomPrice(this: MTGCollectionPlugin, scryfallId: string, isFoil: boolean): Promise<CardKingdomPriceEntry | undefined> {
-	const map = await this.loadCardKingdomPrices();
-	return map.get(cardKingdomKey(scryfallId, isFoil));
+	const pricelist = await this.loadCardKingdomPrices();
+	return pricelist.get(scryfallId, isFoil);
 }
 // Same logic as loadCardKingdomPrices: a single round trip per session,
-// cache written only on confirmed success (non-empty map) so that a
+// cache written only on confirmed success (non-empty pricelist) so that a
 // transient failure doesn't deprive the whole session of Mana Pool prices.
 
-export async function loadManaPoolPrices(this: MTGCollectionPlugin): Promise<Map<string, ManaPoolCardPrices>> {
+export async function loadManaPoolPrices(this: MTGCollectionPlugin): Promise<ManaPoolPricelist> {
 	if (this.manaPoolPricesCache) return this.manaPoolPricesCache;
 	if (!this.manaPoolPricesFetchPromise) {
-		this.manaPoolPricesFetchPromise = fetchManaPoolPricelist().then((map) => {
-			if (map.size === 0) {
+		this.manaPoolPricesFetchPromise = fetchManaPoolPricelist().then((pricelist) => {
+			if (pricelist.size === 0) {
 				this.manaPoolPricesFetchPromise = null;
-				return map;
+				return pricelist;
 			}
-			this.manaPoolPricesCache = map;
-			return map;
+			this.manaPoolPricesCache = pricelist;
+			return pricelist;
 		});
 	}
 	return this.manaPoolPricesFetchPromise;
@@ -85,7 +85,7 @@ export async function getManaPoolPrice(
 			asOf: own.date,
 		};
 	}
-	const map = await this.loadManaPoolPrices();
-	const entry = map.get(scryfallId);
+	const pricelist = await this.loadManaPoolPrices();
+	const entry = pricelist.get(scryfallId);
 	return entry ? pickManaPoolPrice(entry, finish) : undefined;
 }

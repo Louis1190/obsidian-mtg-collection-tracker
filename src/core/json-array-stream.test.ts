@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JsonArrayRowStream } from "./json-array-stream";
+import { JsonArrayRowStream, pushBytes } from "./json-array-stream";
 
 function run(chunks: string[], key = "data"): { rows: string[]; prefix: string; failed: boolean } {
 	const rows: string[] = [];
@@ -75,4 +75,71 @@ describe("JsonArrayRowStream", () => {
 		expect(count).toBe(150_000);
 		expect(Date.now() - started).toBeLessThan(5000);
 	}, 20000);
+});
+
+describe("pushBytes: a body that is already whole in memory", () => {
+	const SLICE = 1 << 20; // the size pushBytes reads at a time
+	const collect = async (bytes: Uint8Array, breathe?: () => Promise<void>) => {
+		const rows: string[] = [];
+		const stream = new JsonArrayRowStream("data", (r) => rows.push(r));
+		await pushBytes(stream, bytes, breathe);
+		return { rows, stream };
+	};
+	const encode = (s: string) => new TextEncoder().encode(s);
+
+	it("gives the same rows as pushing the text itself", async () => {
+		const { rows, stream } = await collect(encode(DOC), async () => {});
+		expect(stream.failed).toBe(false);
+		expect(rows.map((r) => JSON.parse(r))).toEqual(ROWS);
+		expect(stream.prefix).toBe(run([DOC]).prefix);
+	});
+
+	it("a multi-byte character cut in two by a slice boundary is still one character", async () => {
+		// "日" is three bytes: put the slice boundary after its first byte, then after its second.
+		for (const filler of [SLICE - 15 - 1, SLICE - 15 - 2]) {
+			const head = '{"data":[{"s":"';
+			const doc = head + "x".repeat(filler) + "日日日" + '"}]}';
+			expect(encode(head + "x".repeat(filler)).length % SLICE).not.toBe(0);
+			const { rows } = await collect(encode(doc), async () => {});
+			expect(rows).toHaveLength(1);
+			expect(JSON.parse(rows[0]).s).toBe("x".repeat(filler) + "日日日");
+		}
+	});
+
+	it("many rows over several slices: none lost, none doubled, in order", async () => {
+		const n = 100_000;
+		const doc = `{"meta":{"k":1},"data":[${Array.from({ length: n }, (_, i) => JSON.stringify({ i, name: "é".repeat(i % 7) })).join(",")}]}`;
+		const bytes = encode(doc);
+		expect(bytes.length).toBeGreaterThan(2 * SLICE); // it really does span slices
+		const { rows } = await collect(bytes, async () => {});
+		expect(rows).toHaveLength(n);
+		expect(rows.every((r, i) => (JSON.parse(r) as { i: number }).i === i)).toBe(true);
+	});
+
+	it("lets the page breathe every second slice, and not at all for a body that fits in one", async () => {
+		let breaths = 0;
+		const breathe = async () => void breaths++;
+		await collect(encode(DOC), breathe);
+		expect(breaths).toBe(0);
+		const filler = "x".repeat(5 * SLICE + 10);
+		await collect(encode(`{"data":[{"s":"${filler}"}]}`), breathe); // 6 slices: after the 2nd, 4th and 6th
+		expect(breaths).toBe(3);
+	});
+
+	it("the default pause is a real macrotask: a pending timer runs before the next slice is read", async () => {
+		const order: string[] = [];
+		window.setTimeout(() => order.push("timer"), 0);
+		const filler = "x".repeat(2 * SLICE + 10);
+		const stream = new JsonArrayRowStream("data", () => order.push("row"));
+		await pushBytes(stream, encode(`{"data":[{"s":"${filler}"}]}`));
+		expect(order).toEqual(["timer", "row"]); // the row completes in the 3rd slice, after the breath that followed the 2nd
+	});
+
+	it("a body that is not a pricelist fails the stream instead of throwing", async () => {
+		const { rows, stream } = await collect(encode('{"error":"maintenance"}'), async () => {});
+		expect(rows).toEqual([]);
+		expect(stream.failed).toBe(false); // short: it only fails once more than MAX_PREFIX characters passed without the array
+		const long = await collect(encode('{"x":"' + "y".repeat(150_000) + '"}'), async () => {});
+		expect(long.stream.failed).toBe(true);
+	});
 });

@@ -7,8 +7,9 @@ Everything is stored in your own files, on your own devices. There is no account
 
 ## What you can do
 
-- **Home**, a dashboard: what you own, recently added cards, your most valuable cards, a colour and rarity breakdown,
-  decks that still need cards, backup status, and market movers.
+- **Home**, a dashboard: what you own, recently added cards, your most valuable cards, how the value of your
+  collection moves over time (one point a day, written when prices refresh, kept on your devices), a colour and rarity
+  breakdown, decks that still need cards, backup status, and market movers.
 - **My Collection**: any number of lists (plus an *Inbox* for cards you have not sorted yet). Each card has a
   finish, a condition, a language, an optional grading (PSA / BGS / CGC / other) and an optional custom price.
 - **My Decks**: mainboard, sideboard and maybeboard, a Commander slot, a *Stacks* view that fans the cards of each
@@ -77,8 +78,12 @@ choose, and nothing is added without you.
   `louis1190.github.io` into the plugin's folder. On a device that asks to save data and reports it, it is not downloaded:
   the plugin reads the card's name from the photo instead (English and French names).
 - **Size.** The plugin file grows from about 0.65 MB to about 6 MB: the text-reading engine
-  ([Tesseract](https://github.com/tesseract-ocr/tesseract)) and its English model are included, so nothing else is
-  downloaded or installed. It only starts when you use the feature.
+  ([Tesseract](https://github.com/tesseract-ocr/tesseract)), its English model and a list of card names (English and
+  French) are included, so nothing else is downloaded or installed. They are the upstream files, unchanged
+  (see `THIRD-PARTY-NOTICES.md`), stored in `main.js` compressed and as base64 text (a code scan lists the resulting
+  `atob` call) and unpacked in memory the first time you tap the photo button; they are never written to a file.
+  Obsidian Sync's Standard plan does not carry files over 5 MB, so if you use it, install the plugin on each device from
+  the community list instead of through Sync.
 - **Limits.** It can be wrong, which is why it proposes and never decides. Cards from before 2003 are harder; for an old card
   printed many times you get a list of printings to choose from. Reading a card's name needs WebAssembly SIMD: a device whose browser engine lacks it
   uses the artwork index only, and the plugin says so when that is not enough. Camera access
@@ -119,7 +124,7 @@ impossible values; the column then shows a dash.
   device that has simply not seen it yet.
 - Display choices (sort order, view mode, the collapsed navigation…) stay on the device and are not synced.
 - **Backups**: *Settings → Backup* exports a complete JSON snapshot, and can write one automatically into a vault folder
-  (`MTG Backups` by default, the last 7 kept). To restore, *Choose a saved backup* lists the backups of that folder (the
+  (`MTG Backups` by default, the last 7 kept; the automatic ones are written compact, on a single line, to save space, while the exported file stays indented and readable). To restore, *Choose a saved backup* lists the backups of that folder (the
   same on every device), and *Load backup file* takes a backup from anywhere else. You always see what a backup contains
   before anything is replaced.
 - Small caches (set icons, rules text, format legalities, set lists) are stored in the plugin's folder and can be deleted at any time.

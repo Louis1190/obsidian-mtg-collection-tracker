@@ -100,6 +100,8 @@ export async function refreshAllPrices(this: MTGCollectionPlugin,
 	});
 
 	this.settings.lastPriceRefresh = Date.now();
+	// The day's point of the value history, from the prices just applied (saved by the line below, once).
+	this.recordCollectionValue();
 	await this.saveSettings();
 	return { updated };
 }

@@ -6,3 +6,12 @@
 // break all the following ones. The jsdom environment (svg-markup.test.ts) already has its own window.
 const g = globalThis as { window?: unknown };
 if (typeof g.window === "undefined") g.window = globalThis;
+
+// Obsidian also defines `activeDocument` (the document of the window that has focus: a popout window's, or the main one): the plugin
+// reads it instead of `document`, which is always the main window's. Under test it is `document`, read at each access, so a test that
+// swaps or removes `document` (github-sync.test.ts) is followed. A getter, not a copy: the jsdom environment creates its `document`
+// after this file is first evaluated in some setups, and a test may stub it later.
+Object.defineProperty(globalThis, "activeDocument", {
+	get: () => (globalThis as { document?: unknown }).document,
+	configurable: true,
+});

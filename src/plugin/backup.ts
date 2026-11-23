@@ -1,5 +1,6 @@
 import { normalizePath, TFile, TFolder } from "obsidian";
 import { MTGCollectionSettings, BackupSummary, DEFAULT_SETTINGS } from "../core/data-model";
+import { mergeValueHistories } from "../core/value-history";
 import type { BackupFileInfo } from "../core/backup-files";
 import { parseExternalJson } from "../core/safe-json";
 import type MTGCollectionPlugin from "../plugin";
@@ -8,7 +9,10 @@ export const BACKUP_FORMAT_MARKER = "mtg-collection-tracker-backup";
 export const BACKUP_SCHEMA_VERSION = 1;
 export const AUTO_BACKUP_FILE_PREFIX = "mtg-collection-backup-auto-";
 
-export function exportBackup(this: MTGCollectionPlugin): string {
+// `compact` (2026-11-23, memory audit): the automatic backups, 7 of them kept by default and recopied by whatever synchronises the
+// vault, are written without indentation (-27 %: 6.9 -> 5.0 MB on the real collection). The manual "Export backup" stays indented,
+// because it is one file a person may open, inspect or attach to a bug report. Restoring reads both (parseBackupFile).
+export function exportBackup(this: MTGCollectionPlugin, compact = false): string {
 	// Destructuring rather than `delete` on a copy: guarantees that
 	// this.settings itself (and its key, still needed in memory for this
 	// session's cardbase.dev calls) is never mutated.
@@ -20,7 +24,7 @@ export function exportBackup(this: MTGCollectionPlugin): string {
 		exportedAt: Date.now(),
 		settings: settingsWithoutKey,
 	};
-	return JSON.stringify(backup, null, 2);
+	return compact ? JSON.stringify(backup) : JSON.stringify(backup, null, 2);
 }
 // Validates and summarizes a backup file without applying anything — used
 // by setting-tab.ts to build the summary displayed in
@@ -61,7 +65,13 @@ export function parseBackupFile(this: MTGCollectionPlugin, text: string): { sett
 
 export async function restoreBackup(this: MTGCollectionPlugin, settings: Partial<MTGCollectionSettings>) {
 	const currentApiKey = this.settings.cardbaseApiKey;
+	const currentValueHistory = this.settings.valueHistory;
 	this.settings = Object.assign({}, DEFAULT_SETTINGS, settings, { cardbaseApiKey: currentApiKey });
+	// The value history is not replaced like the cards are: what was recorded since the backup was made is kept, and the
+	// days only the backup knows are added (a restore must not rewind the curve).
+	const history = mergeValueHistories(currentValueHistory, settings.valueHistory);
+	if (history.length > 0) this.settings.valueHistory = history;
+	else delete this.settings.valueHistory;
 	await this.runSettingsMigrations();
 	await this.saveSettings();
 	this.refreshAccentColor();
@@ -112,7 +122,7 @@ export async function runAutoBackup(this: MTGCollectionPlugin): Promise<{ path: 
 		const filePath = normalizePath(
 			`${folderPath}/${AUTO_BACKUP_FILE_PREFIX}${stamp}.json`
 		);
-		const content = this.exportBackup();
+		const content = this.exportBackup(true);
 		const existing = this.app.vault.getAbstractFileByPath(filePath);
 		if (existing instanceof TFile) {
 			await this.app.vault.modify(existing, content);

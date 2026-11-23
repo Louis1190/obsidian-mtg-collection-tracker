@@ -94,3 +94,27 @@ export class JsonArrayRowStream {
 		if (this.state === "row") this.row += text.slice(segmentStart);
 	}
 }
+
+const BODY_SLICE_BYTES = 1 << 20;
+
+/** Lets the page paint and answer a click: a macrotask, not a microtask. */
+function nextTask(): Promise<void> {
+	return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
+/**
+ * Feeds a response body that is already whole in memory (desktop: what `requestUrl` returns) to `stream`, decoded a megabyte
+ * at a time with a decoder that carries a multi-byte character across two slices, and calls `breathe` every second slice so
+ * that a 65 MB body does not freeze the window for a second. The point of reading it this way rather than through `.json`: the
+ * 152,000 row objects of a whole parse (and, with accents in the names, a 130 MB UTF-16 copy of the text) never exist at once.
+ * Measured on a 67 MB Card Kingdom document, peak process memory 348 MB -> 163 MB, 0.59 s -> 1.05 s of work done in small
+ * slices. Mobile reads the same bytes as they arrive (`fetch`), through the same stream.
+ */
+export async function pushBytes(stream: JsonArrayRowStream, bytes: Uint8Array, breathe: () => Promise<void> = nextTask): Promise<void> {
+	const decoder = new TextDecoder("utf-8");
+	for (let start = 0, slice = 0; start < bytes.length; start += BODY_SLICE_BYTES, slice++) {
+		stream.push(decoder.decode(bytes.subarray(start, start + BODY_SLICE_BYTES), { stream: true }));
+		if (slice % 2 === 1) await breathe();
+	}
+	stream.push(decoder.decode());
+}

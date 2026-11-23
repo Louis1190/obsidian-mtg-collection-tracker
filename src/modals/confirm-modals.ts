@@ -98,7 +98,7 @@ export class ClearAllDataConfirmModal extends Modal {
 		contentEl.createEl("h2", { text: "Clear all your data?" });
 		contentEl.createEl("p", {
 			cls: "mtg-status",
-			text: `This will permanently delete ${this.cardCount} card(s) across ${this.listCount} list(s), ${this.deckCount} deck(s), and ${this.wantlistItemCount} wantlist item(s) across ${this.wantlistCount} wantlist(s).`,
+			text: `This will permanently delete ${this.cardCount} card(s) across ${this.listCount} list(s), ${this.deckCount} deck(s), and ${this.wantlistItemCount} wantlist item(s) across ${this.wantlistCount} wantlist(s), and the recorded history of your collection's value.`,
 		});
 		contentEl.createEl("p", {
 			cls: "mtg-add-all-warning",

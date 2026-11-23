@@ -27,6 +27,7 @@ import {
 	fetchLatestPaperPrintings,
 	searchAllPrintings,
 	fetchScryfallCollection,
+	slimImmutableSnapshot,
 	fetchCardsByName,
 	fetchPrintingsOfIllustrations,
 	fetchPrintingsOfNames,
@@ -1430,5 +1431,81 @@ describe("fetchSetCardNames", () => {
 	it("says null for a set with no card", async () => {
 		mockRequestUrl.mockResolvedValue(page([]));
 		expect(await run(() => fetchSetCardNames("zzz"))).toBeNull();
+	});
+});
+
+describe("slimImmutableSnapshot: only the picture sizes and the shop link the plugin reads are kept", () => {
+	const fullImages = {
+		small: "https://cards.scryfall.io/small/a.jpg?1",
+		normal: "https://cards.scryfall.io/normal/a.jpg?1",
+		large: "https://cards.scryfall.io/large/a.jpg?1",
+		png: "https://cards.scryfall.io/png/a.png?1",
+		art_crop: "https://cards.scryfall.io/art_crop/a.jpg?1",
+		border_crop: "https://cards.scryfall.io/border_crop/a.jpg?1",
+	};
+	const fullPurchase = {
+		tcgplayer: "https://tcgplayer.example/a",
+		cardmarket: "https://cardmarket.example/a",
+		cardhoarder: "https://cardhoarder.example/a",
+	};
+
+	// The tests use partial entries: the function is generic over the entry it is given.
+	const slim = <T extends object>(entry: T): T => slimImmutableSnapshot(entry as never) as unknown as T;
+
+	it("cuts the root pictures and the shops, and keeps everything else", () => {
+		const out = slim({ oracle_text: "x", set: "lea", rarity: "rare", image_uris: fullImages, purchase_uris: fullPurchase });
+		expect(out.image_uris).toEqual({ small: fullImages.small, normal: fullImages.normal, art_crop: fullImages.art_crop });
+		expect(out.purchase_uris).toEqual({ tcgplayer: fullPurchase.tcgplayer });
+		expect(out).toMatchObject({ oracle_text: "x", set: "lea", rarity: "rare" });
+	});
+
+	it("cuts the pictures of each face of a double-faced card, and leaves the rest of the face alone", () => {
+		const out = slim({
+			card_faces: [
+				{ name: "Front", oracle_text: "f", artist: "A", image_uris: fullImages },
+				{ name: "Back", oracle_text: "b", image_uris: { normal: "n", large: "l" } },
+			],
+		});
+		expect(out.card_faces?.[0]).toEqual({
+			name: "Front", oracle_text: "f", artist: "A",
+			image_uris: { small: fullImages.small, normal: fullImages.normal, art_crop: fullImages.art_crop },
+		});
+		expect(out.card_faces?.[1]).toEqual({ name: "Back", oracle_text: "b", image_uris: { normal: "n" } });
+	});
+
+	it("does not change its argument", () => {
+		const input = { image_uris: { ...fullImages }, purchase_uris: { ...fullPurchase }, card_faces: [{ image_uris: { ...fullImages } }] };
+		const before = JSON.stringify(input);
+		slim(input);
+		expect(JSON.stringify(input)).toBe(before);
+	});
+
+	it("returns the very same object when there is nothing to cut (so a loader can tell nothing changed)", () => {
+		const already = { oracle_text: "x", image_uris: { normal: "n" }, purchase_uris: { tcgplayer: "t" }, card_faces: [{ image_uris: { small: "s" } }] };
+		expect(slim(already)).toBe(already);
+		const once = slim({ image_uris: fullImages, purchase_uris: fullPurchase });
+		expect(slim(once)).toBe(once); // idempotent
+		const bare = { set: "lea" };
+		expect(slim(bare)).toBe(bare); // a card with no pictures at all
+	});
+
+	it("does not invent a key the entry did not have", () => {
+		const out = slim({ image_uris: fullImages });
+		expect("purchase_uris" in out).toBe(false);
+		expect("card_faces" in out).toBe(false);
+	});
+
+	it("leaves a malformed entry as it found it instead of throwing", () => {
+		const odd = { image_uris: "oops", purchase_uris: null, card_faces: [null, 3, { image_uris: undefined }] };
+		expect(() => slim(odd as never)).not.toThrow();
+		expect(slim(odd as never)).toBe(odd);
+		expect(slim(null as never)).toBeNull();
+	});
+
+	it("shrinks a realistic entry by well over half (the real cache was 58 % pictures + 22 % shops)", () => {
+		const entry = { oracle_text: "Flying", set: "lea", image_uris: fullImages, purchase_uris: fullPurchase };
+		const before = JSON.stringify(entry).length;
+		const after = JSON.stringify(slim(entry)).length;
+		expect(after).toBeLessThan(before * 0.65);
 	});
 });

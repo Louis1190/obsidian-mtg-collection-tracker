@@ -20,6 +20,12 @@ import { setSvgMarkup } from "../ui/svg-markup";
 
 export function showCardNamePreview(this: MTGCollectionView, anchor: HTMLElement, imageUrl: string) {
 	if (!imageUrl) return;
+	// The preview is ONE element on <body> (position: fixed), created in the window the view had when it opened. A view moved into a popout
+	// window hovers names in another document and another viewport: the element follows the hovered name to its window (appendChild moves it
+	// and adopts it there), and the viewport measured below is that window's, not the main one's.
+	const doc = anchor.ownerDocument;
+	const win = doc.defaultView ?? window;
+	if (this.cardNamePreviewEl.parentElement !== doc.body) doc.body.appendChild(this.cardNamePreviewEl);
 	this.cardNamePreviewImgEl.src = imageUrl;
 	const r = anchor.getBoundingClientRect();
 	const margin = 12;
@@ -30,11 +36,11 @@ export function showCardNamePreview(this: MTGCollectionView, anchor: HTMLElement
 	// to the edge). Then clamped on both sides in case NEITHER the right nor
 	// the left is enough (window narrower than the preview itself).
 	let left = r.right + margin;
-	if (left + previewWidth > window.innerWidth - margin) {
+	if (left + previewWidth > win.innerWidth - margin) {
 		left = r.left - previewWidth - margin;
 	}
-	left = Math.max(margin, Math.min(left, window.innerWidth - previewWidth - margin));
-	const top = Math.max(margin, Math.min(r.top, window.innerHeight - previewHeight - margin));
+	left = Math.max(margin, Math.min(left, win.innerWidth - previewWidth - margin));
+	const top = Math.max(margin, Math.min(r.top, win.innerHeight - previewHeight - margin));
 	this.cardNamePreviewEl.style.left = `${left}px`;
 	this.cardNamePreviewEl.style.top = `${top}px`;
 	this.cardNamePreviewEl.addClass("is-visible");

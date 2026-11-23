@@ -606,8 +606,10 @@ export async function githubTestNow(this: MTGCollectionPlugin): Promise<GithubCo
 	return githubTestConnection(target);
 }
 
+// Visibility of the window the person is using (the focused one: a popout window's or the main one's), so a main window left hidden behind
+// does not slow the polling down while a popout window is in front.
 function windowVisible(): boolean {
-	return typeof document === "undefined" || document.visibilityState === "visible";
+	return typeof activeDocument === "undefined" || activeDocument.visibilityState === "visible";
 }
 
 export function setupGithubSync(this: MTGCollectionPlugin): void {
@@ -624,8 +626,11 @@ export function setupGithubSync(this: MTGCollectionPlugin): void {
 		noteActivity(this.github);
 		void this.githubSync("focus");
 	});
-	this.registerDomEvent(document, "visibilitychange", () => {
-		if (document.visibilityState === "visible") {
+	// The MAIN window's document (the plugin loads there). Popout windows exist on desktop only, where nothing is suspended in the background
+	// (the reason for flushing when the window hides), and the tick above reads the focused window's visibility: a popout needs no listener.
+	const mainDoc = activeDocument;
+	this.registerDomEvent(mainDoc, "visibilitychange", () => {
+		if (mainDoc.visibilityState === "visible") {
 			noteActivity(this.github);
 			void this.githubSync("focus");
 		} else void this.flushGithubSync();

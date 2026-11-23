@@ -730,6 +730,8 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		const bannerBg = headerBanner.createDiv({ cls: "mtg-detail-banner-bg" });
 		bannerBg.style.backgroundImage = `url("${group.coverImage}")`;
 		headerBanner.createDiv({ cls: "mtg-detail-banner-scrim" });
+		// The title and its stats sit on the dark scrim: `.theme-light` has to know there is one (styles.css, `.has-cover`).
+		headerBanner.addClass("has-cover");
 	}
 
 	const backBtn = headerBanner.createEl("button", {
@@ -778,7 +780,10 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 	// height (explicitly requested, annotated screenshot in support).
 	// searchActionsRow (see styles.css) is the enclosing flex row; filterRow
 	// grows to take the remaining space, actionsRow keeps its own width.
-	const searchActionsRow = stickyHeader.createDiv({ cls: "mtg-detail-search-actions-row" });
+	// Everything under the title lives in ONE element, `toolsEl`: on a phone attachDetailTools (see
+	// view/detail-tools.ts) moves it to the top of the scrolling area, where it collapses while reading.
+	const toolsEl = stickyHeader.createDiv({ cls: "mtg-detail-tools" });
+	const searchActionsRow = toolsEl.createDiv({ cls: "mtg-detail-search-actions-row" });
 	const filterRow = searchActionsRow.createDiv({ cls: "mtg-collection-toolbar mtg-inline-filter-row" });
 	const actionsRow = searchActionsRow.createDiv({ cls: "mtg-detail-search-actions" });
 
@@ -860,11 +865,11 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 		});
 	}
 
-	this.renderGroupSortBar("list", stickyHeader);
+	this.renderGroupSortBar("list", toolsEl);
 
 	if (this.listSelectMode) {
 		this.renderCollectionBulkActionsBar(
-			stickyHeader,
+			toolsEl,
 			!this.listBulkBarWasVisible,
 			filteredCards.map((c) => c.id)
 		);
@@ -961,6 +966,8 @@ export function renderListDetail(this: MTGCollectionView, listId: string) {
 	// hidden), so the join stays clean without any background color needing to
 	// be redeclared here.
 	setupPanelScrollFade(scrollArea);
+	// Phone only: the rows under the title go to the top of this area and collapse while reading.
+	this.attachDetailTools(toolsEl, stickyHeader, scrollArea, this.listSelectMode);
 	// "Cards: …" title (number of cards, "x of y cards match" during a search)
 	// — see renderCardsCountTitle. An active "legal:" token whose legalities
 	// are not all in the cache yet adds "Fetching legality data" next to it

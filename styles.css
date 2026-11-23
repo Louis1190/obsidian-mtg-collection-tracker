@@ -845,7 +845,7 @@
 }
 
 .mtg-search-add-btn.mtg-search-add-all-btn {
-	height: 49px;
+	height: var(--mtg-ctl-xl);
 }
 
 /* "+" icon in a small circle, before the button text — explicitly
@@ -881,8 +881,8 @@
 .mtg-search-add-btn.mtg-search-scan-btn {
 	flex: 0 0 auto;
 	justify-content: center;
-	width: 49px;
-	height: 49px;
+	width: var(--mtg-ctl-xl);
+	height: var(--mtg-ctl-xl);
 	padding: 0;
 }
 
@@ -1611,7 +1611,7 @@
 .mtg-modal-danger-btn {
 	display: inline-flex;
 	align-items: center;
-	height: 34px;
+	height: var(--mtg-ctl-xl);
 	font-weight: 700;
 	padding: 0 1em;
 	cursor: pointer;
@@ -1635,7 +1635,7 @@
 .mtg-modal-cancel-btn {
 	display: inline-flex;
 	align-items: center;
-	height: 34px;
+	height: var(--mtg-ctl-xl);
 	padding: 0 1em;
 }
 
@@ -1693,7 +1693,7 @@
 	height: 85vh;
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) {
 	width: 100%;
 	max-width: none;
 	height: 100%;
@@ -1702,7 +1702,7 @@
 	background: var(--background-primary);
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-modal {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-modal {
 	overflow-x: hidden;
 	overflow-y: auto;
 }
@@ -1722,26 +1722,26 @@
 	margin-right: 3.5em;
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height > .mtg-card-detail-close-btn {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) > .mtg-card-detail-close-btn {
 	top: calc(var(--safe-area-inset-top, 0px) + 1em);
-	width: 42px;
-	height: 42px;
+	width: var(--mtg-ctl-xl);
+	height: var(--mtg-ctl-xl);
 	background: rgba(0, 0, 0, 0.62);
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height > .mtg-card-detail-close-btn svg {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) > .mtg-card-detail-close-btn svg {
 	width: 24px;
 	height: 24px;
 }
 
 /* The cross's icon is always white, so on a dark page the disc has to be lighter than the page, not darker: a translucent black disc is invisible on black. */
-.theme-dark.is-phone .modal.mtg-search-modal-fixed-height > .mtg-card-detail-close-btn {
+.theme-dark.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) > .mtg-card-detail-close-btn {
 	background: color-mix(in srgb, #fff 18%, transparent);
 }
 
 /* The status bar overlays the window edge to edge, and now that the page scrolls, content passes under its clock and icons (seen in the Android app on the detail
    window). A solid strip the height of the safe area, drawn by the window itself (which does not scroll), hides what scrolls under it; below the cross (z-index 3). */
-.is-phone .modal.mtg-search-modal-fixed-height::after {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal)::after {
 	content: "";
 	position: absolute;
 	top: 0;
@@ -1757,11 +1757,11 @@
 /* The track's 300px floor was sized for a desktop tile (250px wide); a phone tile is ~190px tall (image 111 + footer + add control, measured at
    412px), so the floor left ~110px of empty tile under every card, exactly the room History now needs at the bottom. Skeleton tiles have the same
    height as real ones (ratio-based), so a search that loads does not make the window jump; 12em is only the floor for an empty result. */
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-results {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results {
 	min-height: 12em;
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-results-block {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results-block {
 	display: flex;
 	flex-direction: column;
 	gap: 0.8em;
@@ -1777,7 +1777,7 @@
 	padding-right: 0;
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-results-block-header {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results-block-header {
 	display: flex;
 	align-items: center;
 	gap: 0.5em;
@@ -1788,17 +1788,17 @@
 	text-transform: uppercase;
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-results-block-icon {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results-block-icon {
 	display: flex;
 	align-items: center;
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-results-block-icon svg {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results-block-icon svg {
 	width: 15px;
 	height: 15px;
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-results-block-count {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results-block-count {
 	margin-left: auto;
 	flex: 0 0 auto;
 	white-space: nowrap;
@@ -1813,17 +1813,17 @@
 }
 
 /* The carousel's own bottom margin was the gap to the search block; the block's margin does that now. */
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-carousel {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-carousel {
 	margin-bottom: 0;
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-carousel-arrow {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-carousel-arrow {
 	display: none;
 }
 
 /* Two cards and half of the third (two gaps of 0.75em between three tiles), capped at 10em so a phone held sideways does not stretch them. The tile's own minimum content
    (the stepper, the price line) is narrower than this at 360px. */
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-result-card-tile {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-result-card-tile {
 	flex: 0 0 min(calc((100% - 1.5em) / 2.5), 10em);
 	background: var(--background-secondary-alt);
 }
@@ -1991,13 +1991,13 @@
 	height: 28px;
 }
 
-/* "Add" (80x44 box around a 60x30 button: it is already wide enough, the height is what was short) */
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-results-block .mtg-result-card-add-btn {
+/* "Add" / "Select" (an 80x44 box around a 60x36 button: it is already wide enough, the height is what was short) */
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results-block .mtg-result-card-add-btn {
 	position: relative;
 }
 
 .is-phone .modal.mtg-search-modal-fixed-height .mtg-search-results-block .mtg-result-card-stepper .mtg-stepper-btn::after,
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-results-block .mtg-result-card-add-btn::after {
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results-block .mtg-result-card-add-btn::after {
 	content: "";
 	position: absolute;
 }
@@ -2006,8 +2006,18 @@
 	inset: -8px;
 }
 
-.is-phone .modal.mtg-search-modal-fixed-height .mtg-search-results-block .mtg-result-card-add-btn::after {
-	inset: -7px -10px;
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results-block .mtg-result-card-add-btn::after {
+	inset: -4px -10px;
+}
+
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results-block button.mtg-result-card-add-btn:not(:disabled) {
+	background: var(--mtg-accent, var(--interactive-accent));
+	color: var(--text-on-accent);
+	box-shadow: none;
+}
+
+.is-phone .modal:is(.mtg-search-modal-fixed-height, .mtg-change-printing-modal) .mtg-search-results-block button.mtg-result-card-add-btn:not(:disabled):active {
+	background: color-mix(in srgb, var(--mtg-accent, var(--interactive-accent)) 78%, black);
 }
 
 /* History: the checkbox is 22px (16px before) inside its label, which is a 44x44 box; the negative margin keeps the layout footprint at the checkbox's own width plus the 6px it always
@@ -2162,7 +2172,8 @@
 }
 
 .is-phone .modal.mtg-search-modal-fixed-height .mtg-scan-block .mtg-scan-block-add-btn::after {
-	inset: -7px -1px;
+	/* the ✓ is 42x36 since the third step of the size scale (it was 42x30, box -7px): 4px above and below make 44 */
+	inset: -4px -1px;
 }
 
 .is-phone .modal.mtg-search-modal-fixed-height .mtg-scan-block-add .mtg-stepper-btn::after {
@@ -2173,10 +2184,66 @@
 	inset: -11px -4px;
 }
 
-/* The "Save filter" prompt (name field, "Save", "Cancel"): "Save" was 63x34 beside a 70x44 "Cancel" (the shared `.mtg-search-add-btn` is 34px high), so it is under 44 and shorter than its neighbour; both are 44 now.
+/* The "Save filter" prompt (name field, "Save", "Cancel"): "Save" was 63x34 beside a 70x44 "Cancel" (the shared `.mtg-search-add-btn` was 34px high then; it is 44px everywhere since 2026-11-21, so this rule now only keeps the pair level inside the phone window), so it is under 44 and shorter than its neighbour; both are 44 now.
    The field is already 44px high. */
 .is-phone .modal.mtg-search-modal-fixed-height .mtg-search-save-filter-actions button {
 	height: 44px;
+}
+
+
+/* The status bar is drawn over the top of the window and the blocks sit 1em from the sides, as the top section of "Add cards" does: padding on the content element, which a lone class cannot set
+   (`.mtg-search-modal` takes it away with three classes). The bottom space is the search block's margin, below. */
+.is-phone .modal.mtg-change-printing-modal .mtg-search-modal {
+	padding: calc(1.25em + var(--safe-area-inset-top, 0px)) 1em 0;
+}
+
+/* The title leaves room for the cross (42px + its 1em margin + a gap), like "Add cards"'s */
+.is-phone .modal.mtg-change-printing-modal .mtg-search-modal > h2 {
+	margin: 0 3.5em 0.35em 0;
+}
+
+.is-phone .modal.mtg-change-printing-modal .mtg-search-modal > .mtg-status {
+	margin: 0 0 0.9em;
+}
+
+/* The content element is a flex column that scrolls: what it holds keeps its own height rather than being squeezed (the form already says so) */
+.is-phone .modal.mtg-change-printing-modal .mtg-search-results-block {
+	flex-shrink: 0;
+}
+
+.is-phone .modal.mtg-change-printing-modal .mtg-search-form {
+	margin: 0 0 calc(1em + var(--safe-area-inset-bottom, 0px));
+	padding: 1em;
+	border-radius: 10px;
+	background: var(--background-secondary);
+}
+
+/* A tile is 130px wide here (the carousel's 2.5 cards): the set's name is what tells two printings apart, so it takes two lines before being cut, and the two lines are always reserved so that the number,
+   the price and "Select" sit at the same height on every tile */
+.is-phone .modal.mtg-change-printing-modal .mtg-result-card-caption {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	line-height: 1.25;
+	min-height: 2.5em;
+}
+
+.is-phone .modal.mtg-change-printing-modal .mtg-card-detail-actions {
+	display: none;
+}
+
+/* A foreign printing's footer (set symbol, number, a flag, a price like "$39.99") asks for 119px inside the 114px a tile has here, and a flex item never goes under its content: read on the real phone, the tile grew
+   to 135px and its content sat 7px lower than its neighbours' (2026-11-21). The gaps are tightened (0.35em -> 0.25em, 0.5em -> 0.25em: 111px) and the tile may no longer be wider than its slot, so that a dearer price
+   or a longer number gives up the number's last letters (an ellipsis) instead of widening one tile of the row. */
+.is-phone .modal.mtg-change-printing-modal .mtg-result-card-tile {
+	min-width: 0;
+}
+
+.is-phone .modal.mtg-change-printing-modal .mtg-result-card-footer,
+.is-phone .modal.mtg-change-printing-modal .mtg-result-card-footer-left {
+	gap: 0.25em;
 }
 
 /* Carousel: left/right arrows framing the scrolling track. Stretched over
@@ -2492,7 +2559,8 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	height: 1.9em;
+	/* L (36px) since the third step of the size scale (it was 1.9em, ~30px): "Add" / "Select" are the tile's own button, the stepper that replaces it is centred in the same slot. */
+	height: var(--mtg-ctl-l);
 }
 
 .mtg-result-card-add-btn {
@@ -2619,6 +2687,9 @@
    click as before: a CSS transition can only animate an element from one
    state to another ON THE SAME element. */
 .mtg-copy-card-tab-btn {
+	display: flex;
+	align-items: center;
+	min-height: var(--mtg-ctl-l);
 	padding: 0.5em 1em;
 	cursor: pointer;
 	color: var(--text-muted);
@@ -3164,7 +3235,7 @@
 .mtg-icon-picker-cancel-btn {
 	display: inline-flex;
 	align-items: center;
-	height: 34px;
+	height: var(--mtg-ctl-xl);
 	padding: 0 1em;
 	font-weight: 700;
 	cursor: pointer;
@@ -3420,8 +3491,8 @@
 	top: 0.4em;
 	right: 0.4em;
 	z-index: 2;
-	width: 24px;
-	height: 24px;
+	width: var(--mtg-ctl-s);
+	height: var(--mtg-ctl-s);
 	border-radius: 50%;
 	background: rgba(0, 0, 0, 0.45);
 	color: #fff;
@@ -3444,8 +3515,8 @@
 
 .mtg-tile-menu-btn-large {
 	position: static;
-	width: 34px;
-	height: 34px;
+	width: var(--mtg-ctl-l);
+	height: var(--mtg-ctl-l);
 	border-radius: 50%;
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
@@ -3460,6 +3531,13 @@
 .mtg-tile-menu-btn-large.is-active {
 	background: var(--mtg-accent, var(--interactive-accent));
 	color: var(--text-on-accent);
+}
+
+/* In the rows that carry a main action (select, settings, deck stats next to "+ Add cards"; a gallery's select button next to "+ New list", in the header on a phone and in the search row elsewhere) the icon buttons take the main action's height. */
+.mtg-detail-search-actions .mtg-tile-menu-btn-large,
+.mtg-collection-header .mtg-tile-menu-btn-large {
+	width: var(--mtg-ctl-xl);
+	height: var(--mtg-ctl-xl);
 }
 
 .mtg-tile-menu-btn.is-disabled {
@@ -3893,10 +3971,16 @@
 	gap: 0.4em;
 }
 
+body {
+	--mtg-ctl-s: 32px;
+	--mtg-ctl-l: 36px;
+	--mtg-ctl-xl: 44px;
+}
+
 .mtg-search-add-btn {
 	display: inline-flex;
 	align-items: center;
-	height: 34px;
+	height: var(--mtg-ctl-xl);
 	font-weight: 700;
 	padding: 0 1em;
 	cursor: pointer;
@@ -4226,8 +4310,8 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 28px;
-	height: 28px;
+	width: var(--mtg-ctl-s);
+	height: var(--mtg-ctl-s);
 	border-radius: 6px;
 	cursor: pointer;
 	color: var(--text-muted);
@@ -4747,6 +4831,19 @@ body.is-phone {
 	background: rgba(0, 0, 0, 0.5);
 }
 
+/* Light theme: the title and its stats are drawn over the blurred artwork AND the dark scrim above, whatever the theme (black 0.5), but took the light theme's own text colours (black, and a mid grey that all but disappeared:
+   measured rgb(92, 92, 92) on the scrim, 2026-11-21). With a cover (`.has-cover`, set where the scrim is created) they are white, with a faint shadow for a bright artwork. The dark theme already reads white-ish and is untouched; a
+   banner without a cover has no scrim and keeps the theme's colours. */
+.theme-light .mtg-detail-header-banner.has-cover .mtg-detail-title {
+	color: #fff;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.theme-light .mtg-detail-header-banner.has-cover .mtg-detail-title-stats {
+	color: rgba(255, 255, 255, 0.85);
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
 /* Without an explicit z-index, these two elements (position: static by
    default) would paint BEFORE the position: absolute layers above in the
    standard stacking order, despite their later order in the DOM — same
@@ -4759,6 +4856,11 @@ body.is-phone {
 .mtg-back-btn {
 	position: relative;
 	z-index: 2;
+}
+
+/* L (36px). Doubled class: on a phone Obsidian's own `button:not(.clickable-icon)` gives a 44px height that a single class would lose to. */
+.mtg-back-btn.mtg-back-btn {
+	height: var(--mtg-ctl-l);
 }
 
 .mtg-detail-header-banner .mtg-title-info {
@@ -4806,6 +4908,22 @@ body.is-phone {
 
 .mtg-collection-toolbar .mtg-filter-chip-row {
 	flex: 1;
+}
+
+/* The galleries' own search bars (My Collection / My Decks / My Wantlists, the persistent ones of the view: the bar inside an open list is a
+   .mtg-collection-toolbar too and must not change). On a computer and a tablet the "+ New X" and select buttons sit in the .mtg-detail-search-actions
+   slot to the right of the bar, like "+ Add cards" in an open list (view/gallery-actions.ts); the bar may shrink for them, and the buttons are centred on it.
+   On a phone the buttons stay in the header, the slot is empty and must not leave its flex gap beside the bar. */
+.mtg-gallery-toolbar {
+	align-items: center;
+}
+
+.mtg-gallery-toolbar .mtg-filter-chip-row {
+	min-width: 0;
+}
+
+.mtg-gallery-toolbar .mtg-detail-search-actions:empty {
+	display: none;
 }
 
 .mtg-collection-list {
@@ -6065,6 +6183,7 @@ body.is-phone {
 	cursor: pointer;
 	font-size: 0.85em;
 	white-space: nowrap;
+	min-height: var(--mtg-ctl-s);
 }
 
 .mtg-picker-item:hover {
@@ -6447,8 +6566,8 @@ body.is-phone {
 	z-index: 3;
 	top: 1em;
 	right: 1em;
-	width: 32px;
-	height: 32px;
+	width: var(--mtg-ctl-s);
+	height: var(--mtg-ctl-s);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -6662,8 +6781,8 @@ body.is-phone {
 	   .mtg-card-detail-image-icon-glyph/-flag set the size of the logo
 	   separately (font-size / width+height), so this change only enlarges the
 	   container, not the flag nor the condition badge themselves. */
-	width: 46px;
-	height: 46px;
+	width: var(--mtg-ctl-xl);
+	height: var(--mtg-ctl-xl);
 	border-radius: 8px;
 	background: rgba(0, 0, 0, 0.55);
 	color: #fff;
@@ -7447,8 +7566,8 @@ body.is-phone {
 }
 
 .is-phone .mtg-card-detail-modal .mtg-card-detail-close-btn {
-	width: 42px;
-	height: 42px;
+	width: var(--mtg-ctl-xl);
+	height: var(--mtg-ctl-xl);
 }
 
 .is-phone .mtg-card-detail-modal .mtg-card-detail-close-btn svg {
@@ -9385,6 +9504,10 @@ body.is-phone {
 
 .mtg-bulk-actions-scroll .mtg-bulk-action-btn {
 	white-space: nowrap;
+	/* L (36px), same on every device (it was 30px on a computer and 44px on a phone, from Obsidian's own button height). */
+	height: var(--mtg-ctl-l);
+	padding-top: 0;
+	padding-bottom: 0;
 }
 
 .mtg-bulk-actions-scroll.is-scrollable {
@@ -9556,9 +9679,12 @@ body.is-phone {
 	flex: 1;
 	align-items: center;
 	justify-content: center;
-	gap: 0.4em;
-	height: 32px;
-	padding: 0 1em;
+	gap: 0.3em;
+	height: var(--mtg-ctl-l);
+	/* The three tabs share the row's width (`min-width: 0` lets them shrink below their text, which `flex: 1` alone does not: the item's automatic minimum is its content). Mainboard / Sideboard / Maybeboard with 1em of padding
+	   asked for 370px, a phone row has ~344px, and the container's `overflow: hidden` cut the third tab off (found by the 2026-11-21 audit); 0.4em of padding, a 0.3em gap (the longest, "Maybeboard (0)", then needs ~111px of the ~114px each tab gets at 390px) and an ellipsis on the label when it is still too tight (a 360px pane, big counts). */
+	min-width: 0;
+	padding: 0 0.4em;
 	background: var(--background-secondary);
 	color: var(--text-muted);
 	cursor: pointer;
@@ -9600,11 +9726,15 @@ body.is-phone {
 .mtg-deck-board-tab-label {
 	font-weight: 700;
 	color: inherit;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .mtg-deck-board-tab-count {
 	color: inherit;
 	opacity: 0.75;
+	flex-shrink: 0;
 }
 
 /* Group by / Sort by toolbar */
@@ -9616,17 +9746,29 @@ body.is-phone {
 	flex-wrap: wrap;
 }
 
+/* No `overflow: hidden` on the cluster any more: it would clip the invisible tap areas of its buttons (see "TAP AREAS ON TOUCH SCREENS"). The rounded ends are on the first and last button instead. */
 .mtg-groupsort-cluster {
 	display: flex;
 	align-items: stretch;
 	border-radius: 8px;
-	overflow: hidden;
+}
+
+.mtg-groupsort-cluster > :first-child {
+	border-radius: 8px 0 0 8px;
+}
+
+.mtg-groupsort-cluster > :last-child {
+	border-radius: 0 8px 8px 0;
+}
+
+.mtg-groupsort-cluster > :only-child {
+	border-radius: 8px;
 }
 
 .mtg-groupsort-btn {
 	display: inline-flex;
 	align-items: center;
-	height: 30px;
+	height: var(--mtg-ctl-s);
 	gap: 0.4em;
 	padding: 0 0.8em;
 	background: var(--background-secondary);
@@ -9656,8 +9798,8 @@ body.is-phone {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 32px;
-	height: 30px;
+	width: var(--mtg-ctl-s);
+	height: var(--mtg-ctl-s);
 	background: var(--background-secondary);
 	color: var(--text-muted);
 	cursor: pointer;
@@ -9694,6 +9836,8 @@ body.is-phone {
 
 .is-phone .mtg-view-toggle .mtg-viewmode-btn-card {
 	border-right: none;
+	/* Stacks (a deck's 5th mode) is hidden after it, so Card is no longer the cluster's last child: it takes the rounded end itself. */
+	border-radius: 0 8px 8px 0;
 }
 
 /* Local filter (above Group by/Sort by, in the body of the view) */
@@ -9759,6 +9903,157 @@ body.is-phone {
 	flex: 1;
 }
 
+/* TAP AREAS ON TOUCH SCREENS (2026-11-21; `.is-mobile` = phone and tablet). A control that is S (32px) or L (36px) keeps its look, an invisible box makes its tap area 44px high. The boxes are `::after`, so they only exist where
+   nothing clips them: that is why the Group by / Sort by clusters lost their `overflow: hidden`. Buttons that touch each other side by side (a cluster's buttons, the view-mode buttons) are extended vertically only: their
+   width is their neighbours' business. Rows of controls 9.6px apart overlap by 2.4px (6px each way); the later one in the DOM wins there. */
+.is-mobile .mtg-groupsort-btn,
+.is-mobile .mtg-groupsort-reverse-btn,
+.is-mobile .mtg-copy-card-tab-btn,
+.is-mobile .mtg-export-folder-btn,
+.is-mobile .mtg-back-btn,
+.is-mobile .mtg-bulk-actions-scroll .mtg-bulk-action-btn {
+	position: relative;
+}
+
+.is-mobile .mtg-groupsort-btn::after,
+.is-mobile .mtg-groupsort-reverse-btn::after {
+	content: "";
+	position: absolute;
+	inset: -6px 0;
+}
+
+.is-mobile .mtg-copy-card-tab-btn::after,
+.is-mobile .mtg-export-folder-btn::after,
+.is-mobile .mtg-back-btn::after,
+.is-mobile .mtg-bulk-actions-scroll .mtg-bulk-action-btn::after {
+	content: "";
+	position: absolute;
+	inset: -4px 0;
+}
+
+/* The group-header select button and the Home pills are S controls too (32px): +6px above and below. */
+.is-mobile .mtg-group-header-select-btn,
+.is-mobile .mtg-home-block .mtg-home-trends-period-btn,
+.is-mobile .mtg-home-block .mtg-home-trends-vendor-btn {
+	position: relative;
+}
+
+.is-mobile .mtg-group-header-select-btn::after,
+.is-mobile .mtg-home-block .mtg-home-trends-period-btn::after,
+.is-mobile .mtg-home-block .mtg-home-trends-vendor-btn::after {
+	content: "";
+	position: absolute;
+	inset: -6px 0;
+}
+
+/* The round close button of the small windows (S, 32px, in the corner of the window): +6px each way. Not in the card detail window nor in "Add cards" / "Change printing", which size it themselves. */
+.is-mobile .modal:not(.mtg-card-detail-modal-frame):not(.mtg-search-modal-fixed-height):not(.mtg-change-printing-modal) .mtg-card-detail-close-btn::after {
+	content: "";
+	position: absolute;
+	inset: -6px;
+}
+
+/* The ⋮ in the corner of a list / deck / wantlist tile (S, 32px): its tap area becomes 44x44. The tile starts 6.4px (0.4em) from the button on the top and right, so a 6px box reaches (almost) the
+   tile's edge and never leaves it (a box outside it could be clipped). */
+.is-mobile .mtg-set-tile .mtg-tile-menu-btn::after {
+	content: "";
+	position: absolute;
+	inset: -6px;
+}
+
+/* The "?" (search syntax help) at the end of a list's search bar (S, 32px): a 44px-high box, 6px more above and below, 4px each side. */
+.is-mobile .mtg-collection-view .mtg-filter-syntax-btn {
+	position: relative;
+}
+
+.is-mobile .mtg-collection-view .mtg-filter-syntax-btn::after {
+	content: "";
+	position: absolute;
+	inset: -6px -4px;
+}
+
+/* The wantlist's "Mark as acquired" check (S, 32px since the second step; it was 24px): its tap area becomes 44x44. In a row it reaches 6px out on every side (the name column is on its left and the stepper on its right, a gap of ~14px each side).
+   In a Card view tile it sits at the right end of the first row with the stepper's 32px button 3px below it and the card picture above it: the box reaches 9px up (into the picture's bottom edge), only 3px down (a longer box would cover the stepper's top
+   edge: measured), 8px left (the set label ends far away) and 4px right (the tile's own edge). The button is `position: static` as an inline icon, so it needs `relative` for its `::after` to be placed against it. */
+.is-mobile .mtg-wantlist-acquired-btn {
+	position: relative;
+	/* The base .mtg-tile-menu-btn gives top/right 0.4em for its absolute corner placement; `static` ignored them, `relative` would turn them into a 6.4px shift (found by the on/off A/B). */
+	top: auto;
+	right: auto;
+}
+
+.is-mobile .mtg-wantlist-acquired-btn::after {
+	content: "";
+	position: absolute;
+	inset: -6px;
+}
+
+.is-mobile .mtg-card-tile .mtg-wantlist-acquired-btn::after {
+	inset: -9px -4px -3px -8px;
+}
+
+/* Home, phone only: the clickable text lines (the stat lines of Overview and the rows of "Decks to finish" were 26px and 29px) are rows, not buttons: they get 44px of height. */
+.is-phone .mtg-home-overview-row {
+	padding-top: 1em;
+	padding-bottom: 1em;
+}
+
+.is-phone .mtg-home-deck-alert-row {
+	min-height: 44px;
+}
+
+.mtg-detail-scroll-area > .mtg-detail-tools {
+	position: sticky;
+	top: 0;
+	z-index: 4;
+	background: var(--background-primary);
+	/* The scroller's horizontal padding is cancelled and recreated, like the header's own (--mtg-phone-content-pad-x). */
+	margin: 0 calc(-1 * var(--mtg-phone-content-pad-x));
+	padding: 0 var(--mtg-phone-content-pad-x) 0.5em;
+	will-change: transform;
+}
+
+/* The header's own bottom padding now belongs to the rows (it used to sit under them). */
+.mtg-detail-sticky-header.has-detached-tools {
+	padding-bottom: 0;
+}
+
+.mtg-detail-scroll-area > .mtg-detail-tools.is-animated {
+	transition: transform 0.2s ease;
+}
+
+.mtg-detail-scroll-area > .mtg-detail-tools.is-hidden {
+	transform: translateY(-100%);
+}
+
+/* The fade of the cards at the top of the scroller (setupPanelScrollFade, asked for explicitly: a row must not be cut off sharply under the
+   header). While the tools are SHOWN, the scroller's own top fade would fade the first rows of the tools too (they are inside it): it is
+   dropped, and the tools carry the same fade themselves, a gradient to the page background right under their lower edge (it is what the
+   mask revealed: the flat --background-primary). Once they are HIDDEN the scroller's fade is back, at the top of the scroller, right under
+   the title. */
+.mtg-detail-scroll-area.has-sticky-tools:not(.is-tools-hidden).mtg-panel-fade-top:not(.mtg-panel-fade-bottom) {
+	-webkit-mask-image: none;
+	mask-image: none;
+}
+
+.mtg-detail-scroll-area.has-sticky-tools:not(.is-tools-hidden).mtg-panel-fade-top.mtg-panel-fade-bottom {
+	-webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--mtg-fade-bottom)), transparent 100%);
+	mask-image: linear-gradient(to bottom, black calc(100% - var(--mtg-fade-bottom)), transparent 100%);
+}
+
+/* Only while the scroller is scrolled (.mtg-panel-fade-top), like the mask it stands in for: at rest the fade must not exist, or it covers the first
+   28px of the content, the "Cards: N cards" title (measured on the real phone in 1.0.656/1.0.657: its top half was dimmed at the top of a list). */
+.mtg-detail-scroll-area.mtg-panel-fade-top > .mtg-detail-tools::after {
+	content: "";
+	position: absolute;
+	top: 100%;
+	left: 0;
+	right: 0;
+	height: var(--mtg-fade-top);
+	background: linear-gradient(to bottom, var(--background-primary), transparent);
+	pointer-events: none;
+}
+
 .mtg-filter-suggestions {
 	position: absolute;
 	top: 100%;
@@ -9818,8 +10113,8 @@ body.is-phone {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 30px;
-	height: 30px;
+	width: var(--mtg-ctl-s);
+	height: var(--mtg-ctl-s);
 	font-size: 0.9em;
 	font-weight: 700;
 	cursor: pointer;
@@ -9956,6 +10251,17 @@ body.is-phone {
    natural height, aligned to the same flex-start edge). */
 .mtg-search-chip-bar-container .mtg-filter-chip-row {
 	align-items: flex-start;
+}
+
+/* THE SEARCH BAR OF "ADD CARDS" IS XL TOO (44px) where "Add all" sits beside it (a computer, a tablet; third step of the size scale, it was 48px beside a 49px button): the field's box is its content (the grey field, L), the "?" and "Save filter" (L, 36px),
+   plus 3px of padding above and below and the 0.6px borders (the grey field itself measures 37px: its 36px minimum plus its borders) = 44px. On a phone "Add all" has a row of its own under a bar whose scrolling row is 46px high for the chips' tap boxes (57px in all), so the phone's own rules keep it. */
+.mtg-search-chip-bar-container .mtg-filter-chip-row-inner {
+	min-height: var(--mtg-ctl-l);
+}
+
+body:not(.is-phone) .mtg-search-chip-bar-container .mtg-filter-chip-row {
+	padding-top: 3px;
+	padding-bottom: 3px;
 }
 
 /* Same height as mtg-search-save-filter-square-btn right next to it (36px)
@@ -10210,6 +10516,12 @@ body.is-phone {
 	color: var(--mtg-accent, var(--text-accent));
 }
 
+/* In the lists' search bars the "?" is S (32px), centred: the icon keeps its size. (The Add cards window's own bar, outside .mtg-collection-view, has its own 36px.) */
+.mtg-collection-view .mtg-filter-syntax-btn {
+	width: var(--mtg-ctl-s);
+	height: var(--mtg-ctl-s);
+}
+
 /* "Save filter" button — icon only, square format (not a "pill" button like
    the suggestions themselves nor a bare icon like mtg-filter-syntax-btn
    just above) — explicitly requested, to the right of the chip bar
@@ -10319,7 +10631,13 @@ body.is-phone {
 .mtg-group-header {
 	grid-column: 1 / -1;
 	display: grid;
-	grid-template-columns: 1fr auto 1fr;
+	/* The right column never goes narrower than its content ("3 unique ·
+	   8 cards" on one line): a plain 1fr let its text spill over the centre
+	   (the colour symbols, the set name) as soon as the header was under
+	   ~330px, because .mtg-group-header-right has min-width: 0. With room to
+	   spare both outer columns are still equal, so the centre stays centred;
+	   without it the centre gives way to the left instead of being covered. */
+	grid-template-columns: minmax(auto, 1fr) auto minmax(max-content, 1fr);
 	align-items: center;
 	gap: 0.5em;
 	font-weight: 700;
@@ -10368,8 +10686,8 @@ body.is-phone {
 	align-items: center;
 	justify-content: center;
 	flex-shrink: 0;
-	width: 26px;
-	height: 26px;
+	width: var(--mtg-ctl-s);
+	height: var(--mtg-ctl-s);
 	border-radius: 6px;
 	color: var(--text-faint);
 	cursor: pointer;
@@ -10419,6 +10737,10 @@ body.is-phone {
 
 .mtg-group-header-icons {
 	display: inline-flex;
+	/* A group of four or five colours (34px symbols) on a narrow list wraps
+	   onto a second line instead of running under the checkbox or the count. */
+	flex-wrap: wrap;
+	justify-content: center;
 	align-items: center;
 	gap: 0.25em;
 }
@@ -10768,11 +11090,18 @@ body.is-phone {
 	font-size: 11px;
 }
 
-/* Color breakdown — pie chart + legend, side by side on a wide enough
-   panel, stacked below ~420px (same threshold as .mtg-card-detail-layout
-   elsewhere in this file for the same reason: illegible any narrower). */
+/* Color breakdown — pie chart + legend, side by side while the row is wide
+   enough for the legend's basis (10.5em), the legend under the pie otherwise.
+   The media query at the end of this block additionally forces a column on a
+   viewport under 420px. */
 .mtg-deck-stats-pie-row {
 	display: flex;
+	/* The legend drops under the pie when its own column would be narrower than
+	   its basis. This used to depend on the VIEWPORT alone (the media query
+	   below), which says nothing about a Home block of ~280px inside a wide
+	   window: "Colorless" then ran over its count. */
+	flex-wrap: wrap;
+	justify-content: center;
 	align-items: center;
 	gap: 1.5em;
 	min-width: 0;
@@ -10784,7 +11113,9 @@ body.is-phone {
 }
 
 .mtg-deck-stats-legend {
-	flex: 1;
+	/* 10.5em fits the longest label ("Multicolor", "Uncommon") next to a
+	   four-digit count and its percentage. */
+	flex: 1 1 10.5em;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
@@ -10872,6 +11203,11 @@ body.is-phone {
 	.mtg-deck-stats-pie-wrap {
 		align-self: center;
 	}
+
+	/* Column direction: the basis would be a HEIGHT here. */
+	.mtg-deck-stats-legend {
+		flex: 1 1 auto;
+	}
 }
 
 /* ExportDestinationModal (modals/export-destination-modal.ts) — "Save as"
@@ -10894,7 +11230,7 @@ body.is-phone {
 	gap: 0.5em;
 	width: 100%;
 	height: auto;
-	min-height: 34px;
+	min-height: var(--mtg-ctl-l);
 	padding: 0.35em 0.7em;
 	text-align: left;
 	cursor: pointer;
@@ -11463,6 +11799,14 @@ body.is-phone {
 	background: var(--background-primary);
 }
 
+/* S (32px). Two classes: on a phone Obsidian's own button height (44px) would win over one. */
+.mtg-home-block .mtg-home-trends-period-btn,
+.mtg-home-block .mtg-home-trends-vendor-btn {
+	height: var(--mtg-ctl-s);
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
 .mtg-home-trends-period-btn:hover,
 .mtg-home-trends-vendor-btn:hover {
 	color: var(--text-normal);
@@ -11798,6 +12142,123 @@ body.is-phone {
 	color: var(--text-muted);
 	text-align: center;
 	padding-top: 0.3em;
+}
+
+/* -- Home: "Collection value" block (2026-11-22) --
+   renderHomeValueHistory (view/home-render.ts) + renderValueHistoryChart (ui/value-history-chart.ts). The period tabs
+   reuse .mtg-home-trends-period-tabs/-btn as they are (same look, same 32px height, same tap boxes on a phone). The
+   chart follows the card detail's price history chart (.mtg-price-history-*): a stretched SVG, its labels in HTML. */
+.mtg-home-value-head {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15em;
+	margin-bottom: 0.6em;
+}
+
+.mtg-home-value-amount {
+	font-size: 1.6em;
+	font-weight: 700;
+	line-height: 1.15;
+	font-variant-numeric: tabular-nums;
+}
+
+.mtg-home-value-change {
+	font-size: 0.8em;
+	font-weight: 600;
+	color: var(--text-muted);
+	min-height: 1.3em;
+}
+
+.mtg-home-value-change.is-up .mtg-home-value-change-amount {
+	color: var(--text-success);
+}
+
+.mtg-home-value-change.is-down .mtg-home-value-change-amount {
+	color: var(--text-error);
+}
+
+.mtg-home-value-change-since {
+	font-weight: 400;
+	color: var(--text-muted);
+}
+
+.mtg-home-value-tabs {
+	width: fit-content;
+	margin-bottom: 0.8em;
+}
+
+.mtg-home-value-empty,
+.mtg-home-value-note {
+	font-size: 0.7em;
+	color: var(--text-muted);
+}
+
+.mtg-home-value-note {
+	margin-top: 0.7em;
+}
+
+.mtg-value-chart-row {
+	display: flex;
+	align-items: stretch;
+	gap: 0.4em;
+}
+
+.mtg-value-chart-y-labels {
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	align-items: flex-end;
+	flex-shrink: 0;
+	height: 70px;
+	font-size: 0.58em;
+	color: var(--text-muted);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+/* touch-action: a finger dragged along the curve reads it; the page still scrolls vertically. */
+.mtg-value-chart-plot {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+	touch-action: pan-y;
+}
+
+.mtg-value-chart-plot svg {
+	width: 100%;
+	height: 70px;
+	display: block;
+	cursor: crosshair;
+}
+
+.mtg-value-chart-tooltip {
+	position: absolute;
+	bottom: calc(100% + 0.35em);
+	pointer-events: none;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 0.2em 0.5em;
+	font-size: 0.66em;
+	line-height: 1.35;
+	white-space: nowrap;
+	z-index: 5;
+	display: none;
+}
+
+.mtg-value-chart-tooltip.is-visible {
+	display: block;
+}
+
+.mtg-value-chart-tooltip-value {
+	font-weight: 700;
+}
+
+.mtg-value-chart-dates {
+	display: flex;
+	justify-content: space-between;
+	font-size: 0.62em;
+	color: var(--text-muted);
 }
 
 /* -- CardPreviewModal (2026-09-23) --

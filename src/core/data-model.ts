@@ -2,6 +2,7 @@ import { CollectionCard, WantlistCard, Finish, GradingCompany } from "./card-mod
 import { GroupByOption, SortByOption, CardViewMode, primaryType } from "./card-sorting";
 import { detectDeckCardFunction } from "./deck-function";
 import type { PriceCurrency } from "./price";
+import type { ValuePoint } from "./value-history";
 import type { CardImageMode, CardNameMode } from "./printed-name";
 import type { CardbaseMoverPeriod, CardbaseVendor } from "../api/cardbase";
 
@@ -408,6 +409,11 @@ export interface MTGCollectionSettings {
 	// been deleted; deliberately NOT in DEFAULT_SETTINGS (an object shared by
 	// reference among all instances would be mutated by mistake).
 	syncTombstones?: Record<string, Record<string, number>>;
+	// What the collection was worth on each day prices were refreshed (core/value-history.ts), synchronised between devices
+	// like the cards (settings-merge.ts, COLLECTIONS.valueHistory). Like syncTombstones, NOT in DEFAULT_SETTINGS: an array
+	// shared by reference among all instances would be mutated by mistake; it is created by the first point recorded
+	// (plugin/value-history.ts) and every reader goes through `readValuePoints`, which accepts anything.
+	valueHistory?: ValuePoint[];
 	// Optional synchronization through a private GitHub repository
 	// (src/plugin/github-sync.ts), in addition to Syncthing. Specific to each device
 	// (core/device-settings.ts): the access token, for its part, is NEVER in these settings

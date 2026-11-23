@@ -22,11 +22,12 @@ import {
 	getCardLegalities,
 	getScryfallImmutableSnapshot,
 	getScryfallImmutableSnapshots,
+	loadPersistedMapCache,
 	prefetchCardTextNeighbors,
 	prefetchScryfallImmutableSnapshots,
 } from "./scryfall-cache";
 import type MTGCollectionPlugin from "../plugin";
-import { resetScryfallStrictGateForTests } from "../api/scryfall";
+import { resetScryfallStrictGateForTests, slimImmutableSnapshot } from "../api/scryfall";
 
 const transportError = () => new Error("Request Failed. ConnectException: Failed to connect");
 const down = () => { throw transportError(); };
@@ -211,4 +212,66 @@ describe("rules text of the neighbouring cards is fetched ahead, within Scryfall
 		expect(plugin.scryfallImmutableCache.has("c1")).toBe(true);
 		expect(plugin.scryfallImmutableCache.has("c2")).toBe(false); // nothing is cached for a card nobody got
 	}, 10000);
+});
+
+describe("what is kept of a card's pictures and shop links (the cache file is read whole and rewritten whole)", () => {
+	const fat = {
+		image_uris: { small: "s", normal: "n", large: "l", png: "p", art_crop: "a", border_crop: "b" },
+		purchase_uris: { tcgplayer: "t", cardmarket: "c", cardhoarder: "h" },
+	};
+	const slimUris = { image_uris: { small: "s", normal: "n", art_crop: "a" }, purchase_uris: { tcgplayer: "t" } };
+	// toEqual on the two objects: toMatchObject accepts extra keys, which is exactly what a snapshot left fat has.
+	const expectSlim = (entry: unknown) => {
+		const e = entry as { image_uris?: unknown; purchase_uris?: unknown };
+		expect(e.image_uris).toEqual(slimUris.image_uris);
+		expect(e.purchase_uris).toEqual(slimUris.purchase_uris);
+	};
+
+	it("each of the three ways a snapshot is stored cuts it down (one card, a batch, a prefetch)", async () => {
+		const plugin = fakePlugin();
+		script(okCollection([card("one", fat), card("two", fat), card("three", fat)]));
+		await fetchScryfallImmutableSnapshot.call(plugin, "one");
+		script(okCollection([card("two", fat)]));
+		await getScryfallImmutableSnapshots.call(plugin, ["two"]);
+		script(okCollection([card("three", fat)]));
+		await prefetchScryfallImmutableSnapshots.call(plugin, ["three"]);
+		for (const id of ["one", "two", "three"]) expectSlim(plugin.scryfallImmutableCache.get(id));
+	}, 10000);
+
+	// A fake adapter holding the persisted file.
+	function withFile(content: Record<string, unknown>) {
+		const plugin = fakePlugin() as MTGCollectionPlugin & { immutableCacheFilePath: (f: string) => string | null; app: unknown };
+		(plugin as unknown as Record<string, unknown>).immutableCacheFilePath = (f: string) => `dir/${f}`;
+		(plugin as unknown as Record<string, unknown>).app = {
+			vault: { adapter: { exists: async () => true, read: async () => JSON.stringify(content) } },
+		};
+		return plugin;
+	}
+	const isObj = (v: unknown) => v === null || (typeof v === "object" && !Array.isArray(v));
+	const slim = (v: unknown) => (v === null ? v : slimImmutableSnapshot(v as never));
+
+	it("a file written by an earlier version is cut down on load, and rewritten once so the old size does not stay on disk", async () => {
+		const plugin = withFile({ a: { set: "lea", ...fat }, b: { set: "m10", ...fat } });
+		await loadPersistedMapCache.call(plugin, "f.json", plugin.scryfallImmutableCache, isObj, slim);
+		expectSlim(plugin.scryfallImmutableCache.get("a"));
+		expectSlim(plugin.scryfallImmutableCache.get("b"));
+		expect(plugin.scryfallImmutableCache.get("a")).toMatchObject({ set: "lea" }); // the rest of the entry is untouched
+		expect(plugin.scheduleMapCachePersist).toHaveBeenCalledTimes(1);
+		expect(plugin.scheduleMapCachePersist).toHaveBeenCalledWith("f.json", plugin.scryfallImmutableCache);
+	});
+
+	it("a file that is already slim is not rewritten (no write at every start)", async () => {
+		const plugin = withFile({ a: { set: "lea", ...slimUris } });
+		await loadPersistedMapCache.call(plugin, "f.json", plugin.scryfallImmutableCache, isObj, slim);
+		expect(plugin.scryfallImmutableCache.size).toBe(1);
+		expect(plugin.scheduleMapCachePersist).not.toHaveBeenCalled();
+	});
+
+	it("without a normalizer the loader behaves as before: same entries, no rewrite", async () => {
+		const plugin = withFile({ a: { set: "lea", ...fat }, bad: "not an object" });
+		await loadPersistedMapCache.call(plugin, "f.json", plugin.scryfallImmutableCache, isObj);
+		expect(plugin.scryfallImmutableCache.get("a")).toMatchObject(fat);
+		expect(plugin.scryfallImmutableCache.has("bad")).toBe(false);
+		expect(plugin.scheduleMapCachePersist).not.toHaveBeenCalled();
+	});
 });

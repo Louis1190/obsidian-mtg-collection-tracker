@@ -22,7 +22,7 @@ export function openExternalUrl(url: string | null | undefined): void {
 }
 
 export function usesArtHeader(card: { artCropUrl?: string; imageUrl?: string }): boolean {
-	return document.body.classList.contains("is-phone") && hasDistinctArtCrop(card);
+	return activeDocument.body.classList.contains("is-phone") && hasDistinctArtCrop(card);
 }
 
 // In art mode the name + previous/next arrows sit UNDER the banner, scrolling with the rest. The
@@ -259,7 +259,7 @@ export class BackgroundCrossfader {
 			if (token !== this.token || !this.el) return;
 			// A phone paints a tiny smoothed canvas instead of a CSS-blurred layer, and keeps only the newest
 			// layer (see buildSmoothLayer).
-			const lean = document.body.classList.contains("is-phone");
+			const lean = activeDocument.body.classList.contains("is-phone");
 			const smooth = lean ? this.buildSmoothLayer(preload, container) : null;
 			const layer = smooth ?? this.el.createDiv({ cls: "mtg-card-detail-bg" });
 			if (!smooth) layer.style.backgroundImage = `url("${url}")`;
@@ -946,7 +946,8 @@ function setupPriceHistoryCrosshair(
 	).sort((a, b) => a - b);
 	if (allTimestamps.length === 0) return;
 
-	const crosshairLine = document.createElementNS(svgNS, "line");
+	// Nodes are created in the chart's own document (a popout window has its own), not the main window's.
+	const crosshairLine = svgEl.ownerDocument.createElementNS(svgNS, "line");
 	crosshairLine.setAttribute("y1", "0");
 	crosshairLine.setAttribute("y2", String(H));
 	crosshairLine.setAttribute("stroke", "var(--text-muted)");
@@ -956,7 +957,7 @@ function setupPriceHistoryCrosshair(
 	svgEl.appendChild(crosshairLine);
 
 	const crosshairDots = drawn.map((s) => {
-		const dot = document.createElementNS(svgNS, "circle");
+		const dot = svgEl.ownerDocument.createElementNS(svgNS, "circle");
 		dot.setAttribute("r", "3");
 		dot.setAttribute("fill", s.color);
 		dot.addClass("mtg-hidden");
@@ -1180,7 +1181,7 @@ export function renderTextWithManaSymbols(
 				"mtg-card-description-inline-mana-symbol"
 			);
 		} else if (part) {
-			container.appendChild(document.createTextNode(part));
+			container.appendChild(container.ownerDocument.createTextNode(part));
 		}
 	});
 }

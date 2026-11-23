@@ -15,9 +15,13 @@ import { getCardKingdomPrice, getManaPoolPrice, loadCardKingdomPrices, loadManaP
 import { manaPoolPricesSupported } from "../api/manapool";
 import type MTGCollectionPlugin from "../plugin";
 
+// The pricelists are tables keyed by Scryfall id: these are real UUIDs.
+const C1 = "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1";
+// What requestUrl gives back for a 200: the body as bytes (the pricelists are read as bytes, never as one parsed document).
+const body = (doc: unknown) => ({ status: 200, headers: {}, arrayBuffer: new TextEncoder().encode(JSON.stringify(doc)).buffer });
 const down = () => { throw new Error("Request Failed. ConnectException: Failed to connect"); };
-const ck = () => ({ status: 200, headers: {}, json: { meta: { base_url: "https://www.cardkingdom.com/" }, data: [{ scryfall_id: "c1", is_foil: "false", price_retail: "4.99", url: "/mtg/x/y" }] } });
-const mp = () => ({ status: 200, headers: {}, json: { data: [{ scryfall_id: "c1", url: "https://manapool.com/card/x", price_cents: 250, price_cents_foil: 600 }] } });
+const ck = () => body({ meta: { base_url: "https://www.cardkingdom.com/" }, data: [{ scryfall_id: C1, is_foil: "false", price_retail: "4.99", url: "/mtg/x/y" }] });
+const mp = () => body({ data: [{ scryfall_id: C1, url: "https://manapool.com/card/x", price_cents: 250, price_cents_foil: 600 }] });
 const script = (...steps: (() => unknown)[]) => { net.steps = steps; };
 
 // `own` stands for getOwnManaPoolPrice (our own Mana Pool files, plugin/price-history-cache.ts): nothing in this file reaches the network through it.
@@ -34,27 +38,29 @@ describe("the store pricelists after a network failure", () => {
 	it("Card Kingdom: an empty answer now, the next card opened tries again and gets the prices", async () => {
 		const plugin = fakePlugin();
 		script(down);
-		await expect(getCardKingdomPrice.call(plugin, "c1", false)).resolves.toBeUndefined();
+		await expect(getCardKingdomPrice.call(plugin, C1, false)).resolves.toBeUndefined();
 		expect(plugin.cardKingdomPricesCache).toBeNull();
 		script(ck);
-		await expect(getCardKingdomPrice.call(plugin, "c1", false)).resolves.toMatchObject({ priceRetail: 4.99 });
+		await expect(getCardKingdomPrice.call(plugin, C1, false)).resolves.toMatchObject({ priceRetail: 4.99 });
 	});
 
 	it("Mana Pool: the same", async () => {
 		const plugin = fakePlugin();
 		script(down);
-		await expect(getManaPoolPrice.call(plugin, "c1", "regular")).resolves.toBeUndefined();
+		await expect(getManaPoolPrice.call(plugin, C1, "regular")).resolves.toBeUndefined();
 		expect(plugin.manaPoolPricesCache).toBeNull();
 		script(mp);
-		await expect(loadManaPoolPrices.call(plugin)).resolves.toBeInstanceOf(Map);
-		expect((await loadManaPoolPrices.call(plugin)).size).toBeGreaterThan(0);
+		const pricelist = await loadManaPoolPrices.call(plugin);
+		expect(pricelist.size).toBe(1);
+		expect(pricelist.get(C1)).toMatchObject({ priceCents: 250, priceCentsFoil: 600, priceCentsNm: null });
+		expect(plugin.manaPoolPricesCache).toBe(pricelist); // kept for the session
 	});
 
 	it("a successful load is kept for the session (one request)", async () => {
 		const plugin = fakePlugin();
 		script(ck);
-		await getCardKingdomPrice.call(plugin, "c1", false);
-		await getCardKingdomPrice.call(plugin, "c1", true);
+		await getCardKingdomPrice.call(plugin, C1, false);
+		await getCardKingdomPrice.call(plugin, C1, true);
 		expect(net.calls).toBe(1);
 	});
 });
@@ -70,7 +76,7 @@ describe("on a phone or tablet", () => {
 		let done = false;
 		return { ok: true, status: 200, body: { getReader: () => ({ read: async () => (done ? { done: true, value: undefined } : ((done = true), { done: false, value: bytes })) }) } };
 	};
-	const CK_DOC = JSON.stringify({ meta: { base_url: "https://www.cardkingdom.com/" }, data: [{ scryfall_id: "c1", is_foil: "false", price_retail: "4.99", url: "/mtg/x/y" }] });
+	const CK_DOC = JSON.stringify({ meta: { base_url: "https://www.cardkingdom.com/" }, data: [{ scryfall_id: C1, is_foil: "false", price_retail: "4.99", url: "/mtg/x/y" }] });
 
 	beforeEach(() => {
 		net.platform.isMobileApp = true;
@@ -85,7 +91,7 @@ describe("on a phone or tablet", () => {
 	it("Card Kingdom is read as a stream and requestUrl is never called", async () => {
 		const plugin = fakePlugin();
 		fetchMock.mockResolvedValueOnce(body(CK_DOC));
-		await expect(getCardKingdomPrice.call(plugin, "c1", false)).resolves.toMatchObject({ priceRetail: 4.99, url: "https://www.cardkingdom.com/mtg/x/y" });
+		await expect(getCardKingdomPrice.call(plugin, C1, false)).resolves.toMatchObject({ priceRetail: 4.99, url: "https://www.cardkingdom.com/mtg/x/y" });
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		expect(net.calls).toBe(0);
 	});
@@ -93,15 +99,15 @@ describe("on a phone or tablet", () => {
 	it("a stream that fails is retried by the next card, like a failed download on desktop", async () => {
 		const plugin = fakePlugin();
 		fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-		await expect(getCardKingdomPrice.call(plugin, "c1", false)).resolves.toBeUndefined();
+		await expect(getCardKingdomPrice.call(plugin, C1, false)).resolves.toBeUndefined();
 		fetchMock.mockResolvedValueOnce(body(CK_DOC));
-		await expect(getCardKingdomPrice.call(plugin, "c1", false)).resolves.toMatchObject({ priceRetail: 4.99 });
+		await expect(getCardKingdomPrice.call(plugin, C1, false)).resolves.toMatchObject({ priceRetail: 4.99 });
 	});
 
 	it("Mana Pool's price list is never downloaded: no request of any kind, and a card our files do not have shows no price", async () => {
 		const plugin = fakePlugin();
 		script(mp);
-		await expect(getManaPoolPrice.call(plugin, "c1", "regular", { setCode: "LEA", collectorNumber: "232" })).resolves.toBeUndefined();
+		await expect(getManaPoolPrice.call(plugin, C1, "regular", { setCode: "LEA", collectorNumber: "232" })).resolves.toBeUndefined();
 		expect(net.calls).toBe(0);
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(manaPoolPricesSupported()).toBe(false);
@@ -114,14 +120,14 @@ describe("on a phone or tablet", () => {
 	it("the price comes from our own files, marked as the lowest price of a given day (never Near Mint), with a link built from the printing", async () => {
 		const plugin = fakePlugin();
 		own.mockResolvedValueOnce({ priceCents: 250, date: "2026-10-15" });
-		await expect(getManaPoolPrice.call(plugin, "c1", "regular", { setCode: "LEA", collectorNumber: "232" })).resolves.toEqual({
+		await expect(getManaPoolPrice.call(plugin, C1, "regular", { setCode: "LEA", collectorNumber: "232" })).resolves.toEqual({
 			priceCents: 250,
 			isNearMint: false,
 			url: "https://manapool.com/card/lea/232",
 			source: "price-history",
 			asOf: "2026-10-15",
 		});
-		expect(own).toHaveBeenCalledWith("c1", "normal");
+		expect(own).toHaveBeenCalledWith(C1, "normal");
 		expect(net.calls).toBe(0);
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
@@ -130,7 +136,7 @@ describe("on a phone or tablet", () => {
 		const plugin = fakePlugin();
 		for (const finish of ["regular", "foiled", "surged", "etched", "proxy"] as const) {
 			own.mockResolvedValueOnce({ priceCents: 100, date: "2026-10-15" });
-			await getManaPoolPrice.call(plugin, "c1", finish, { setCode: "x", collectorNumber: "1" });
+			await getManaPoolPrice.call(plugin, C1, finish, { setCode: "x", collectorNumber: "1" });
 		}
 		expect(own.mock.calls.map((c) => c[1])).toEqual(["normal", "foil", "foil", "etched", "normal"]);
 	});
@@ -138,15 +144,15 @@ describe("on a phone or tablet", () => {
 	it("without a printing the price is still shown, just without a link", async () => {
 		const plugin = fakePlugin();
 		own.mockResolvedValueOnce({ priceCents: 100, date: "2026-10-15" });
-		await expect(getManaPoolPrice.call(plugin, "c1", "regular")).resolves.toMatchObject({ priceCents: 100, url: "" });
+		await expect(getManaPoolPrice.call(plugin, C1, "regular")).resolves.toMatchObject({ priceCents: 100, url: "" });
 	});
 });
 
 describe("on a computer", () => {
 	it("Mana Pool is Mana Pool's own price list, Near Mint first: our own files are never asked", async () => {
 		const plugin = fakePlugin();
-		script(() => ({ status: 200, headers: {}, json: { data: [{ scryfall_id: "c1", url: "https://manapool.com/card/x", price_cents: 250, price_cents_nm: 400 }] } }));
-		await expect(getManaPoolPrice.call(plugin, "c1", "regular", { setCode: "LEA", collectorNumber: "232" })).resolves.toEqual({ priceCents: 400, isNearMint: true, url: "https://manapool.com/card/x" });
+		script(() => body({ data: [{ scryfall_id: C1, url: "https://manapool.com/card/x", price_cents: 250, price_cents_nm: 400 }] }));
+		await expect(getManaPoolPrice.call(plugin, C1, "regular", { setCode: "LEA", collectorNumber: "232" })).resolves.toEqual({ priceCents: 400, isNearMint: true, url: "https://manapool.com/card/x" });
 		expect(own).not.toHaveBeenCalled();
 	});
 
@@ -155,9 +161,9 @@ describe("on a computer", () => {
 		const fetchSpy = vi.fn();
 		vi.stubGlobal("fetch", fetchSpy);
 		script(ck);
-		await getCardKingdomPrice.call(plugin, "c1", false);
+		await getCardKingdomPrice.call(plugin, C1, false);
 		script(mp);
-		await expect(getManaPoolPrice.call(plugin, "c1", "regular")).resolves.toBeDefined();
+		await expect(getManaPoolPrice.call(plugin, C1, "regular")).resolves.toBeDefined();
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(net.calls).toBe(2);
 		vi.unstubAllGlobals();

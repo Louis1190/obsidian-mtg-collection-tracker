@@ -346,8 +346,11 @@ export function onExternalSettingsChange(this: MTGCollectionPlugin): Promise<voi
 export function setupSettingsSync(this: MTGCollectionPlugin) {
 	this.registerInterval(window.setInterval(() => void this.checkForExternalChange("poll"), SETTINGS_POLL_MS));
 	this.registerDomEvent(window, "focus", () => void this.checkForExternalChange("focus"));
-	this.registerDomEvent(document, "visibilitychange", () => {
-		if (document.visibilityState === "visible") void this.checkForExternalChange("visible");
+	// The MAIN window's document (the plugin loads there); a popout window is desktop only, where the 20 s poll above already covers a file
+	// that changed while the main window was hidden.
+	const mainDoc = activeDocument;
+	this.registerDomEvent(mainDoc, "visibilitychange", () => {
+		if (mainDoc.visibilityState === "visible") void this.checkForExternalChange("visible");
 	});
 }
 
@@ -411,7 +414,7 @@ export function mergeForeignText(
 
 	if (report.needsWrite) void saveSyncBackup(plugin, "remote", text);
 	if (report.removed >= BIG_REMOVAL_THRESHOLD || report.added >= BIG_ADDITION_THRESHOLD) {
-		void saveSyncBackup(plugin, "local", JSON.stringify(local, null, 2));
+		void saveSyncBackup(plugin, "local", JSON.stringify(local));
 		const what =
 			report.removed >= BIG_REMOVAL_THRESHOLD
 				? `removed ${report.removed} items`
@@ -501,7 +504,10 @@ async function reconcile(plugin: MTGCollectionPlugin, path: string): Promise<{ n
 
 async function writeToDisk(plugin: MTGCollectionPlugin, path: string): Promise<void> {
 	// Without the device-specific settings: a sort change must neither rewrite 6 MB nor go elsewhere.
-	const text = JSON.stringify(omitDeviceLocal(plugin.settings), null, 2);
+	// Compact on purpose (2026-11-23, memory audit): the indented form was 6.5 MB against 5.0 MB for the same data on the real
+	// collection, and it is read back by a machine only. Nothing depends on the layout: every reader parses, and a file left
+	// indented by an older version simply differs from this text, so the first save after the update rewrites it once.
+	const text = JSON.stringify(omitDeviceLocal(plugin.settings));
 	if (text === plugin.diskText) return; // the disk already has exactly this state
 	const adapter = plugin.app.vault.adapter;
 	const mtime = Date.now();
@@ -535,17 +541,30 @@ async function writeToDisk(plugin: MTGCollectionPlugin, path: string): Promise<v
 
 // Safety copy in the plugin's folder (the 3 most recent per type). Never
 // blocking: a failure here must neither prevent the merge nor the write.
-async function saveSyncBackup(plugin: MTGCollectionPlugin, kind: "remote" | "local", text: string): Promise<void> {
+// A copy identical to the newest one already kept is not written again (found 2026-11-22: three byte-identical 5 MB
+// "remote" copies in one afternoon, one per Obsidian start, each pushing the older, different ones out of the 3 kept).
+export async function saveSyncBackup(plugin: MTGCollectionPlugin, kind: "remote" | "local", text: string): Promise<void> {
 	try {
 		const adapter = plugin.app.vault.adapter;
 		const dir = normalizePath(`${plugin.manifest.dir}/${SYNC_BACKUP_DIR}`);
 		if (!(await adapter.exists(dir))) await adapter.mkdir(dir);
-		const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-		await adapter.write(`${dir}/data-${kind}-${stamp}.json`, text);
 		const listing = await adapter.list(dir);
 		const mine = listing.files.filter((f) => f.split("/").pop()!.startsWith(`data-${kind}-`)).sort();
-		for (const old of mine.slice(0, Math.max(0, mine.length - SYNC_BACKUP_KEEP))) await adapter.remove(old);
+		const newest = mine[mine.length - 1];
+		if (newest !== undefined && (await sameAsBackup(adapter, newest, text))) return;
+		const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+		const path = `${dir}/data-${kind}-${stamp}.json`;
+		await adapter.write(path, text);
+		const kept = [...mine.filter((f) => f !== path), path];
+		for (const old of kept.slice(0, Math.max(0, kept.length - SYNC_BACKUP_KEEP))) await adapter.remove(old);
 	} catch (e) {
 		console.warn("MTG Collection Tracker: could not write a sync backup.", e);
 	}
+}
+
+// Does `path` hold exactly `text`? The size is compared first (a stat, no read): only a file of the very same size is read.
+async function sameAsBackup(adapter: MTGCollectionPlugin["app"]["vault"]["adapter"], path: string, text: string): Promise<boolean> {
+	const st = await adapter.stat(path);
+	if (!st || st.size !== new TextEncoder().encode(text).length) return false;
+	return (await adapter.read(path)) === text;
 }

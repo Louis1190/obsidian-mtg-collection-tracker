@@ -91,7 +91,7 @@ function baseDeps(plugin: MTGCollectionPlugin): BaseDeps {
 			// tied to the configured address it was learned from: a plugin version that ships another address does not inherit a pointer meant for the old one
 			read: (from) => {
 				try {
-					const raw = plugin.app.loadLocalStorage(MOVED_KEY);
+					const raw: unknown = plugin.app.loadLocalStorage(MOVED_KEY);
 					const stored: unknown = typeof raw === "string" ? JSON.parse(raw) : null;
 					if (typeof stored !== "object" || stored === null) return null;
 					const { from: was, to } = stored as Record<string, unknown>;

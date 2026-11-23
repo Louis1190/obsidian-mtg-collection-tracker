@@ -28,13 +28,18 @@ export function openPickerMenu(
 ) {
 	const reopeningSameAnchor = openPickerAnchorEl === anchor;
 	if (openPickerCleanup) openPickerCleanup();
-	document.querySelectorAll(".mtg-picker-menu").forEach((el) => el.remove());
+	// The menu lives in the window of its TRIGGER, not in the main window: a view dragged into a popout window has its own document and its
+	// own viewport, and the `position: fixed` coordinates below come from the trigger's getBoundingClientRect, i.e. from that window. The
+	// observer and the listeners follow it (a scroll or a click in the popout never reaches the main window's `window`/`document`).
+	const doc = anchor.ownerDocument;
+	const win = doc.defaultView ?? window;
+	doc.querySelectorAll(".mtg-picker-menu").forEach((el) => el.remove());
 	openPickerAnchorEl = null;
 	openPickerCleanup = null;
 	if (reopeningSameAnchor) return;
 	openPickerAnchorEl = anchor;
 
-	const menu = document.body.createDiv({ cls: "mtg-picker-menu" });
+	const menu = doc.body.createDiv({ cls: "mtg-picker-menu" });
 	if (options?.menuClass) menu.addClass(options.menuClass);
 	if (options?.matchAnchorWidth) menu.addClass("is-match-anchor-width");
 
@@ -62,17 +67,17 @@ export function openPickerMenu(
 	};
 	reposition();
 
-	const watcher = new MutationObserver(() => {
+	const watcher = new win.MutationObserver(() => {
 		if (!anchor.isConnected) cleanup();
 	});
-	if (anchor.isConnected) watcher.observe(document.body, { childList: true, subtree: true });
+	if (anchor.isConnected) watcher.observe(doc.body, { childList: true, subtree: true });
 
 	const cleanup = () => {
 		watcher.disconnect();
 		menu.remove();
-		window.removeEventListener("scroll", reposition, true);
-		window.removeEventListener("resize", reposition);
-		document.removeEventListener("click", closeOnOutsideClick);
+		win.removeEventListener("scroll", reposition, true);
+		win.removeEventListener("resize", reposition);
+		doc.removeEventListener("click", closeOnOutsideClick);
 		openPickerAnchorEl = null;
 		openPickerCleanup = null;
 	};
@@ -91,7 +96,7 @@ export function openPickerMenu(
 	const closeOnOutsideClick = (evt: MouseEvent) => {
 		if (!menu.contains(evt.target as Node)) cleanup();
 	};
-	window.addEventListener("scroll", reposition, true);
-	window.addEventListener("resize", reposition);
-	window.setTimeout(() => document.addEventListener("click", closeOnOutsideClick), 0);
+	win.addEventListener("scroll", reposition, true);
+	win.addEventListener("resize", reposition);
+	window.setTimeout(() => doc.addEventListener("click", closeOnOutsideClick), 0);
 }

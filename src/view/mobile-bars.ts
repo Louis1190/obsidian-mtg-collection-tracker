@@ -18,7 +18,7 @@ export function setupMobileBars(this: MTGCollectionView) {
 
 	this.registerEvent(this.app.workspace.on("active-leaf-change", (leaf) => this.syncMobileBars(leaf)));
 	// Whatever happens to the view (tab closed, plugin disabled), the bars must come back.
-	this.register(() => document.body.removeClass(HIDE_BARS_CLASS));
+	this.register(() => activeDocument.body.removeClass(HIDE_BARS_CLASS));
 	// A view restored at startup opens before the workspace knows which leaf is active: we resync once it is
 	// ready (the direct call below covers the hot opening).
 	this.app.workspace.onLayoutReady(() => this.syncMobileBars());
@@ -32,7 +32,7 @@ export function setupMobileBars(this: MTGCollectionView) {
 	// passes from one field to another.
 	const isTextField = (el: EventTarget | null) =>
 		el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
-	const syncKeyboard = () => this.contentEl.toggleClass(KEYBOARD_OPEN_CLASS, isTextField(document.activeElement));
+	const syncKeyboard = () => this.contentEl.toggleClass(KEYBOARD_OPEN_CLASS, isTextField(activeDocument.activeElement));
 	this.registerDomEvent(this.contentEl, "focusin", syncKeyboard);
 	this.registerDomEvent(this.contentEl, "focusout", () => window.setTimeout(syncKeyboard, 0));
 }
@@ -43,13 +43,14 @@ export function setupMobileBars(this: MTGCollectionView) {
 export function syncMobileBars(this: MTGCollectionView, leaf?: WorkspaceLeaf | null) {
 	if (!Platform.isPhone) return;
 
+	// Phone only (guard above), and a phone has no popout windows: the one <body> there is the app's.
 	const current = leaf === undefined ? this.app.workspace.getMostRecentLeaf() : leaf;
 	if (current === this.leaf) {
-		document.body.toggleClass(HIDE_BARS_CLASS, this.plugin.settings.hideObsidianMobileBars);
+		activeDocument.body.toggleClass(HIDE_BARS_CLASS, this.plugin.settings.hideObsidianMobileBars);
 	} else if (current?.view.getViewType() !== VIEW_TYPE_MTG_COLLECTION) {
 		// Another view is active: the bars come back, whatever the setting — it only applies inside
 		// this plugin.
-		document.body.removeClass(HIDE_BARS_CLASS);
+		activeDocument.body.removeClass(HIDE_BARS_CLASS);
 	}
 	// Otherwise ANOTHER view of the plugin became active (two plugin tabs): it is up to it to decide —
 	// touching it here would depend on the order in which the two listeners fire.

@@ -3,10 +3,11 @@ import { ONE_COLUMN_ICON_SVG } from "./ui/brand-assets";
 import {
 	ScryfallSetSummary,
 	ScryfallImmutableSnapshot,
+	slimImmutableSnapshot,
 } from "./api/scryfall";
 import type { EntityPrints, KeySnapshot } from "./core/settings-merge";
-import { CardKingdomPriceEntry } from "./api/card-kingdom";
-import { ManaPoolCardPrices } from "./api/manapool";
+import type { CardKingdomPricelist } from "./api/card-kingdom";
+import type { ManaPoolPricelist } from "./api/manapool";
 import {
 	CardbasePriceHistory,
 	CardmarketNativePrices,
@@ -33,6 +34,7 @@ import * as cardbaseCache from "./plugin/cardbase-cache";
 import * as priceHistoryCache from "./plugin/price-history-cache";
 import * as exchangeRate from "./plugin/exchange-rate";
 import * as priceRefresh from "./plugin/price-refresh";
+import * as valueHistory from "./plugin/value-history";
 import * as lifecycle from "./plugin/lifecycle";
 import * as backup from "./plugin/backup";
 import * as settingsSync from "./plugin/settings-sync";
@@ -177,14 +179,15 @@ export default class MTGCollectionPlugin extends Plugin {
 	scryfallPrefetchPausedUntil = 0;
 	// Card Kingdom pricelist ("Store Prices" block of the detail): same
 	// reasoning as symbologyCache — a single file for the whole catalog, never
-	// persisted (even more true here: ~67 MB, far too big for settings.json).
-	cardKingdomPricesCache: Map<string, CardKingdomPriceEntry> | null = null;
-	cardKingdomPricesFetchPromise: Promise<Map<string, CardKingdomPriceEntry>> | null = null;
+	// persisted (even more true here: ~67 MB, far too big for settings.json). A compact table
+	// (api/card-kingdom.ts, core/packed-table.ts), ~12 MB resident, not an object per row.
+	cardKingdomPricesCache: CardKingdomPricelist | null = null;
+	cardKingdomPricesFetchPromise: Promise<CardKingdomPricelist> | null = null;
 	// Mana Pool pricelist (3rd "Store Prices" row): same reasoning as
-	// cardKingdomPricesCache above — a single file for the whole catalog (~50
-	// MB), never persisted.
-	manaPoolPricesCache: Map<string, ManaPoolCardPrices> | null = null;
-	manaPoolPricesFetchPromise: Promise<Map<string, ManaPoolCardPrices>> | null = null;
+	// cardKingdomPricesCache above — a single file for the whole catalog (~68
+	// MB), never persisted; kept as a compact table (~10 MB).
+	manaPoolPricesCache: ManaPoolPricelist | null = null;
+	manaPoolPricesFetchPromise: Promise<ManaPoolPricelist> | null = null;
 	// cardbase.dev price history ("Price History" box, under Store Prices):
 	// per-printing endpoint, not a full catalog file — so the same per-ID shape
 	// as legalitiesCache/scryfallImmutableCache above, not the "whole dataset"
@@ -301,7 +304,9 @@ export default class MTGCollectionPlugin extends Plugin {
 			this.loadPersistedMapCache(
 				scryfallCache.SCRYFALL_IMMUTABLE_CACHE_FILENAME,
 				this.scryfallImmutableCache,
-				isObjectOrNull
+				isObjectOrNull,
+				// Entries cached before 1.0.674 hold every picture size and shop link: cut them down now (null stays null).
+				(snapshot) => (snapshot === null ? snapshot : slimImmutableSnapshot(snapshot))
 			),
 			this.loadPersistedMapCache(
 				cardbaseCache.CARDMARKET_ID_CACHE_FILENAME,
@@ -352,6 +357,10 @@ export default class MTGCollectionPlugin extends Plugin {
 		// state.
 		this.setupSettingsSync();
 		this.setupGithubSync();
+
+		// The first point of the value history, from the prices the cards already carry (no network, nothing awaited):
+		// see seedValueHistory.
+		this.seedValueHistory();
 
 		// Checks in the background whether the configured delay has elapsed
 		// (doesn't block the plugin's loading). Then re-checks every hour in case
@@ -416,8 +425,8 @@ export default class MTGCollectionPlugin extends Plugin {
 		// What the card recognition holds in memory (a worker of ~80 MB while it runs; nothing where the feature does not exist) ends with the plugin.
 		stopCardRecognition(this);
 		// Belt and braces with the view's register() (src/view/mobile-bars.ts): a class left on
-		// <body> would hide Obsidian's bars across the WHOLE app.
-		document.body.removeClass(HIDE_BARS_CLASS);
+		// <body> would hide Obsidian's bars across the WHOLE app. The class is only ever set on a phone, which has no popout windows.
+		activeDocument.body.removeClass(HIDE_BARS_CLASS);
 	}
 
 	refreshCollectionRibbonIcon() {
@@ -595,6 +604,10 @@ export default class MTGCollectionPlugin extends Plugin {
 	// -- Refreshing the stored prices of cards (src/plugin/price-refresh.ts) --
 	refreshAllPrices = priceRefresh.refreshAllPrices;
 	maybeAutoRefreshPrices = priceRefresh.maybeAutoRefreshPrices;
+
+	// -- What the collection was worth, day by day (src/plugin/value-history.ts) --
+	recordCollectionValue = valueHistory.recordCollectionValue;
+	seedValueHistory = valueHistory.seedValueHistory;
 
 	// -- Plugin lifecycle and settings load/save (src/plugin/lifecycle.ts) --
 	activateView = lifecycle.activateView;

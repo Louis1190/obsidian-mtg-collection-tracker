@@ -986,6 +986,8 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 		const bannerBg = headerBanner.createDiv({ cls: "mtg-detail-banner-bg" });
 		bannerBg.style.backgroundImage = `url("${group.coverImage}")`;
 		headerBanner.createDiv({ cls: "mtg-detail-banner-scrim" });
+		// The title and its stats sit on the dark scrim: `.theme-light` has to know there is one (styles.css, `.has-cover`).
+		headerBanner.addClass("has-cover");
 	}
 
 	const backBtn = headerBanner.createEl("button", {
@@ -1033,7 +1035,10 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 	// above — moved here, to the right of the search bar, to gain vertical
 	// height (explicitly requested, annotated screenshot in support, same
 	// change as My Collection/My Decks).
-	const searchActionsRow = stickyHeader.createDiv({ cls: "mtg-detail-search-actions-row" });
+	// Everything under the title lives in ONE element, `toolsEl` (see renderListDetail): on a phone it moves to the top of the
+	// scrolling area and collapses while reading.
+	const toolsEl = stickyHeader.createDiv({ cls: "mtg-detail-tools" });
+	const searchActionsRow = toolsEl.createDiv({ cls: "mtg-detail-search-actions-row" });
 	const filterRow = searchActionsRow.createDiv({ cls: "mtg-collection-toolbar mtg-inline-filter-row" });
 	const actionsRow = searchActionsRow.createDiv({ cls: "mtg-detail-search-actions" });
 
@@ -1089,11 +1094,11 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 		group.cards
 	);
 
-	this.renderGroupSortBar("wantlist", stickyHeader);
+	this.renderGroupSortBar("wantlist", toolsEl);
 
 	if (this.wantlistSelectMode) {
 		this.renderWantlistBulkActionsBar(
-			stickyHeader,
+			toolsEl,
 			group.id,
 			!this.wantlistBulkBarWasVisible,
 			filteredCards.map((c) => c.id)
@@ -1168,6 +1173,8 @@ export function renderWantlistDetail(this: MTGCollectionView, wantlistId: string
 	const scrollArea = this.bodyEl.createDiv({ cls: "mtg-detail-scroll-area" });
 	scrollArea.addEventListener("scroll", () => this.handleScrollAreaScroll(scrollArea));
 	setupPanelScrollFade(scrollArea);
+	// Phone only: the rows under the title go to the top of this area and collapse while reading.
+	this.attachDetailTools(toolsEl, stickyHeader, scrollArea, this.wantlistSelectMode);
 	// Titre "Cards: …" — voir renderCardsCountTitle (shared-render-helpers.ts).
 	renderCardsCountTitle(
 		scrollArea,

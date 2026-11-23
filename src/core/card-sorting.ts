@@ -30,7 +30,7 @@ export function effectiveViewMode(mode: CardViewMode, isPhone: boolean): CardVie
 // that Obsidian toggles live on resize, like the CSS that hides the buttons —
 // the two thus stay in agreement.
 export function phoneAwareViewMode(mode: CardViewMode): CardViewMode {
-	return effectiveViewMode(mode, document.body.classList.contains("is-phone"));
+	return effectiveViewMode(mode, activeDocument.body.classList.contains("is-phone"));
 }
 
 export function viewModeClass(mode: CardViewMode, scope: "list" | "deck" | "wantlist"): string {

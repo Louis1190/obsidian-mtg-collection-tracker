@@ -105,7 +105,8 @@ export class MTGCollectionSettingTab extends PluginSettingTab {
 		input.type = "file";
 		input.accept = accept;
 		input.addClass("mtg-offscreen-file-input");
-		document.body.appendChild(input);
+		// In the window that has focus (the one the person just clicked in), not always the main window's.
+		activeDocument.body.appendChild(input);
 		input.addEventListener("change", () => {
 			const file = input.files?.[0];
 			if (file) void onFile(file);
@@ -743,6 +744,9 @@ export class MTGCollectionSettingTab extends PluginSettingTab {
 											plugin.settings.decks = [];
 											plugin.settings.wantlist = [];
 											plugin.settings.wantlists = [];
+											// The curve of what that collection was worth goes with it (the confirmation says so). EMPTY, not
+											// deleted: a missing history invents no deletion in the sync, an empty one tombstones every day.
+											plugin.settings.valueHistory = [];
 											// Both Inboxes are guaranteed present once the plugin is loaded (the galleries
 											// no longer handle their absence): clearing everything must not break that.
 											plugin.ensureInboxList();

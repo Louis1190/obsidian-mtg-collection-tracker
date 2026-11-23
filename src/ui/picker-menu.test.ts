@@ -2,11 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeOpenPickerMenu, openPickerMenu } from "./picker-menu";
 
-// Obsidian's DOM helpers (createDiv, addClass) are not in jsdom: the two the menu uses.
-beforeEach(() => {
-	const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+// Obsidian's DOM helpers (createDiv, addClass) are not in jsdom: the two the menu uses. Obsidian installs them on every window,
+// popout windows included, so they go on a given window's own HTMLElement.
+function installHelpers(win: Window) {
+	const proto = (win as unknown as { HTMLElement: { prototype: unknown } }).HTMLElement.prototype as Record<string, unknown>;
 	proto.createDiv = function (this: HTMLElement, o?: { cls?: string; text?: string }) {
-		const d = document.createElement("div");
+		const d = this.ownerDocument.createElement("div");
 		if (o?.cls) d.className = o.cls;
 		if (o?.text) d.textContent = o.text;
 		this.appendChild(d);
@@ -15,6 +16,10 @@ beforeEach(() => {
 	proto.addClass = function (this: HTMLElement, c: string) {
 		this.classList.add(c);
 	};
+}
+
+beforeEach(() => {
+	installHelpers(window);
 	document.body.innerHTML = "";
 	vi.useFakeTimers();
 });
@@ -122,5 +127,82 @@ describe("openPickerMenu", () => {
 		contentEl.replaceChildren(); // the FIRST window goes away: the second menu is not its business
 		await flush();
 		expect(menus()).toBe(1);
+	});
+});
+
+// A view dragged into a popout window lives in another window with its own document and viewport. An iframe has both, like Obsidian's popouts.
+function popoutWindow() {
+	const frame = document.createElement("iframe");
+	document.body.appendChild(frame);
+	const win = frame.contentWindow as Window & typeof globalThis;
+	installHelpers(win);
+	const doc = win.document;
+	const trigger = doc.createElement("div");
+	doc.body.appendChild(trigger);
+	return { win, doc, trigger };
+}
+const menusIn = (doc: Document) => doc.querySelectorAll(".mtg-picker-menu").length;
+const rectAt = (bottom: number, left: number) => () => ({ bottom, left, width: 50, top: bottom - 20, right: left + 50, height: 20 }) as DOMRect;
+
+describe("openPickerMenu from a popout window", () => {
+	it("opens the menu in the window of its trigger, never in the main window", () => {
+		const { doc, trigger } = popoutWindow();
+		openPickerMenu(trigger, items());
+		expect(menusIn(doc)).toBe(1);
+		expect(menusIn(document)).toBe(0);
+	});
+
+	it("follows its trigger when the popout window scrolls (the main window's scroll is not its business)", () => {
+		const { win, trigger } = popoutWindow();
+		trigger.getBoundingClientRect = rectAt(100, 10);
+		openPickerMenu(trigger, items());
+		const menu = win.document.querySelector(".mtg-picker-menu") as HTMLElement;
+		expect(menu.style.top).toBe("104px");
+		trigger.getBoundingClientRect = rectAt(300, 40);
+		window.dispatchEvent(new Event("scroll")); // the MAIN window scrolled: nothing to follow
+		expect(menu.style.top).toBe("104px");
+		win.dispatchEvent(new win.Event("scroll"));
+		expect(menu.style.top).toBe("304px");
+		expect(menu.style.left).toBe("40px");
+	});
+
+	it("a click elsewhere in the popout window closes it, a click in the main window leaves it alone", () => {
+		const { doc, trigger } = popoutWindow();
+		openPickerMenu(trigger, items());
+		vi.advanceTimersByTime(1);
+		document.body.click();
+		expect(menusIn(doc)).toBe(1);
+		doc.body.click();
+		expect(menusIn(doc)).toBe(0);
+	});
+
+	it("closes when its trigger leaves the popout window", async () => {
+		const { doc, trigger } = popoutWindow();
+		openPickerMenu(trigger, items());
+		trigger.remove();
+		await flush();
+		expect(menusIn(doc)).toBe(0);
+	});
+
+	it("its listeners leave with it: the popout window's, not the main window's", () => {
+		const { win, trigger } = popoutWindow();
+		const popoutRemove = vi.spyOn(win, "removeEventListener");
+		const mainRemove = vi.spyOn(window, "removeEventListener");
+		openPickerMenu(trigger, items());
+		closeOpenPickerMenu();
+		expect(popoutRemove.mock.calls.map((c) => c[0]).sort()).toEqual(["resize", "scroll"]);
+		expect(mainRemove).not.toHaveBeenCalled();
+	});
+
+	it("a menu opened in the popout window replaces the one open in the main window, and the other way round", () => {
+		const { doc, trigger } = popoutWindow();
+		const main = windowWithTrigger().trigger;
+		openPickerMenu(main, items());
+		openPickerMenu(trigger, items());
+		expect(menusIn(document)).toBe(0);
+		expect(menusIn(doc)).toBe(1);
+		openPickerMenu(main, items());
+		expect(menusIn(doc)).toBe(0);
+		expect(menusIn(document)).toBe(1);
 	});
 });

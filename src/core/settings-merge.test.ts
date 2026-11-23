@@ -608,3 +608,94 @@ describe("device-local settings are outside the merge", () => {
 		expect(ids(local.collection)).toEqual(["a"]);
 	});
 });
+
+describe("mergeSettings — the value history (one point per day, keyed by the day)", () => {
+	const point = (day: string, usd: number, dateModified: number, extra: Obj = {}): Obj => ({
+		day,
+		usd,
+		eur: usd * 0.9,
+		cards: 10,
+		dateModified,
+		...extra,
+	});
+	const days = (arr: Obj[]) => arr.map((e) => e.day).sort();
+
+	it("two devices that each recorded other days end up with both, on both sides", () => {
+		const a = settings({ valueHistory: [point("2026-11-20", 10, 1), point("2026-11-21", 11, 2)] });
+		const b = settings({ valueHistory: [point("2026-11-21", 11, 2), point("2026-11-22", 12, 3)] });
+		const ab = run(null, a, b).merged;
+		const ba = run(null, b, a).merged;
+		expect(days(ab.valueHistory)).toEqual(["2026-11-20", "2026-11-21", "2026-11-22"]);
+		expect(settingsEqual(ab, ba)).toBe(true);
+	});
+
+	it("the same day written twice keeps ONE point, the newest write, whichever device merges", () => {
+		const a = settings({ valueHistory: [point("2026-11-22", 100, 1000)] });
+		const b = settings({ valueHistory: [point("2026-11-22", 105, 2000)] });
+		const ab = run(null, a, b).merged;
+		const ba = run(null, b, a).merged;
+		expect(ab.valueHistory).toHaveLength(1);
+		expect(ab.valueHistory[0].usd).toBe(105);
+		expect(ba.valueHistory[0].usd).toBe(105);
+	});
+
+	it("a tie on the write time is settled the same way on both devices", () => {
+		const a = settings({ valueHistory: [point("2026-11-22", 100, 1000)] });
+		const b = settings({ valueHistory: [point("2026-11-22", 105, 1000)] });
+		const ab = run(null, a, b).merged;
+		const ba = run(null, b, a).merged;
+		expect(ab.valueHistory[0].usd).toBe(ba.valueHistory[0].usd);
+	});
+
+	it("a device on an older version, with no history, never removes the other's", () => {
+		const withHistory = settings({ valueHistory: [point("2026-11-22", 100, 1000)] });
+		const without = settings();
+		expect(run(null, withHistory, without).merged.valueHistory).toHaveLength(1);
+		expect(run(null, without, withHistory).merged.valueHistory).toHaveLength(1);
+	});
+
+	it("is not deduced from an absence: a missing day is kept", () => {
+		const base = settings({ valueHistory: [point("2026-11-20", 10, 1), point("2026-11-21", 11, 2)] });
+		const local = settings({ valueHistory: [point("2026-11-21", 11, 2)] });
+		const remote = settings({ valueHistory: [point("2026-11-20", 10, 1), point("2026-11-21", 11, 2)] });
+		expect(days(run(base, local, remote).merged.valueHistory)).toEqual(["2026-11-20", "2026-11-21"]);
+	});
+
+	it("new points are reported as something to write, and the order of the array does not matter", () => {
+		const a = settings({ valueHistory: [point("2026-11-21", 11, 2), point("2026-11-20", 10, 1)] });
+		const b = settings({ valueHistory: [point("2026-11-20", 10, 1), point("2026-11-21", 11, 2)] });
+		expect(settingsEqual(a, b)).toBe(true);
+		const c = settings({ valueHistory: [point("2026-11-20", 10, 1)] });
+		expect(run(null, a, c).report.needsWrite).toBe(true);
+		expect(run(null, a, b).report).toMatchObject({ changedLocal: false, needsWrite: false });
+	});
+
+	it("applied in place, the points of the target take the merged content", () => {
+		const local = settings({ valueHistory: [point("2026-11-22", 100, 1000)] });
+		const remote = settings({ valueHistory: [point("2026-11-22", 105, 2000), point("2026-11-23", 106, 2001)] });
+		applySettingsInPlace(local, run(null, local, remote).merged);
+		expect(local.valueHistory.map((p: Obj) => [p.day, p.usd])).toEqual([
+			["2026-11-22", 105],
+			["2026-11-23", 106],
+		]);
+	});
+
+	it("a day that was removed (clear all data) is removed on the other devices too, and comes back only if re-recorded later", () => {
+		const before = settings({ valueHistory: [point("2026-11-20", 10, 1000), point("2026-11-21", 11, 2000)] });
+		const prev = snapshotKeys(before);
+		// "Clear all data" leaves an EMPTY history (not a missing one: a missing collection invents no deletion).
+		const cleared = settings({ valueHistory: [] });
+		recordTombstones(cleared, prev, 5000);
+		expect(cleared.syncTombstones.valueHistory).toMatchObject({ "2026-11-20": 5000, "2026-11-21": 5000 });
+		const merged = run(null, cleared, before).merged;
+		expect(merged.valueHistory ?? []).toEqual([]);
+		// Today's point, written after the deletion, beats the tombstone.
+		const rerecorded = settings({ ...cleared, valueHistory: [point("2026-11-21", 12, 6000)] });
+		expect(days(run(null, rerecorded, before).merged.valueHistory)).toEqual(["2026-11-21"]);
+	});
+
+	it("is not a scalar setting: it carries no stamp of its own", () => {
+		const local = settings({ valueHistory: [point("2026-11-22", 100, 1000)] });
+		expect(Object.keys(snapshotScalars(local))).not.toContain("valueHistory");
+	});
+});

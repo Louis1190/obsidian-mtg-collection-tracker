@@ -12,6 +12,7 @@ import {
 	requestScryfall,
 	ScryfallCard,
 	ScryfallImmutableSnapshot,
+	slimImmutableSnapshot,
 } from "../api/scryfall";
 import { pruneUnusedExpired, scryfallIdsInUse } from "../core/cache-prune";
 import {
@@ -529,7 +530,8 @@ export async function fetchCardLegalities(this: MTGCollectionPlugin, scryfallId:
 // The fields of a Scryfall card that never change for a printing (see ScryfallImmutableSnapshot, scryfall.ts, for what
 // is kept and what is left out on purpose). One place for the three fetchers below.
 function immutableSnapshotOf(card: ScryfallCard): ScryfallImmutableSnapshot {
-	return {
+	// slimImmutableSnapshot: the picture sizes and shop links nothing reads are not kept (they were ~80 % of the cache file).
+	return slimImmutableSnapshot({
 		oracle_text: card.oracle_text,
 		power: card.power,
 		toughness: card.toughness,
@@ -545,7 +547,7 @@ function immutableSnapshotOf(card: ScryfallCard): ScryfallImmutableSnapshot {
 		rarity: card.rarity,
 		mana_cost: card.mana_cost,
 		type_line: card.type_line,
-	};
+	});
 }
 
 // Entry point shared by the 4 derivations below
@@ -912,7 +914,11 @@ export async function getAvailableLanguages(this: MTGCollectionPlugin, setCode: 
 export async function loadPersistedMapCache<T>(this: MTGCollectionPlugin, 
 	filename: string,
 	map: Map<string, T>,
-	isValid: (value: unknown) => boolean
+	isValid: (value: unknown) => boolean,
+	// Brings an entry written by an EARLIER version to today's shape. Must return the SAME object when there is nothing
+	// to change: when any entry came back as another object, the file is rewritten (debounced, like any change) so that
+	// the old, bigger shape does not stay on disk for ever (a cache is only rewritten when it learns something new).
+	normalize?: (value: T) => T
 ): Promise<void> {
 	const path = this.immutableCacheFilePath(filename);
 	if (!path) return;
@@ -920,10 +926,14 @@ export async function loadPersistedMapCache<T>(this: MTGCollectionPlugin,
 		if (!(await this.app.vault.adapter.exists(path))) return;
 		const raw = await this.app.vault.adapter.read(path);
 		const parsed = JSON.parse(raw) as Record<string, unknown>;
+		let rewritten = false;
 		for (const [key, value] of Object.entries(parsed)) {
 			if (!isValid(value)) continue;
-			map.set(key, value as T);
+			const entry = normalize ? normalize(value as T) : (value as T);
+			if (entry !== value) rewritten = true;
+			map.set(key, entry);
 		}
+		if (rewritten) this.scheduleMapCachePersist(filename, map);
 	} catch {
 		// Silent by design — see the method's comment.
 	}

@@ -146,6 +146,58 @@ export type ScryfallImmutableSnapshot = Pick<
 	| "type_line"
 >;
 
+// What is kept of `image_uris` / `purchase_uris` in a snapshot: exactly the sub-fields the types above declare and the
+// code reads (picture sizes normal/small/art_crop, the TCGplayer link). Scryfall sends six picture sizes and three shops,
+// and the five others were 58 % + 22 % of the 5.4 MB `scryfall-immutable-cache.json` on a real collection (2026-11-22):
+// the file is read whole into memory at every start and rewritten whole after each new entry. A new reader of another
+// size or shop adds its key HERE, or it would silently get `undefined` from an entry cached before.
+const SNAPSHOT_IMAGE_KEYS = ["normal", "small", "art_crop"] as const;
+const SNAPSHOT_PURCHASE_KEYS = ["tcgplayer"] as const;
+
+// The same object when it already holds nothing else (so a caller can tell "nothing to do" by reference), a new
+// one with only the kept keys otherwise. Anything that is not a plain object is returned as it came: a validator
+// decides what is acceptable, not this function.
+function keepOnly<T extends object>(value: T | undefined, keys: readonly string[]): T | undefined {
+	if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) return value;
+	const own = Object.keys(value);
+	if (own.every((k) => keys.includes(k))) return value;
+	const out: Record<string, unknown> = {};
+	for (const k of keys) {
+		const v = (value as Record<string, unknown>)[k];
+		if (v !== undefined) out[k] = v;
+	}
+	return out as T;
+}
+
+/**
+ * The snapshot with its pictures and shop links cut down to what the plugin reads (see SNAPSHOT_IMAGE_KEYS), on the root
+ * and on every face of a multi-face card. Idempotent, never changes its argument, and returns the argument itself when
+ * there is nothing to cut.
+ */
+export function slimImmutableSnapshot<T extends ScryfallImmutableSnapshot>(snapshot: T): T {
+	if (snapshot === null || typeof snapshot !== "object") return snapshot;
+	const imageUris = keepOnly(snapshot.image_uris, SNAPSHOT_IMAGE_KEYS);
+	const purchaseUris = keepOnly(snapshot.purchase_uris, SNAPSHOT_PURCHASE_KEYS);
+	let faces = snapshot.card_faces;
+	if (Array.isArray(faces)) {
+		let changed = false;
+		const next = faces.map((face) => {
+			if (face === null || typeof face !== "object") return face;
+			const uris = keepOnly(face.image_uris, SNAPSHOT_IMAGE_KEYS);
+			if (uris === face.image_uris) return face;
+			changed = true;
+			return { ...face, image_uris: uris };
+		});
+		if (changed) faces = next;
+	}
+	if (imageUris === snapshot.image_uris && purchaseUris === snapshot.purchase_uris && faces === snapshot.card_faces) return snapshot;
+	const out = { ...snapshot };
+	if (imageUris !== snapshot.image_uris) out.image_uris = imageUris;
+	if (purchaseUris !== snapshot.purchase_uris) out.purchase_uris = purchaseUris;
+	if (faces !== snapshot.card_faces) out.card_faces = faces;
+	return out;
+}
+
 // A single face of a multi-faced card (split, adventure, flip, transform,
 // modal_dfc, meld...), for the "Card Text" display of the detail panel
 // (CardDetailModal.renderCardDescriptionBox, renderCardDescriptionFaces in

@@ -167,6 +167,10 @@ const COLLECTIONS: Record<string, Spec> = {
 	wantlist: { keyOf: byId, lww: true },
 	wantlists: { keyOf: byId, lww: true, stamped: true },
 	savedSearchFilters: { keyOf: byId, lww: true, stamped: true },
+	// One point per calendar day (core/value-history.ts), keyed by that day so that two devices which record the same day
+	// meet on ONE entity, whichever of them wrote first; the newest `dateModified` wins as a whole. Never pruned in v1: no
+	// deletion, hence no tombstone, except the ones a "clear all data" leaves, like for the cards.
+	valueHistory: { keyOf: (e) => (typeof e.day === "string" ? e.day : ""), lww: true },
 	// The deck's fields are settled by date, its cards are merged one by one.
 	decks: { keyOf: byId, stamped: true, nested: { cards: { keyOf: deckCardKey, lww: true } } },
 };

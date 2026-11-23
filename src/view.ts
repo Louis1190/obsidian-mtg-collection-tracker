@@ -28,6 +28,10 @@ import * as collectionRender from "./view/collection-render";
 import * as deckRender from "./view/deck-render";
 import * as wantlistRender from "./view/wantlist-render";
 import * as mobileBars from "./view/mobile-bars";
+import { placeGalleryActionButtons, watchGalleryActionsPlacement } from "./view/gallery-actions";
+import * as detailTools from "./view/detail-tools";
+import type { ToolsState } from "./core/header-autohide";
+import type { ValuePeriod } from "./core/value-history";
 
 export class MTGCollectionView extends ItemView {
 	plugin: MTGCollectionPlugin;
@@ -45,6 +49,11 @@ export class MTGCollectionView extends ItemView {
 	collectionToolbarEl!: HTMLElement;
 	decksToolbarEl!: HTMLElement;
 	wantlistsToolbarEl!: HTMLElement;
+	// The slot to the right of each gallery's search bar that the "+ New X" and select buttons move into on a computer and a tablet
+	// (empty, hence not drawn, on a phone, where they stay in the header): see view/gallery-actions.ts.
+	collectionActionsEl!: HTMLElement;
+	decksActionsEl!: HTMLElement;
+	wantlistsActionsEl!: HTMLElement;
 	newListBtn!: HTMLElement;
 	newDeckBtn!: HTMLElement;
 	newWantlistBtn!: HTMLElement;
@@ -98,6 +107,9 @@ export class MTGCollectionView extends ItemView {
 	// would be annoying. Not persisted to disk: expanding is a session choice,
 	// not a preference.
 	homeMoversExpanded = false;
+	// Period of Home's "Collection value" curve (renderHomeValueHistory): a session choice like the line above, redrawn
+	// in place by the block itself.
+	homeValuePeriod: ValuePeriod = "90d";
 	// Unsubscription of Home's GitHub status line (only one at a time: each render of Home replaces the previous one).
 	homeSyncUnsub: (() => void) | null = null;
 	openListId: string | null = null;
@@ -107,6 +119,9 @@ export class MTGCollectionView extends ItemView {
 	// last render(): used to NOT keep a view's scroll position when we change
 	// view.
 	lastRenderedViewKey: string | null = null;
+	// The phone's collapsing list header (view/detail-tools.ts): hidden or not, and the last scrollTop it saw, for the view named by `key`.
+	// render() rebuilds the whole header on every change, so the state has to live here.
+	detailToolsState: { key: string; state: ToolsState } | null = null;
 
 	// Number of rows currently rendered in each list (see RENDER_BATCH_SIZE):
 	// reset to the starting value on every change of context (opening another
@@ -467,7 +482,9 @@ export class MTGCollectionView extends ItemView {
 		// .mtg-card-name-preview (styles.css) for the full reasoning
 		// (position:fixed, added to document.body rather than to an ancestor
 		// within the plugin, same precedent as .mtg-picker-menu/openPickerMenu).
-		this.cardNamePreviewEl = document.body.createDiv({ cls: "mtg-card-name-preview" });
+		// Created in the window the view opens in; showCardNamePreview moves it to the window of the name
+		// being hovered when the view has been dragged into a popout window.
+		this.cardNamePreviewEl = activeDocument.body.createDiv({ cls: "mtg-card-name-preview" });
 		this.cardNamePreviewImgEl = this.cardNamePreviewEl.createEl("img");
 
 		const header = main.createDiv({ cls: "mtg-collection-header mtg-deck-title-row" });
@@ -480,7 +497,7 @@ export class MTGCollectionView extends ItemView {
 		// "+ New X" buttons of the grid (My Collection/My Decks/My Wantlists), each
 		// followed by its own "Select" button — explicitly requested to the right of "+
 		// New X" (the reverse order from here was tried first, corrected on feedback).
-		// The two already share the same height (34px, mtg-search-add-btn /
+		// The two already share the same height (34px, 44px on a phone: styles.css, mtg-search-add-btn /
 		// mtg-tile-menu-btn-large) and the same flex parent with align-items:center
 		// (mtg-deck-title-row), so no additional CSS was needed to center them vertically
 		// relative to each other — already guaranteed by this existing layout. Same
@@ -489,6 +506,8 @@ export class MTGCollectionView extends ItemView {
 		// inside an already open list), just one notch higher in the hierarchy.
 		// Persistent elements (like newListBtn etc.): their icon/active state is
 		// resynchronized on every render() rather than rebuilt, see syncGallerySelectBtn.
+		// Created here, in the header, which is where they stay on a phone; on a computer and a tablet
+		// placeGalleryActionButtons (render) moves them to the right of the gallery's search bar.
 		this.newListBtn = header.createEl("button", {
 			text: "+ New list",
 			cls: "mtg-search-add-btn",
@@ -565,7 +584,7 @@ export class MTGCollectionView extends ItemView {
 		this.galleryPinnedEl = main.createDiv({ cls: "mtg-collection-pinned" });
 
 		// Toolbar "My Collection" : filtre
-		this.collectionToolbarEl = main.createDiv({ cls: "mtg-collection-toolbar" });
+		this.collectionToolbarEl = main.createDiv({ cls: "mtg-collection-toolbar mtg-gallery-toolbar" });
 		const filterWrap = this.collectionToolbarEl.createDiv({ cls: "mtg-filter-chip-row" });
 		const filterInner = filterWrap.createDiv({ cls: "mtg-filter-chip-row-inner" });
 		this.filterEl = filterInner.createEl("input", {
@@ -574,9 +593,10 @@ export class MTGCollectionView extends ItemView {
 			placeholder: "Filter by name or list…",
 		});
 		this.filterEl.addEventListener("input", () => this.render());
+		this.collectionActionsEl = this.collectionToolbarEl.createDiv({ cls: "mtg-detail-search-actions" });
 
 		// Toolbar "My Decks" : filtre
-		this.decksToolbarEl = main.createDiv({ cls: "mtg-collection-toolbar" });
+		this.decksToolbarEl = main.createDiv({ cls: "mtg-collection-toolbar mtg-gallery-toolbar" });
 		const deckFilterWrap = this.decksToolbarEl.createDiv({ cls: "mtg-filter-chip-row" });
 		const deckFilterInner = deckFilterWrap.createDiv({ cls: "mtg-filter-chip-row-inner" });
 		this.deckFilterEl = deckFilterInner.createEl("input", {
@@ -585,9 +605,10 @@ export class MTGCollectionView extends ItemView {
 			placeholder: "Filter decks…",
 		});
 		this.deckFilterEl.addEventListener("input", () => this.render());
+		this.decksActionsEl = this.decksToolbarEl.createDiv({ cls: "mtg-detail-search-actions" });
 
 		// Toolbar "My Wantlists" : filtre
-		this.wantlistsToolbarEl = main.createDiv({ cls: "mtg-collection-toolbar" });
+		this.wantlistsToolbarEl = main.createDiv({ cls: "mtg-collection-toolbar mtg-gallery-toolbar" });
 		const wantlistFilterWrap = this.wantlistsToolbarEl.createDiv({ cls: "mtg-filter-chip-row" });
 		const wantlistFilterInner = wantlistFilterWrap.createDiv({ cls: "mtg-filter-chip-row-inner" });
 		this.wantlistFilterEl = wantlistFilterInner.createEl("input", {
@@ -596,9 +617,11 @@ export class MTGCollectionView extends ItemView {
 			placeholder: "Filter wantlists…",
 		});
 		this.wantlistFilterEl.addEventListener("input", () => this.render());
+		this.wantlistsActionsEl = this.wantlistsToolbarEl.createDiv({ cls: "mtg-detail-search-actions" });
 
 		this.bodyEl = main.createDiv({ cls: "mtg-collection-body" });
 
+		watchGalleryActionsPlacement(this);
 		this.render();
 	}
 
@@ -654,6 +677,8 @@ export class MTGCollectionView extends ItemView {
 		// much from the real edge of the panel.
 		this.mainEl.toggleClass("mtg-main-detail-open", this.isDetailViewOpen());
 
+		// Header row on a phone, right of the search bar elsewhere (read at each render, `.is-phone` flips live).
+		placeGalleryActionButtons(this);
 		this.galleryPinnedEl.style.display =
 			(this.activeSection === "collection" && !this.openListId) ||
 			(this.activeSection === "wantlists" && !this.openWantlistId)
@@ -701,6 +726,10 @@ export class MTGCollectionView extends ItemView {
 		const viewKey = `${this.activeSection}:${this.openListId ?? ""}:${this.openDeckId ?? ""}:${this.openWantlistId ?? ""}`;
 		const viewChanged = this.lastRenderedViewKey !== null && this.lastRenderedViewKey !== viewKey;
 		this.lastRenderedViewKey = viewKey;
+		// The phone's collapsing list header remembers "hidden" for the view it was in, so that a re-render of the SAME view (a sort, a quantity) keeps it.
+		// Coming back to a list or deck from the gallery is a new visit that starts at the top: the rows must be there. (Found on the real phone in 1.0.656:
+		// a deck left with its rows hidden reopened with a 250 px black band under the title.)
+		if (viewChanged) this.detailToolsState = null;
 		const preservedScrollTop = oldScrollArea && !viewChanged ? oldScrollArea.scrollTop : null;
 
 		const oldBodyEl = this.bodyEl;
@@ -823,6 +852,7 @@ export class MTGCollectionView extends ItemView {
 	renderHomeSection = homeRender.renderHomeSection;
 	renderHomeOverview = homeRender.renderHomeOverview;
 	renderHomeRecentCarousel = homeRender.renderHomeRecentCarousel;
+	renderHomeValueHistory = homeRender.renderHomeValueHistory;
 	renderHomeColorBreakdown = homeRender.renderHomeColorBreakdown;
 	renderHomeRarityBreakdown = homeRender.renderHomeRarityBreakdown;
 	renderHomeDecksToFinish = homeRender.renderHomeDecksToFinish;
@@ -922,5 +952,8 @@ export class MTGCollectionView extends ItemView {
 	// -- Obsidian bars on phone, bottom and top (src/view/mobile-bars.ts) --
 	setupMobileBars = mobileBars.setupMobileBars;
 	syncMobileBars = mobileBars.syncMobileBars;
+
+	// -- The phone's collapsing list header (src/view/detail-tools.ts) --
+	attachDetailTools = detailTools.attachDetailTools;
 
 }

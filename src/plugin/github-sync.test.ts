@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { settingsEqual } from "../core/settings-merge";
+import { readValuePoints, recordValuePoint } from "../core/value-history";
 import { INBOX_WANTLIST_ID, ensureInboxWantlistIn } from "../core/data-model";
 import { healInboxesInPlace } from "./settings-sync";
 import {
@@ -1495,6 +1496,8 @@ describe("random sessions through GitHub", () => {
 	const STEPS = Number(process.env.SYNC_STRESS_STEPS ?? 120);
 	// Share of the steps that are about the Inbox (SYNC_INBOX_OPS=0 gives the sessions as they were before the Inbox heal).
 	const INBOX_OPS = Number(process.env.SYNC_INBOX_OPS ?? 0.1);
+	// Share of the steps that write a point of the value history (SYNC_VALUE_OPS=0 gives the sessions as they were before it).
+	const VALUE_OPS = Number(process.env.SYNC_VALUE_OPS ?? 0.15);
 	for (let seed = 1; seed <= SEEDS; seed++) {
 		it(`seed ${seed}${seed % 2 === 0 ? " (+ Syncthing)" : ""}`, async () => {
 			const rnd = mulberry32(seed);
@@ -1524,9 +1527,28 @@ describe("random sessions through GitHub", () => {
 			const inboxCards = new Set<string>();
 			let inboxSeq = 0;
 
+			// Devices that write down the collection's value for "a day" (core/value-history.ts), from a THIRD generator so that
+			// the sessions above stay exactly as they were. A step is a quarter of a day, so several devices write the same day.
+			const rndV = mulberry32(seed * 104729 + 7);
+			const valueWrites = new Map<string, Set<number>>(); // day → every usd figure written for it
+
 			for (let step = 0; step < STEPS; step++) {
 				t += 1000;
 				setNow(t);
+				if (rndV() < VALUE_OPS) {
+					const vdev = devices[Math.floor(rndV() * devices.length)];
+					const day = new Date(Date.UTC(2026, 10, 1 + Math.floor(step / 4))).toISOString().slice(0, 10);
+					const usd = Math.round(rndV() * 100_000) / 100;
+					const history = readValuePoints(vdev.settings.valueHistory);
+					if (recordValuePoint(history, day, { usd, eur: usd * 0.9, cards: 1 + Math.floor(rndV() * 50) }, t)) {
+						vdev.settings.valueHistory = history;
+						if (!valueWrites.has(day)) valueWrites.set(day, new Set());
+						valueWrites.get(day)!.add(usd);
+					}
+					await vdev.persistSettings();
+					t += 7;
+					setNow(t);
+				}
 				if (rndI() < INBOX_OPS) {
 					const idev = devices[Math.floor(rndI() * devices.length)];
 					const mine = idev.settings.lists.find((l: Obj) => l.isInbox);
@@ -1637,6 +1659,15 @@ describe("random sessions through GitHub", () => {
 			expect(devices.map((d) => d.fs.dataWrites), "data.json kept being rewritten after convergence").toEqual(writes);
 
 			expect(shardTexts().join("\n")).not.toContain("collectionViewMode");
+			// Every day any device wrote is on every device, and what it holds is one of the figures written that day (the
+			// newest write won; nothing is invented, nothing is lost).
+			for (const d of devices) {
+				const held = new Map(readValuePoints(d.settings.valueHistory).map((p) => [p.day, p.usd]));
+				for (const [day, usds] of valueWrites) {
+					expect(held.has(day), `day ${day} of the value history is gone`).toBe(true);
+					expect(usds.has(held.get(day)!), `day ${day} holds a figure nobody wrote`).toBe(true);
+				}
+			}
 			// However many Inboxes the devices invented, one is left, and no card points at a dropped one.
 			for (const d of devices) {
 				const found = d.settings.lists.filter((l: Obj) => l.isInbox);

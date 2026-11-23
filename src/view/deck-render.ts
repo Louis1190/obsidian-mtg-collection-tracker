@@ -1068,6 +1068,8 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 		const bannerBg = headerBanner.createDiv({ cls: "mtg-detail-banner-bg" });
 		bannerBg.style.backgroundImage = `url("${coverImage}")`;
 		headerBanner.createDiv({ cls: "mtg-detail-banner-scrim" });
+		// The title and its stats sit on the dark scrim: `.theme-light` has to know there is one (styles.css, `.has-cover`).
+		headerBanner.addClass("has-cover");
 	}
 
 	const backBtn = headerBanner.createEl("button", {
@@ -1110,7 +1112,10 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 	// title row, at the very top — moved here, to the right of the search bar,
 	// to gain vertical height (explicitly requested, annotated screenshot in
 	// support, same change as My Collection/My Wantlists).
-	const searchActionsRow = stickyHeader.createDiv({ cls: "mtg-detail-search-actions-row" });
+	// Everything under the title lives in ONE element, `toolsEl` (see renderListDetail): on a phone it moves to the top of the
+	// scrolling area and collapses while reading.
+	const toolsEl = stickyHeader.createDiv({ cls: "mtg-detail-tools" });
+	const searchActionsRow = toolsEl.createDiv({ cls: "mtg-detail-search-actions-row" });
 	const filterRow = searchActionsRow.createDiv({ cls: "mtg-collection-toolbar mtg-inline-filter-row" });
 	const actionsRow = searchActionsRow.createDiv({ cls: "mtg-detail-search-actions" });
 
@@ -1243,13 +1248,13 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 		});
 	}
 
-	this.renderGroupSortBar("deck", stickyHeader);
+	this.renderGroupSortBar("deck", toolsEl);
 
 	// Mainboard/Sideboard/Maybeboard — under the Group by/Sort by/display
 	// modes bar rather than above (moved on explicit request, annotated
 	// screenshot in support, 2026-09-07); DOM order direct here since this
 	// call needs no data computed further down.
-	this.renderDeckBoardTabs(deck, stickyHeader);
+	this.renderDeckBoardTabs(deck, toolsEl);
 
 	const renderSignature = JSON.stringify([
 		deckId,
@@ -1299,6 +1304,8 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 	scrollArea.addEventListener("scroll", () => this.handleScrollAreaScroll(scrollArea));
 	// See the equivalent comment in renderListDetail.
 	setupPanelScrollFade(scrollArea);
+	// Phone only: the rows under the title (search, Group by, board tabs...) go to the top of this area and collapse while reading.
+	this.attachDetailTools(toolsEl, stickyHeader, scrollArea, this.deckSelectMode);
 	// "Cards: …" title — applies to the active tab
 	// (Mainboard/Sideboard/Maybeboard), like the filter itself: see
 	// renderCardsCountTitle.
@@ -1342,7 +1349,7 @@ export function renderDeckDetail(this: MTGCollectionView, deckId: string) {
 
 	if (this.deckSelectMode) {
 		this.renderDeckBulkActionsBar(
-			stickyHeader,
+			toolsEl,
 			deck.id,
 			!this.deckBulkBarWasVisible,
 			filteredCards.map((c) => c.scryfallId)

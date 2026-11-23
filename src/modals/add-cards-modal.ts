@@ -457,7 +457,7 @@ export class AddCardsModal extends Modal {
 		// A phone only: a tap on the bar's own empty space (above and below the input, which is 30px high in a 50px bar, or between the chips and it) puts the cursor in the input, as a search field
 		// should. The test is on the target, so a chip, its buttons, the "?" and "Save filter" keep their own taps; the phone switch is read at the tap (like the swipe's), a computer is as it was.
 		wrap.addEventListener("click", (evt) => {
-			if ((evt.target === wrap || evt.target === inner) && document.body.classList.contains("is-phone")) input.focus();
+			if ((evt.target === wrap || evt.target === inner) && activeDocument.body.classList.contains("is-phone")) input.focus();
 		});
 
 		const commitToken = (value: string) => {

@@ -24,3 +24,13 @@ export function formatCountTitle(
 	if (!filtering) return `${title}: ${total} ${label}`;
 	return `${title}: ${matched} of ${total} ${label} ${one ? "matches" : "match"}`;
 }
+
+// The count at the right of the results header of the "Change printing" window ("12 printings",
+// "3 of 12 printings", "1 printing"): what the filter keeps against all the printings of the card.
+// As for formatCountTitle, the plural follows the TOTAL, and a typed filter announces itself even when
+// it keeps everything. Nothing at all while the printings are not known yet (total 0 and no filter).
+export function formatPrintingsCount(shown: number, total: number, filtering: boolean): string {
+	if (total === 0) return filtering ? "0 of 0 printings" : "";
+	const label = total === 1 ? "printing" : "printings";
+	return filtering ? `${shown} of ${total} ${label}` : `${total} ${label}`;
+}

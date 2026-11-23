@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { formatCountTitle } from "./count-title";
+import { formatCountTitle, formatPrintingsCount } from "./count-title";
+
+describe("formatPrintingsCount", () => {
+	it("shows the total when nothing is typed", () => {
+		expect(formatPrintingsCount(12, 12, false)).toBe("12 printings");
+		expect(formatPrintingsCount(1, 1, false)).toBe("1 printing");
+	});
+
+	it("says what a typed filter keeps against the total, the plural following the total", () => {
+		expect(formatPrintingsCount(3, 12, true)).toBe("3 of 12 printings");
+		expect(formatPrintingsCount(0, 12, true)).toBe("0 of 12 printings");
+		expect(formatPrintingsCount(1, 1, true)).toBe("1 of 1 printing");
+		expect(formatPrintingsCount(1, 12, true)).toBe("1 of 12 printings");
+		expect(formatPrintingsCount(12, 12, true)).toBe("12 of 12 printings");
+	});
+
+	it("says nothing while the printings are not known yet", () => {
+		expect(formatPrintingsCount(0, 0, false)).toBe("");
+	});
+});
 
 describe("formatCountTitle", () => {
 	it("works for the cards title inside an open list/deck/wantlist", () => {

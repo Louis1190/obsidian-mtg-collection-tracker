@@ -1,7 +1,8 @@
-import { App, Modal, Notice } from "obsidian";
+import { App, Modal, Notice, setIcon } from "obsidian";
 import type MTGCollectionPlugin from "../plugin";
 import { ScryfallCard, searchAllPrintings } from "../api/scryfall";
 import type { DeckCardCategory } from "../core/data-model";
+import { formatPrintingsCount } from "../core/count-title";
 import { setupResultsCarousel, renderScryfallResultTile } from "./shared-search-ui";
 import { applyModalOpenAnimation, closeModalAnimated, addModalCloseButton } from "../ui/modal-animation";
 
@@ -34,6 +35,8 @@ export class ChangePrintingModal extends Modal {
 	private deckContext?: { deckId: string; category: DeckCardCategory };
 	private allPrintings: ScryfallCard[] = [];
 	private resultsEl!: HTMLElement;
+	// The count at the right of the results header (a phone draws that header, see styles.css "CHANGE PRINTING ON A PHONE")
+	private resultsCountEl!: HTMLElement;
 	private searchInput!: HTMLInputElement;
 
 	constructor(
@@ -62,13 +65,24 @@ export class ChangePrintingModal extends Modal {
 		const { contentEl } = this;
 		contentEl.addClass("mtg-search-modal");
 		this.modalEl.addClass("mtg-search-modal-wide");
+		// Scopes the phone design (full screen, blocks on a black page, like "Add cards"): every rule of it is prefixed
+		// `.is-phone .modal.mtg-change-printing-modal` in styles.css, so a tablet and a computer are untouched. "Add cards" does the
+		// same through mtg-search-modal-fixed-height, a class this window must not take (it would also fix the height on a computer).
+		this.modalEl.addClass("mtg-change-printing-modal");
 		contentEl.createEl("h2", { text: `Change printing of "${this.card.name}"` });
 		contentEl.createEl("p", {
 			text: "Pick the exact edition this physical card belongs to.",
 			cls: "mtg-status",
 		});
 
-		this.resultsEl = setupResultsCarousel(contentEl);
+		// The carousel sits in a block of its own with a header, the shape of the results block of "Add cards" (same classes, so it shares
+		// that window's phone rules). On a tablet and a computer the wrapper has no look of its own and its header is not drawn.
+		const resultsBlock = contentEl.createDiv({ cls: "mtg-search-results-block" });
+		const resultsHeader = resultsBlock.createDiv({ cls: "mtg-search-results-block-header" });
+		setIcon(resultsHeader.createSpan({ cls: "mtg-search-results-block-icon" }), "layers");
+		resultsHeader.createSpan({ text: "Printings" });
+		this.resultsCountEl = resultsHeader.createSpan({ cls: "mtg-search-results-block-count" });
+		this.resultsEl = setupResultsCarousel(resultsBlock);
 		this.resultsEl.createEl("p", { text: "Loading printings…", cls: "mtg-status" });
 
 		const form = contentEl.createDiv({ cls: "mtg-search-form" });
@@ -88,6 +102,7 @@ export class ChangePrintingModal extends Modal {
 			this.allPrintings = await searchAllPrintings(this.card.name);
 		} catch (e) {
 			this.resultsEl.empty();
+			this.resultsCountEl.setText("");
 			this.resultsEl.createEl("p", {
 				text: `Error while querying Scryfall: ${(e as Error).message}`,
 				cls: "mtg-status mtg-error",
@@ -113,6 +128,7 @@ export class ChangePrintingModal extends Modal {
 			: this.allPrintings;
 
 		this.resultsEl.empty();
+		this.resultsCountEl.setText(formatPrintingsCount(filtered.length, this.allPrintings.length, q !== ""));
 		if (filtered.length === 0) {
 			this.resultsEl.createEl("p", { text: "No printings found.", cls: "mtg-status" });
 			return;

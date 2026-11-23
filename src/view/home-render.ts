@@ -25,6 +25,19 @@ import { NewDeckModal, NewWantlistModal } from "../modals/new-entity-modals";
 import { CardPreviewModal } from "../modals/card-preview-modal";
 import { setupPinnedCarousel } from "./pinned-carousel";
 import { nearestPage, pageOffsets } from "../core/carousel-pages";
+import {
+	computeCollectionValue,
+	formatDayLabel,
+	readValuePoints,
+	seriesForPeriod,
+	seriesNeedsYear,
+	valueChange,
+	valueIn,
+	VALUE_PERIOD_LABELS,
+	VALUE_PERIODS,
+	type ValuePeriod,
+} from "../core/value-history";
+import { renderValueHistoryChart } from "../ui/value-history-chart";
 
 
 // 8 = two pages of 4 on a wide block, four pages of 2 on a narrow one (renderHomeRecentCarousel):
@@ -125,6 +138,7 @@ export function renderHomeSection(this: MTGCollectionView) {
 
 	const insightsGrid = makeHomeSection(container, "Insights", "heights");
 	const currency = this.plugin.settings.priceCurrency;
+	this.renderHomeValueHistory(insightsGrid);
 	this.renderHomeRecentCarousel(insightsGrid, {
 		icon: "trophy",
 		title: "Top value",
@@ -693,6 +707,73 @@ export function renderHomeMarketTrends(this: MTGCollectionView, container: HTMLE
 	};
 
 	loadAndDraw();
+}
+
+export function renderHomeValueHistory(this: MTGCollectionView, container: HTMLElement) {
+	const body = makeHomeBlock(container, "coins", "Collection value");
+	const settings = this.plugin.settings;
+	const currency = settings.priceCurrency;
+	const live = computeCollectionValue(settings.collection);
+	if (live.cards <= 0) {
+		body.createDiv({ cls: "mtg-home-value-empty", text: "The value of your collection is tracked once it holds cards." });
+		return;
+	}
+	let period: ValuePeriod = VALUE_PERIODS.includes(this.homeValuePeriod) ? this.homeValuePeriod : "90d";
+
+	const head = body.createDiv({ cls: "mtg-home-value-head" });
+	head.createDiv({ cls: "mtg-home-value-amount", text: formatMoney(valueIn(live, currency), currency) });
+	const changeEl = head.createDiv({ cls: "mtg-home-value-change" });
+
+	const tabs = body.createDiv({ cls: "mtg-home-value-tabs mtg-home-trends-period-tabs" });
+	const tabButtons = new Map<ValuePeriod, HTMLElement>();
+	for (const p of VALUE_PERIODS) {
+		const btn = tabs.createEl("button", { cls: "mtg-home-trends-period-btn", text: VALUE_PERIOD_LABELS[p] });
+		btn.toggleClass("is-active", p === period);
+		tabButtons.set(p, btn);
+		btn.addEventListener("click", () => {
+			if (period === p) return;
+			period = p;
+			this.homeValuePeriod = p;
+			tabButtons.forEach((el, key) => el.toggleClass("is-active", key === p));
+			draw();
+		});
+	}
+
+	const chartEl = body.createDiv({ cls: "mtg-home-value-chart" });
+	body.createDiv({
+		cls: "mtg-home-value-note",
+		text: "Recorded each time prices refresh. Adding or removing cards moves it too.",
+	});
+
+	const draw = () => {
+		const recorded = readValuePoints(settings.valueHistory);
+		const series = seriesForPeriod(recorded, live, period, Date.now());
+		const change = valueChange(series, currency);
+
+		changeEl.empty();
+		changeEl.removeClass("is-up");
+		changeEl.removeClass("is-down");
+		if (change) {
+			const percent = change.percent === null ? "" : ` (${change.percent < 0 ? "-" : "+"}${Math.abs(change.percent).toFixed(1)}%)`;
+			const arrow = change.amount > 0 ? "▲ " : change.amount < 0 ? "▼ " : "";
+			changeEl.toggleClass("is-up", change.amount > 0);
+			changeEl.toggleClass("is-down", change.amount < 0);
+			changeEl.createSpan({
+				cls: "mtg-home-value-change-amount",
+				text: change.amount === 0 ? "No change" : `${arrow}${formatSignedMoney(change.amount, currency)}${percent}`,
+			});
+			changeEl.createSpan({ cls: "mtg-home-value-change-since", text: ` since ${formatDayLabel(change.since, seriesNeedsYear(series))}` });
+		} else {
+			changeEl.createSpan({
+				cls: "mtg-home-value-change-since",
+				text: recorded.length === 0 ? "Tracking starts today" : "Not enough points in this period yet",
+			});
+		}
+
+		renderValueHistoryChart(chartEl, series, currency);
+		chartEl.toggleClass("is-empty", series.length < 2);
+	};
+	draw();
 }
 
 // "By Color"/"By Rarity" (2026-09-23) — both scoped to `settings.collection`

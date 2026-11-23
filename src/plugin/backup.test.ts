@@ -15,7 +15,7 @@ vi.mock("obsidian", () => {
 });
 
 import { TFile, TFolder } from "obsidian";
-import { backupFolderPath, listBackupFiles, readBackupFile } from "./backup";
+import { backupFolderPath, exportBackup, listBackupFiles, parseBackupFile, pruneAutoBackups, readBackupFile, restoreBackup, runAutoBackup } from "./backup";
 import type MTGCollectionPlugin from "../plugin";
 
 // The real Obsidian classes have no usable constructor here: we build those of the mock above.
@@ -71,5 +71,124 @@ describe("readBackupFile", () => {
 	it("says so when the file is gone (deleted between the list and the click)", async () => {
 		const { plugin } = fakePlugin("MTG Backups", {});
 		await expect(readBackupFile.call(plugin, "MTG Backups/gone.json")).rejects.toThrow("no longer exists");
+	});
+});
+
+describe("restoreBackup and the value history", () => {
+	const point = (day: string, usd: number, dateModified = 1000) => ({ day, usd, eur: usd, cards: 5, dateModified });
+
+	function restoring(current: unknown) {
+		const plugin = {
+			settings: { cardbaseApiKey: "key", valueHistory: current },
+			runSettingsMigrations: vi.fn(async () => {}),
+			saveSettings: vi.fn(async () => {}),
+			refreshAccentColor: vi.fn(),
+			refreshCollectionRibbonIcon: vi.fn(),
+			refreshOpenViews: vi.fn(),
+		};
+		return plugin as unknown as MTGCollectionPlugin & { settings: { valueHistory?: unknown } };
+	}
+
+	it("does not rewind the curve: what was recorded since the backup stays, the backup's older days are added", async () => {
+		const plugin = restoring([point("2026-11-20", 20), point("2026-11-21", 21)]);
+		await restoreBackup.call(plugin, { collection: [], valueHistory: [point("2026-11-10", 10), point("2026-11-20", 99, 1)] } as never);
+		const days = (plugin.settings.valueHistory as { day: string; usd: number }[]).map((p) => [p.day, p.usd]);
+		expect(days).toEqual([
+			["2026-11-10", 10],
+			["2026-11-20", 20],
+			["2026-11-21", 21],
+		]);
+	});
+
+	it("keeps the current history when the backup predates it", async () => {
+		const plugin = restoring([point("2026-11-20", 20)]);
+		await restoreBackup.call(plugin, { collection: [] } as never);
+		expect(plugin.settings.valueHistory).toHaveLength(1);
+	});
+
+	it("takes the backup's history when there is none yet, and leaves none when neither has any", async () => {
+		const fresh = restoring(undefined);
+		await restoreBackup.call(fresh, { valueHistory: [point("2026-11-10", 10)] } as never);
+		expect(fresh.settings.valueHistory).toHaveLength(1);
+		const none = restoring(undefined);
+		await restoreBackup.call(none, {} as never);
+		expect("valueHistory" in none.settings).toBe(false);
+	});
+
+	it("does not trust a history of the file: junk is dropped", async () => {
+		const plugin = restoring(undefined);
+		await restoreBackup.call(plugin, { valueHistory: [null, { day: "nope" }, point("2026-11-10", 10)] } as never);
+		expect(plugin.settings.valueHistory).toHaveLength(1);
+	});
+});
+
+describe("the layout of a backup file", () => {
+	// Two cards with accents and a quote, so that the layout is compared on something that has to be escaped.
+	const settings = {
+		collection: [{ id: "a", name: "Séance \"Éclair\"", count: 2 }, { id: "b", name: "Mox Ruby", count: 1 }],
+		lists: [{ id: "l1", name: "Main" }],
+		decks: [],
+		wantlist: [],
+		wantlists: [],
+		cardbaseApiKey: "never-in-the-file",
+		autoBackupFolder: "MTG Backups",
+		autoBackupKeepCount: 7,
+	};
+
+	function fakeBackupPlugin() {
+		const written = new Map<string, string>();
+		const vault = {
+			getAbstractFileByPath: (path: string) => (path === "MTG Backups" ? makeFolder("MTG Backups") : written.has(path) ? makeFile(path, { mtime: 1, size: 1 }) : null),
+			createFolder: vi.fn(async () => {}),
+			create: vi.fn(async (path: string, content: string) => void written.set(path, content)),
+			modify: vi.fn(async (file: { path: string }, content: string) => void written.set(file.path, content)),
+		};
+		const plugin = {
+			settings: { ...settings, lastAutoBackup: 0 },
+			manifest: { version: "9.9.9" },
+			app: { vault, fileManager: { trashFile: vi.fn() } },
+			saveSettings: vi.fn(async () => {}),
+			exportBackup,
+			pruneAutoBackups,
+		};
+		return { plugin: plugin as unknown as MTGCollectionPlugin, written };
+	}
+
+	it("the manual export stays indented (a person may open it), the key is left out", () => {
+		const { plugin } = fakeBackupPlugin();
+		const text = exportBackup.call(plugin);
+		expect(text).toMatch(/\n {2}"format"/);
+		expect(text).not.toContain("never-in-the-file");
+	});
+
+	it("an automatic backup is written compact: one line, the same content", async () => {
+		const { plugin, written } = fakeBackupPlugin();
+		const manual = JSON.parse(exportBackup.call(plugin)); // before the run: it records lastAutoBackup afterwards
+		const result = await runAutoBackup.call(plugin);
+		expect("path" in result).toBe(true);
+		const [[path, text]] = [...written];
+		expect(path).toMatch(/^MTG Backups\/mtg-collection-backup-auto-\d{4}-\d{2}-\d{2}\.json$/);
+		expect(text).not.toMatch(/\n/);
+		expect(text).toBe(JSON.stringify(JSON.parse(text))); // not one space outside a string
+		expect(text).not.toContain("never-in-the-file");
+		const auto = JSON.parse(text);
+		expect({ ...auto, exportedAt: 0 }).toEqual({ ...manual, exportedAt: 0 }); // only the layout differs
+	});
+
+	it("restoring reads both layouts and gives the same summary and settings", () => {
+		const { plugin } = fakeBackupPlugin();
+		const indented = parseBackupFile.call(plugin, exportBackup.call(plugin));
+		const compact = parseBackupFile.call(plugin, exportBackup.call(plugin, true));
+		expect("error" in indented).toBe(false);
+		expect("error" in compact).toBe(false);
+		if ("error" in indented || "error" in compact) return;
+		expect(compact.summary.cards).toBe(2);
+		expect({ ...compact.summary, exportedAt: 0 }).toEqual({ ...indented.summary, exportedAt: 0 });
+		expect(compact.settings).toEqual(indented.settings);
+	});
+
+	it("a compact backup is smaller than the indented one for the same content", () => {
+		const { plugin } = fakeBackupPlugin();
+		expect(exportBackup.call(plugin, true).length).toBeLessThan(exportBackup.call(plugin).length);
 	});
 });

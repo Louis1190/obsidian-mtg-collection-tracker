@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DEFAULT_SETTINGS } from "../core/data-model";
 import { settingsEqual } from "../core/settings-merge";
+import { readValuePoints, recordValuePoint } from "../core/value-history";
 import {
 	normalizeDataFolder,
 	CUSTOM_DATA_FILE_NAME,
@@ -8,6 +9,7 @@ import {
 	BIG_REMOVAL_THRESHOLD,
 	BIG_ADDITION_THRESHOLD,
 	SYNC_BACKUP_KEEP,
+	saveSyncBackup,
 	mergeForeignText,
 } from "./settings-sync";
 
@@ -34,6 +36,7 @@ vi.stubGlobal("window", globalThis);
 import {
 	Obj,
 	DATA,
+	DIR,
 	FakeFs,
 	deliver,
 	makeDevice,
@@ -101,6 +104,51 @@ describe("writing", () => {
 		setNow(9000);
 		await dev.persistSettings();
 		expect(dev.fs.data()!.mtime).toBe(before);
+	});
+
+	it("writes the file compact, with no indentation, and the state survives the round trip", async () => {
+		const dev = await seededDevice([card("a"), card("b")]);
+		const text = dev.fs.data()!.text;
+		expect(text).not.toMatch(/\n/);
+		expect(text).toBe(JSON.stringify(JSON.parse(text))); // what JSON.stringify makes of its own parse: not one space outside a string
+		expect(ids(await cloneDevice(dev))).toEqual(["a", "b"]);
+	});
+
+	it("a file left indented by an older version is read as it is, rewritten compact by the first save, then left alone", async () => {
+		const pretty = JSON.stringify({ collection: [card("a", { dateModified: 1 })] }, null, 2);
+		const dev = await deviceWith({ text: pretty, mtime: 1 });
+		expect(ids(dev)).toEqual(["a"]);
+		expect(dev.diskText).toBe(pretty);
+		expect(dev.fs.data()!.text).toBe(pretty); // loading alone never rewrites it
+		setNow(2000);
+		dev.settings.collection.push(card("b", { dateModified: 2000 }));
+		await dev.persistSettings();
+		const compact = dev.fs.data()!.text;
+		expect(compact).not.toMatch(/\n/);
+		expect(JSON.parse(compact).collection).toHaveLength(2);
+		const writes = dev.fs.dataWrites;
+		setNow(3000);
+		await dev.persistSettings();
+		expect(dev.fs.dataWrites).toBe(writes); // nothing new, nothing written
+	});
+
+	it("an indented copy of the same state, written by an older device, is no change: nothing is merged or sent back, and the next save tidies it once", async () => {
+		const mac = await seededDevice([card("a")], 1000);
+		const ipad = await cloneDevice(mac);
+		const state = JSON.parse(mac.fs.data()!.text);
+		setNow(2000);
+		ipad.fs.files.set(DATA, { text: JSON.stringify(state, null, 2), mtime: 2000 });
+		const writes = ipad.fs.dataWrites;
+		await ipad.checkForExternalChange();
+		await ipad.persistChain;
+		expect(ipad.fs.dataWrites).toBe(writes); // the layout alone is not a difference: no write-back
+		expect(ipad.refreshOpenViews).not.toHaveBeenCalled();
+		setNow(3000);
+		await ipad.persistSettings(); // the first save, even one that changes no data, writes the compact form...
+		expect(ipad.fs.dataWrites).toBe(writes + 1);
+		expect(ipad.fs.data()!.text).not.toMatch(/\n/);
+		await ipad.persistSettings(); // ...and only once: this is what keeps two devices of different versions from trading rewrites
+		expect(ipad.fs.dataWrites).toBe(writes + 1);
 	});
 
 	it("does not re-read the file after its own write (signature fast path)", async () => {
@@ -216,6 +264,47 @@ describe("two devices", () => {
 		await ipad.persistChain;
 		await vi.waitFor(() => expect(ipad.fs.backups("remote")).toHaveLength(1));
 		expect(ipad.fs.files.get(ipad.fs.backups("remote")[0])!.text).toBe(mac.fs.data()!.text);
+	});
+
+	it("does not keep a second copy identical to the newest one (one per Obsidian start used to fill the 3 kept)", async () => {
+		const mac = await seededDevice([card("a")], 1000);
+		const ipad = await cloneDevice(mac);
+		setNow(2000);
+		mac.settings.collection.push(card("x", { dateModified: 2000 }));
+		await mac.persistSettings();
+		setNow(2200);
+		ipad.settings.collection.push(card("y", { dateModified: 2200 }));
+		await ipad.persistSettings();
+		// the same foreign file, brought in three times (three starts, or three polls that see it again)
+		for (let i = 0; i < 3; i++) {
+			ipad.fs.files.set(DATA, { text: mac.fs.data()!.text, mtime: 2300 + i * 100 });
+			ipad.diskSig = null;
+			setNow(2400 + i * 100);
+			await ipad.checkForExternalChange();
+			await ipad.persistChain;
+			await new Promise((r) => setTimeout(r, 0));
+		}
+		await vi.waitFor(() => expect(ipad.fs.backups("remote").length).toBeGreaterThan(0));
+		expect(ipad.fs.backups("remote")).toHaveLength(1);
+	});
+
+	it("a copy of the same SIZE but another content is still kept (the size only decides whether to read the newest copy)", async () => {
+		const fs = new FakeFs();
+		const plugin = { manifest: { dir: DIR }, app: { vault: { adapter: fs.adapter } } } as never;
+		const names = () => fs.backups("remote").sort();
+		// The clock of this file is frozen: each copy needs its own instant, which is what its name is made of.
+		setNow(10_000);
+		await saveSyncBackup(plugin, "remote", "AAAA");
+		setNow(10_100);
+		await saveSyncBackup(plugin, "remote", "BBBB");
+		expect(names()).toHaveLength(2);
+		setNow(10_200);
+		await saveSyncBackup(plugin, "remote", "BBBB"); // same as the newest: nothing new
+		expect(names()).toHaveLength(2);
+		setNow(10_300);
+		await saveSyncBackup(plugin, "remote", "AAAA"); // same as an OLDER one, not the newest: kept
+		expect(names()).toHaveLength(3);
+		expect(names().map((n) => fs.files.get(n)!.text)).toEqual(["AAAA", "BBBB", "AAAA"]);
 	});
 
 	it("keeps only the most recent safety copies", async () => {
@@ -876,6 +965,8 @@ describe("random multi-device sessions", () => {
 	const STEPS = Number(process.env.SYNC_STRESS_STEPS ?? 120);
 	// Share of the steps that are about the Inbox (SYNC_INBOX_OPS=0 gives the sessions as they were before the Inbox heal).
 	const INBOX_OPS = Number(process.env.SYNC_INBOX_OPS ?? 0.1);
+	// Share of the steps that write a point of the value history (SYNC_VALUE_OPS=0 gives the sessions as they were before it).
+	const VALUE_OPS = Number(process.env.SYNC_VALUE_OPS ?? 0.15);
 	for (let seed = 1; seed <= SEEDS; seed++) {
 		it(`seed ${seed}`, async () => {
 			const rnd = mulberry32(seed);
@@ -908,9 +999,28 @@ describe("random multi-device sessions", () => {
 			const inboxCards = new Set<string>();
 			let inboxSeq = 0;
 
+			// Devices that write down the collection's value for "a day" (core/value-history.ts), from a THIRD generator so that
+			// the sessions above stay exactly as they were. A step is a quarter of a day, so several devices write the same day.
+			const rndV = mulberry32(seed * 104729 + 7);
+			const valueWrites = new Map<string, Set<number>>(); // day → every usd figure written for it
+
 			for (let step = 0; step < STEPS; step++) {
 				t += 1000;
 				setNow(t);
+				if (rndV() < VALUE_OPS) {
+					const vdev = devices[Math.floor(rndV() * devices.length)];
+					const day = new Date(Date.UTC(2026, 10, 1 + Math.floor(step / 4))).toISOString().slice(0, 10);
+					const usd = Math.round(rndV() * 100_000) / 100;
+					const history = readValuePoints(vdev.settings.valueHistory);
+					if (recordValuePoint(history, day, { usd, eur: usd * 0.9, cards: 1 + Math.floor(rndV() * 50) }, t)) {
+						vdev.settings.valueHistory = history;
+						if (!valueWrites.has(day)) valueWrites.set(day, new Set());
+						valueWrites.get(day)!.add(usd);
+					}
+					await vdev.persistSettings();
+					t += 7;
+					setNow(t);
+				}
 				if (rndI() < INBOX_OPS) {
 					const idev = devices[Math.floor(rndI() * devices.length)];
 					const mine = idev.settings.lists.find((l: Obj) => l.isInbox);
@@ -1030,6 +1140,15 @@ describe("random multi-device sessions", () => {
 			expect(settingsEqual(a.settings, b.settings), "a vs b\n" + describeDiff(a.settings, b.settings)).toBe(true);
 			expect(settingsEqual(a.settings, c.settings), "a vs c\n" + describeDiff(a.settings, c.settings)).toBe(true);
 
+			// Every day any device wrote is on every device, and what it holds is one of the figures written that day (the
+			// newest write won; nothing is invented, nothing is lost).
+			for (const d of devices) {
+				const held = new Map(readValuePoints(d.settings.valueHistory).map((p) => [p.day, p.usd]));
+				for (const [day, usds] of valueWrites) {
+					expect(held.has(day), `day ${day} of the value history is gone`).toBe(true);
+					expect(usds.has(held.get(day)!), `day ${day} holds a figure nobody wrote`).toBe(true);
+				}
+			}
 			// However many Inboxes the devices invented, one is left, and no card points at a dropped one.
 			for (const d of devices) {
 				const found = d.settings.lists.filter((l: Obj) => l.isInbox);
